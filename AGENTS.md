@@ -318,7 +318,7 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 - `prod` — runs the application in production mode.
 
 ### Detected Commands
-> **Status:** Tooling is documented here but the `Makefile` / `Package.swift` are **not yet created** — this init prepared documentation only. Create them in the implementation phase, then verify each verb. Planned mapping (native SwiftPM via `Makefile`):
+> **Status:** Created and verified (`make check` green on macOS 14, Swift 6.3). Native SwiftPM via `Makefile`:
 
 - `check` → `make check` → `swift build` + comment-scan + `swift format lint` + `swift test`
 - `test <path>` → `make test ARGS="--filter <suite>"` → `swift test --filter <suite>`

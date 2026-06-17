@@ -1,7 +1,9 @@
 ---
 date: 2026-06-17
-status: to do
+status: done
 tags: [init, scaffolding]
+related_tasks:
+  - "[Implement Markview app](implement-markview-app.md)"
 ---
 # Init: project context & first scaffold
 
@@ -40,10 +42,10 @@ No `Package.swift`, no `.swift` sources, no `Makefile`, no commits yet (`main` h
 
 Each item below is the entry point for a follow-up `plan`; acceptance references are declared in the SRS FRs they implement.
 
-- [ ] FR-OPEN: SwiftPM `Package.swift` + executable target `Markview` builds via `make check`
+- [x] FR-OPEN: SwiftPM `Package.swift` + executable target `Markview` builds via `make check`
   - Test: `Tests/MarkviewTests/RenderTests.swift::testGFMTableAndTaskList`
   - Evidence: `make check`
-- [ ] FR-LINE-WIDTH: line-width control reflows content and persists
+- [x] FR-LINE-WIDTH: line-width control reflows content and persists
   - Test: `Tests/MarkviewTests/LineWidthTests.swift::testWidthPersistsAndReflows`
   - Evidence: `make test ARGS="--filter LineWidthTests"`
 

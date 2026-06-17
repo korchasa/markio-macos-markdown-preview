@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Offline only: every asset is a relative path into vendor/. No network. -->
+  <link rel="stylesheet" href="vendor/css/github-markdown.min.css">
+  <link rel="stylesheet" href="vendor/highlight/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="vendor/highlight/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <style>
+    :root { --content-width: 740px; }
+    html, body { margin: 0; padding: 0; }
+    /* System colors follow light/dark automatically. [REF:fr:appearance] */
+    html { color-scheme: light dark; }
+    body { background-color: Canvas; color: CanvasText; }
+    /* Center the reading column; --content-width is driven by the native control. */
+    #content {
+      box-sizing: border-box;
+      max-width: var(--content-width);
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+    /* github-markdown-css scopes everything under .markdown-body */
+    .markdown-body { background: transparent; }
+    .markdown-body pre.mermaid {
+      background: transparent;
+      text-align: center;
+      padding: 0;
+    }
+    .markdown-body pre.mermaid svg { max-width: 100%; height: auto; }
+  </style>
+  <script src="vendor/markdown-it/markdown-it.min.js"></script>
+  <script src="vendor/markdown-it/markdown-it-task-lists.js"></script>
+  <script src="vendor/highlight/highlight.min.js"></script>
+  <script src="vendor/mermaid/mermaid.min.js"></script>
+</head>
+<body>
+  <article id="content" class="markdown-body"></article>
+  <script>
+    "use strict";
+
+    var __dark = window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    var md = window.markdownit({
+      html: false,        // do not pass raw HTML through (read-only viewer, safety)
+      linkify: true,      // GFM autolinks
+      typographer: false,
+      highlight: function (str, lang) {
+        if (lang === 'mermaid') {
+          return '<pre class="mermaid">' + escapeHtml(str) + '</pre>';
+        }
+        if (lang && window.hljs && window.hljs.getLanguage(lang)) {
+          try {
+            return '<pre class="hljs"><code>' +
+              window.hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+              '</code></pre>';
+          } catch (e) { /* fall through to default escaping */ }
+        }
+        return '<pre class="hljs"><code>' + escapeHtml(str) + '</code></pre>';
+      }
+    }).use(window.markdownitTaskLists, { enabled: false });
+
+    function initMermaid() {
+      if (!window.mermaid) return;
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: __dark ? 'dark' : 'default'
+      });
+    }
+    initMermaid();
+
+    // Render Markdown into the page. Returns true when DOM + diagrams are ready.
+    // Mermaid is async; awaiting it lets native/tests observe a settled DOM.
+    async function render(markdown) {
+      var el = document.getElementById('content');
+      el.innerHTML = md.render(markdown != null ? String(markdown) : '');
+      if (window.mermaid) {
+        var nodes = el.querySelectorAll('pre.mermaid');
+        if (nodes.length) {
+          try { await window.mermaid.run({ nodes: nodes }); }
+          catch (e) { /* malformed diagram: leave source text, never throw */ }
+        }
+      }
+      return true;
+    }
+
+    function setContentWidth(px) {
+      document.documentElement.style.setProperty('--content-width', String(px) + 'px');
+      return getContentWidth();
+    }
+
+    function getContentWidth() {
+      return document.documentElement.style.getPropertyValue('--content-width').trim();
+    }
+
+    // Native pushes appearance changes here so Mermaid diagrams re-theme.
+    async function setDark(dark) {
+      __dark = !!dark;
+      initMermaid();
+      var current = document.getElementById('content').innerHTML;
+      // Re-render only matters for Mermaid; cheap no-op otherwise handled by caller.
+      return current.length;
+    }
+
+    window.render = render;
+    window.setContentWidth = setContentWidth;
+    window.getContentWidth = getContentWidth;
+    window.setDark = setDark;
+  </script>
+</body>
+</html>

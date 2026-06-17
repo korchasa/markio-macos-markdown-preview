@@ -20,31 +20,31 @@
 - **Desc:** Render full GFM: headings, lists, task lists, tables, fenced code, strikethrough, autolinks, blockquotes, images.
 - **Scenario:** A document with a GFM table and a task list renders with correct table layout and checkbox glyphs.
 - **Acceptance:** `Tests/MarkviewTests/RenderTests.swift::testGFMTableAndTaskList`
-- **Status:** [ ]
+- **Status:** [x]
 
 ### 3.3 FR-MERMAID: Render Mermaid diagrams [ANC:fr:mermaid]
 - **Desc:** Fenced code blocks tagged ```` ```mermaid ```` render as diagrams via vendored `mermaid.js`.
 - **Scenario:** A `flowchart` block renders as an SVG diagram, not as raw text.
 - **Acceptance:** `Tests/MarkviewTests/RenderTests.swift::testMermaidFlowchartRenders`
-- **Status:** [ ]
+- **Status:** [x]
 
 ### 3.4 FR-HIGHLIGHT: Syntax-highlight code blocks [ANC:fr:highlight]
 - **Desc:** Non-mermaid fenced code blocks get syntax highlighting via a vendored highlight library, matching system appearance.
 - **Scenario:** A ```` ```swift ```` block shows colored tokens.
 - **Acceptance:** `Tests/MarkviewTests/RenderTests.swift::testCodeBlockHighlighted`
-- **Status:** [ ]
+- **Status:** [x]
 
 ### 3.5 FR-LINE-WIDTH: Adjust line width on preview [ANC:fr:line-width]
 - **Desc:** A control on the preview screen adjusts the text content width live (sets CSS `--content-width`); the value persists across launches.
 - **Scenario:** User drags the width slider → content column reflows immediately; on relaunch the last width is restored.
 - **Acceptance:** `Tests/MarkviewTests/LineWidthTests.swift::testWidthPersistsAndReflows`
-- **Status:** [ ]
+- **Status:** [x]
 
 ### 3.6 FR-LIVE-RELOAD: Live reload on external edits [ANC:fr:live-reload]
 - **Desc:** When the open file changes on disk, the preview refreshes automatically (FSEvents/`DispatchSource`), preserving scroll position where feasible.
 - **Scenario:** User edits the file in another editor and saves → preview updates without manual reopen.
 - **Acceptance:** `Tests/MarkviewTests/WatcherTests.swift::testReloadsOnFileChange`
-- **Status:** [ ]
+- **Status:** [x]
 
 ### 3.7 FR-APPEARANCE: Follow system light/dark [ANC:fr:appearance]
 - **Desc:** Rendered content and native chrome follow the system appearance and switch live.
@@ -56,7 +56,7 @@
 - **Desc:** All rendering assets load from the bundle; the web view performs no network requests.
 - **Scenario:** With networking disabled, rendering (incl. Mermaid) still works fully.
 - **Acceptance:** `Tests/MarkviewTests/OfflineTests.swift::testNoNetworkRequests`
-- **Status:** [ ]
+- **Status:** [x]
 
 ---
 

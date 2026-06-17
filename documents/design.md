@@ -57,8 +57,8 @@ flowchart TD
 
 ### 3.6 Vendored web bundle [ANC:sds:vendor]
 - **Purpose:** Offline rendering assets under `Sources/Markview/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
-- **Interfaces:** `template.html` exposes a JS entrypoint `render(markdown)` and reads CSS var `--content-width`.
-- **Deps:** Markdown-it–class parser (GFM), `mermaid.js`, highlight library, theme CSS. Pinned versions, committed to the repo.
+- **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(px)`, `getContentWidth()`, `setDark(bool)`; reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
+- **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1. markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
 
 ## 4. Data
 - **Entities:** No persistent model beyond `UserDefaults`: `contentWidth: Int (px)`, recent files (system-managed `NSDocumentController` recents).
@@ -73,5 +73,6 @@ flowchart TD
 - **Scale/Fault/Sec/Logs:** Off-main-thread file reads keep UI responsive on large docs. Malformed Markdown → best-effort render, no crash. Security: no network (offline FR), minimal JS bridge (width + link interception only). Logging via `os.Logger`, subsystem `dev.markview`.
 
 ## 7. Constraints
+- **Platform:** macOS 14+ (Swift 6 language mode). Min raised from 13 → 14 to use modern SwiftUI `onChange` and keep a zero-warning build.
 - **Simplified:** Single-document window focus; minimal toolbar (open + line width). System appearance only (no custom theme picker in v1).
 - **Deferred:** Tabs/multi-doc, search-in-document, print/export, custom themes, TOC sidebar — explicitly out of v1 scope per minimalism priority.
