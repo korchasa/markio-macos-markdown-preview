@@ -32,7 +32,7 @@ flowchart TD
 
 ### 3.1 App shell [ANC:sds:app-shell]
 - **Purpose:** Native window, main menu (File ▸ Open / Open Recent), toolbar, drag-and-drop, document-type registration. Hosts the render surface. Implements [REF:fr:open | FR-OPEN], [REF:fr:appearance | FR-APPEARANCE].
-- **Interfaces:** Receives file URLs from Open dialog / drop / Finder; passes to FileLoader. Owns toolbar incl. the line-width control.
+- **Interfaces:** Receives file URLs from Open dialog / drop / Finder / command-line argument (`swift run Markview <file>`); passes to FileLoader. Owns toolbar incl. the line-width control. Window opens at 900×820 on first launch; the system restores the last frame thereafter.
 - **Deps:** AppKit, SwiftUI, UniformTypeIdentifiers.
 
 ### 3.2 FileLoader [ANC:sds:file-loader]
