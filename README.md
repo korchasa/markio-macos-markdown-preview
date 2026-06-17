@@ -22,13 +22,21 @@ surface. The one on-screen reading control is **line width**.
 ## Run
 
 ```sh
-make dev                       # launch (debug)
+make dev                       # launch raw debug binary (fast; each run = new process)
 make dev ARGS="path/to.md"     # open a file on launch
-make prod                      # release build + run
+make app                       # release build packaged as .build/Markview.app
+make prod                      # build the .app and launch it (single instance)
+make prod ARGS="path/to.md"    # …and open a file
 ```
 
-Open a document with ⌘O, drag-and-drop onto the window, or *Open With ▸ Markview*
-from Finder.
+`make prod` builds a real `Markview.app` bundle, so macOS keeps a **single
+instance** and routes every open into it (one window per document), and Finder
+"Open With ▸ Markview" works. The raw `make dev` binary has no bundle, so each
+launch is a separate process — fine for quick debugging.
+
+Open a document with ⌘O, drag-and-drop onto a window, or *Open With ▸ Markview*
+from Finder. Each file opens in its own window (no tabs — one document = one
+window); *File ▸ Open Recent* and state restoration are provided by the system.
 
 ## Develop
 
@@ -40,10 +48,11 @@ make fmt      # apply formatting
 
 ## Architecture
 
-Native AppKit/SwiftUI shell hosting a single confined `WKWebView`. The shell
-owns all OS integration (window, toolbar, menus, file handling, line-width
-control); the web view only renders content via vendored JS/CSS
-(`Sources/Markview/Resources/vendor`). See `documents/design.md`.
+Native AppKit/SwiftUI document app (`DocumentGroup`): one window per file, each
+hosting a confined `WKWebView`. The shell owns all OS integration (windows,
+toolbar, menus, file handling, line-width control); the web view only renders
+content via vendored JS/CSS (`Sources/Markview/Resources/vendor`). See
+`documents/design.md`.
 
 ## Scope
 

@@ -5,15 +5,21 @@
 - **Def/Abbr:** GFM = GitHub Flavored Markdown. WKWebView = WebKit web view. SPM = Swift Package Manager. FSEvents = macOS filesystem event API.
 
 ## 2. General
-- **Context:** Single-window macOS document viewer. Markdown rendered to HTML inside a sandboxed `WKWebView` using vendored offline JS/CSS; the app shell (window, toolbar, menus, file handling) is fully native (AppKit/SwiftUI).
+- **Context:** Document-based macOS viewer: each opened file is its own window (`DocumentGroup`), with system-provided Open Recent, window tabbing, and state restoration. Markdown rendered to HTML inside a sandboxed `WKWebView` using vendored offline JS/CSS; the app shell (window, toolbar, menus, file handling) is fully native (AppKit/SwiftUI).
 - **Assumptions/Constraints:** macOS only (Apple Silicon + Intel). No network access — all assets vendored. Read-only: no editing/export/plugins. Priority order on conflict: 1) nativeness, 2) minimalism, 3) UX.
 
 ## 3. Functional Reqs
 
 ### 3.1 FR-OPEN: Open Markdown file [ANC:fr:open]
-- **Desc:** User opens a `.md`/`.markdown` file via Open dialog, drag-and-drop onto the window/Dock icon, or "Open With" / `open` from Finder.
-- **Scenario:** User drags `notes.md` onto the window → content renders in the preview.
+- **Desc:** User opens a `.md`/`.markdown` file via Open dialog, drag-and-drop onto the window/Dock icon, or "Open With" / `open` from Finder. Each open targets a window (per [REF:fr:multidoc | FR-MULTIDOC]).
+- **Scenario:** User chooses `notes.md` via ⌘O → it renders in a window.
 - **Acceptance:** `manual — maintainer — documents/checklists/open.md`
+- **Status:** [ ]
+
+### 3.1a FR-MULTIDOC: One window per document [ANC:fr:multidoc]
+- **Desc:** Each opened file gets its own window (`DocumentGroup`). Opening another file never replaces the content of an existing window — it opens a new window (or focuses the existing one if already open). Strictly one window per document: window tabbing is disabled (`NSWindow.allowsAutomaticWindowTabbing = false`), so documents never merge into tabs regardless of the system "prefer tabs" setting. Each window's title bar shows the document's full filesystem path (not just the file name). Documents are read-only (no editing/saving); the document model loads UTF-8 text and fails fast on non-UTF-8.
+- **Scenario:** With `a.md` open, the user opens `b.md` → a second window appears; the `a.md` window is unchanged.
+- **Acceptance:** `manual — maintainer — documents/checklists/window-per-doc.md`; `Tests/MarkviewTests/DocumentReadTests.swift::testDecodesUTF8`
 - **Status:** [ ]
 
 ### 3.2 FR-GFM: Render GitHub Flavored Markdown [ANC:fr:gfm]
@@ -64,11 +70,11 @@
 - **Perf:** Open + first render of a typical (<200 KB) doc < 300 ms on Apple Silicon. Width-slider reflow feels instant (< 1 frame perceptible lag).
 - **Reliability:** Malformed Markdown never crashes; renders best-effort.
 - **Sec:** No network, no JS bridge beyond the line-width message handler; `WKWebView` confined to bundled file URLs.
-- **Scale:** Single-document focus; large docs (multi-MB) render without freezing the UI (off-main-thread load).
-- **UX:** Native window/toolbar/menus; minimal chrome; the only persistent on-screen reading control is line width.
+- **Scale:** Multiple independent document windows; each handles large docs (multi-MB) without freezing the UI (off-main-thread load).
+- **UX:** Native document windows/toolbar/menus (Open Recent, tabs, restore via `DocumentGroup`); minimal chrome; the only persistent on-screen reading control is line width.
 
 ## 5. Interfaces
-- **UI:** Native macOS window + toolbar (open, line-width control). Standard menu bar (File ▸ Open / Open Recent). Drag-and-drop target. Preview surface = `WKWebView`.
+- **UI:** Native document windows (`DocumentGroup`) + toolbar (line-width control). Standard menu bar (File ▸ Open / Open Recent), state restoration. One window per document — no window tabs. Drag a file onto a window → opens it in a new window. Preview surface = `WKWebView`.
 - **Proto (internal):** Native → web view: set Markdown source; set `--content-width`. Web view → native: `WKScriptMessageHandler` for width-change persistence and link-open interception.
 - **File types:** `.md`, `.markdown` (UTType conformance declared in the app).
 

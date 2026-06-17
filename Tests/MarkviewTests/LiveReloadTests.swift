@@ -3,7 +3,7 @@ import XCTest
 @testable import Markview
 
 /// End-to-end live reload: editing the open file on disk updates the rendered
-/// preview, exercising FileWatcher → AppModel.reload → WebView render.
+/// preview, exercising FileWatcher → DocumentModel.reload → WebView render.
 /// [REF:fr:live-reload]
 @MainActor
 final class LiveReloadTests: XCTestCase {
@@ -16,9 +16,9 @@ final class LiveReloadTests: XCTestCase {
         let file = dir.appendingPathComponent("doc.md")
         try "# Alpha marker\n".write(to: file, atomically: true, encoding: .utf8)
 
-        let model = AppModel()
-        await model.bootstrap()
-        model.open(file)
+        let initial = try FileLoader.load(file)
+        let model = DocumentModel()
+        await model.start(text: initial, url: file)
 
         // Initial content renders (also acts as a barrier: the watcher is armed).
         try await waitForContent(model, contains: "Alpha marker")
@@ -29,7 +29,7 @@ final class LiveReloadTests: XCTestCase {
     }
 
     private func waitForContent(
-        _ model: AppModel, contains needle: String, timeout: TimeInterval = 6
+        _ model: DocumentModel, contains needle: String, timeout: TimeInterval = 6
     ) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
