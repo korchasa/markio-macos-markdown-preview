@@ -333,7 +333,7 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 
 ## Code Documentation
 
-- **Module level**: each module gets an `AGENTS.md` describing its responsibility and key decisions.
+- **Module level**: each module gets an `AGENTS.md` describing its responsibility and key decisions. (SwiftPM: a module's `AGENTS.md` lives inside a target source dir, so it MUST be listed in that target's `exclude:` in `Package.swift` — otherwise `swift build` emits an `unhandled files` warning and breaks the zero-warning baseline.)
 - **Code level**: Swift doc comments (`///`) for types, methods, and functions. Focus on *why* and *how*, not *what*. Skip trivial comments — they add noise without value.
 - **Requirement traceability**: when code implements a requirement from SRS (`documents/requirements.md`), add a `// FR-<ID>` (Swift/TS/JS/Go/Rust) or `# FR-<ID>` (YAML/shell/Python) comment next to the implementing logic. Code references requirements, not the reverse — SRS must not contain file paths. Exceptions: requirements verified by acceptance tests or proven by file existence need no comment.
 
