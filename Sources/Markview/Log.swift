@@ -1,0 +1,10 @@
+import os
+
+/// Shared `os.Logger` for the app. Subsystem `dev.markview` (per SDS §6); one
+/// category per area. Used to surface failures that are otherwise best-effort
+/// (JS-bridge calls, file opens) so they are visible in Console.app instead of
+/// being silently swallowed — per the project's "fail fast, fail clearly" rule.
+enum Log {
+    static let preview = Logger(subsystem: "dev.markview", category: "preview")
+    static let app = Logger(subsystem: "dev.markview", category: "app")
+}

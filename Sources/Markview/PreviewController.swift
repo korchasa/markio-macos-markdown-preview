@@ -8,9 +8,13 @@ import WebKit
 final class PreviewController: NSObject {
     let webView: WKWebView
 
-    private var loadContinuation: CheckedContinuation<Void, Never>?
+    private var loadContinuation: CheckedContinuation<Void, Error>?
     private var didFinishInitialLoad = false
 
+    /// Builds the confined `WKWebView`: a default configuration with no message
+    /// handlers, wired to `self` as navigation delegate so every navigation is
+    /// gated by `decidePolicyFor` (only the initial `file:` load and in-page
+    /// file links are allowed; web links open externally).
     override init() {
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = false
@@ -20,8 +24,12 @@ final class PreviewController: NSObject {
     }
 
     /// Load `template.html`, scoping read access to the vendored bundle only.
-    func loadTemplate() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+    /// Throws if the navigation fails (`didFail`/`didFailProvisionalNavigation`)
+    /// so a failed shell load is distinguishable from success — the caller must
+    /// not proceed to `render` on a page that never loaded.
+    func loadTemplate() async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
             loadContinuation = continuation
             webView.loadFileURL(
                 ResourceLocator.templateURL,
@@ -30,36 +38,50 @@ final class PreviewController: NSObject {
         }
     }
 
-    /// Render Markdown; awaits the page (including Mermaid) settling.
-    /// [REF:fr:gfm] [REF:fr:mermaid] [REF:fr:highlight]
+    /// Render Markdown; awaits the page (including Mermaid) settling. Best-effort
+    /// by contract (a render failure must not crash the viewer), but the error is
+    /// logged rather than swallowed silently. [REF:fr:gfm] [REF:fr:mermaid] [REF:fr:highlight]
     func render(_ markdown: String) async {
-        _ = try? await webView.callAsyncJavaScript(
-            "return await render(md);",
-            arguments: ["md": markdown],
-            contentWorld: .page
-        )
+        do {
+            _ = try await webView.callAsyncJavaScript(
+                "return await render(md);",
+                arguments: ["md": markdown],
+                contentWorld: .page
+            )
+        } catch {
+            Log.preview.error("render failed: \(error.localizedDescription)")
+        }
     }
 
-    /// Set the reading-column width in characters (CSS `ch`); returns the
-    /// applied value (e.g. `"80ch"`). [REF:fr:line-width]
+    /// Set the reading-column width in characters (CSS `ch`); returns the applied
+    /// value (e.g. `"80ch"`), or `nil` if the JS call failed (logged). [REF:fr:line-width]
     @discardableResult
     func setContentWidth(_ chars: Int) async -> String? {
-        let result = try? await webView.callAsyncJavaScript(
-            "return setContentWidth(chars);",
-            arguments: ["chars": chars],
-            contentWorld: .page
-        )
-        return result as? String
+        do {
+            let result = try await webView.callAsyncJavaScript(
+                "return setContentWidth(chars);",
+                arguments: ["chars": chars],
+                contentWorld: .page
+            )
+            return result as? String
+        } catch {
+            Log.preview.error("setContentWidth(\(chars)) failed: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// Inform the page of the current appearance so Mermaid re-themes.
-    /// [REF:fr:appearance]
+    /// Best-effort; failure is logged, not swallowed. [REF:fr:appearance]
     func setDark(_ dark: Bool) async {
-        _ = try? await webView.callAsyncJavaScript(
-            "return await setDark(d);",
-            arguments: ["d": dark],
-            contentWorld: .page
-        )
+        do {
+            _ = try await webView.callAsyncJavaScript(
+                "return await setDark(d);",
+                arguments: ["d": dark],
+                contentWorld: .page
+            )
+        } catch {
+            Log.preview.error("setDark(\(dark)) failed: \(error.localizedDescription)")
+        }
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.
@@ -69,21 +91,24 @@ final class PreviewController: NSObject {
 }
 
 extension PreviewController: WKNavigationDelegate {
+    /// Template finished loading → mark the shell ready and resume `loadTemplate`.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         didFinishInitialLoad = true
-        resumeLoad()
+        resumeLoad(.success(()))
     }
 
+    /// Committed navigation failed → resume `loadTemplate` with the error.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        resumeLoad()
+        resumeLoad(.failure(error))
     }
 
+    /// Provisional navigation (before commit) failed → resume with the error.
     func webView(
         _ webView: WKWebView,
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
-        resumeLoad()
+        resumeLoad(.failure(error))
     }
 
     func webView(
@@ -111,8 +136,10 @@ extension PreviewController: WKNavigationDelegate {
         }
     }
 
-    private func resumeLoad() {
-        loadContinuation?.resume()
+    /// Resume the pending `loadTemplate` continuation exactly once, then clear it
+    /// so a late callback cannot double-resume.
+    private func resumeLoad(_ result: Result<Void, Error>) {
+        loadContinuation?.resume(with: result)
         loadContinuation = nil
     }
 }

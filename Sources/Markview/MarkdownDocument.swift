@@ -5,13 +5,15 @@ import UniformTypeIdentifiers
 /// `DocumentGroup` builds on: each open file becomes one window backed by one of
 /// these. Never writable → no Save, never marked dirty. [REF:fr:multidoc] [REF:sds:markdown-document]
 struct MarkdownDocument: FileDocument {
+    /// Canonical set of recognized Markdown file extensions — the single source
+    /// of truth. `types` and `URL.isMarkdown` both derive from this. The
+    /// Info.plist `CFBundleTypeExtensions` array is a third copy kept in sync
+    /// manually; `MarkdownExtensionsTests` asserts the plist matches this list.
+    static let extensions = ["md", "markdown"]
+
     /// `.md` / `.markdown` (resolved at runtime) plus plain text as a fallback.
-    static let types: [UTType] = {
-        var types: [UTType] = [.plainText]
-        if let md = UTType(filenameExtension: "md") { types.insert(md, at: 0) }
-        if let markdown = UTType(filenameExtension: "markdown") { types.insert(markdown, at: 1) }
-        return types
-    }()
+    static let types: [UTType] =
+        extensions.compactMap { UTType(filenameExtension: $0) } + [.plainText]
 
     static var readableContentTypes: [UTType] { types }
     /// Read-only viewer: declaring nothing writable disables Save and keeps the
@@ -33,6 +35,8 @@ struct MarkdownDocument: FileDocument {
         self.text = text
     }
 
+    /// `FileDocument` entry point: unwrap the file's bytes and delegate to
+    /// `init(data:)` for UTF-8 decoding (fail fast on missing/binary content).
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
@@ -43,5 +47,13 @@ struct MarkdownDocument: FileDocument {
     /// Read-only: writing is unsupported.
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
         throw CocoaError(.featureUnsupported)
+    }
+}
+
+extension URL {
+    /// True when the path extension is a recognized Markdown extension
+    /// (case-insensitive), per `MarkdownDocument.extensions`. [REF:fr:open]
+    var isMarkdown: Bool {
+        MarkdownDocument.extensions.contains(pathExtension.lowercased())
     }
 }

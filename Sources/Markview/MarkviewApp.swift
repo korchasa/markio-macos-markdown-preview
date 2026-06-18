@@ -67,7 +67,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             NSDocumentController.shared.openDocument(
                 withContentsOf: url, display: true
-            ) { _, _, _ in }
+            ) { _, _, error in
+                if let error {
+                    Log.app.error(
+                        "command-line open failed for \(url.path): \(error.localizedDescription)")
+                }
+            }
         }
     }
 }

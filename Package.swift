@@ -10,6 +10,8 @@ let package = Package(
         .executableTarget(
             name: "Markview",
             path: "Sources/Markview",
+            // Module doc, not a build input.
+            exclude: ["AGENTS.md"],
             resources: [
                 // Copied to the bundle root as siblings so template.html's
                 // relative vendor/ URLs resolve offline.

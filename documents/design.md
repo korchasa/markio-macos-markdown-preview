@@ -24,17 +24,17 @@ flowchart TD
   Group --> Doc --> Model
   Model --> Host
   Watcher --> Loader --> Model
-  WidthCtl -- "--content-width" --> Host
-  Host -- "setSource(md)" --> Template
+  WidthCtl -- "setContentWidth(ch)" --> Host
+  Host -- "render(md) / setContentWidth(ch) / setDark" --> Template
   Template --> Vendor
-  Host <-- "WKScriptMessageHandler" --> WidthCtl
+  Host -- "web links → NSWorkspace" --> Browser([Default browser])
 ```
 - **Subsystems:** App shell (`DocumentGroup`) · Markdown document · Per-window model · File loader · File watcher · Render host (`WKWebView`) · Line-width control · Vendored web bundle.
 
 ## 3. Components
 
 ### 3.1 App shell [ANC:sds:app-shell]
-- **Purpose:** `DocumentGroup(viewing: MarkdownDocument.self)` — one native window per file, with system File ▸ Open / Open Recent and state restoration. Window tabbing is disabled (`NSWindow.allowsAutomaticWindowTabbing = false` in `AppDelegate`) → strictly one window per document. Each window hosts its own render surface + toolbar. Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:appearance | FR-APPEARANCE].
+- **Purpose:** `DocumentGroup(viewing: MarkdownDocument.self)` — one native window per file, with system File ▸ Open / Open Recent and state restoration. Window tabbing is disabled (`NSWindow.allowsAutomaticWindowTabbing = false` in `AppDelegate`) → strictly one window per document. Each window hosts its own render surface + a bottom-bar reading control. Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:appearance | FR-APPEARANCE].
 - **Interfaces:** `ContentView(document:fileURL:)` per window owns a `DocumentModel`. Opens originate from the system Open panel / Finder / Dock / `open` (handled by `DocumentGroup`), drag-drop onto a window (`@Environment(\.openDocument)` → new window), or a command-line argument in dev (`AppDelegate` → `NSDocumentController.shared.openDocument`). No welcome screen: a fresh launch shows the system Open panel. Windows open at 900×820 on first launch; the system restores frames thereafter.
 - **Deps:** AppKit, SwiftUI, UniformTypeIdentifiers.
 
@@ -70,9 +70,9 @@ flowchart TD
 - **Deps:** Dispatch / FSEvents.
 
 ### 3.4 WebViewHost [ANC:sds:webview-host]
-- **Purpose:** Wrap `WKWebView` via `NSViewRepresentable`; load `template.html` via `loadFileURL` with read access scoped to the resource bundle; push Markdown source and width into the page; receive messages back. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
-- **Interfaces:** `setSource(markdown)`, `setContentWidth(px)`, message handler `lineWidth`/`openLink`. Network disabled via `WKWebView` config + navigation policy.
-- **Deps:** WebKit.
+- **Purpose:** Own the `WKWebView` (`PreviewController`, surfaced to SwiftUI via `PreviewView`); load `template.html` via `loadFileURL` with read access scoped to the resource bundle; push Markdown source and width into the page. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
+- **Interfaces:** `loadTemplate() async throws` (throws if the shell navigation fails, so a failed load is distinguishable from success), `render(_:)`, `setContentWidth(_ chars: Int) -> String?`, `setDark(_:)` — all via `callAsyncJavaScript` into the page world; bridge failures are logged (`os.Logger`), not swallowed. No `WKScriptMessageHandler`: width is driven native→web, and web links are intercepted by the navigation delegate (`decidePolicyFor` → `LinkPolicy`: in-page `file:` / external via `NSWorkspace` / block). Network disabled via `WKWebView` config + navigation policy.
+- **Deps:** WebKit, os.
 
 ### 3.5 LineWidthControl [ANC:sds:line-width]
 - **Purpose:** Bottom-bar slider bound to the reading width in **characters**; persists the value. Implements [REF:fr:line-width | FR-LINE-WIDTH].

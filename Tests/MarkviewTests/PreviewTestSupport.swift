@@ -5,9 +5,9 @@ import XCTest
 extension XCTestCase {
     /// Create a `PreviewController` with `template.html` fully loaded.
     @MainActor
-    func makeLoadedPreview() async -> PreviewController {
+    func makeLoadedPreview() async throws -> PreviewController {
         let controller = PreviewController()
-        await controller.loadTemplate()
+        try await controller.loadTemplate()
         return controller
     }
 

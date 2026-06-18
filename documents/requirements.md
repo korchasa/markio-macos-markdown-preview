@@ -64,13 +64,13 @@
 - **Acceptance:** `Tests/MarkviewTests/OfflineTests.swift::testNoNetworkRequests`
 - **Status:** [x]
 
-### 3.10 FR-ICON: App icon [ANC:fr:icon]
+### 3.9 FR-ICON: App icon [ANC:fr:icon]
 - **Desc:** The `.app` bundle ships a Markview app icon (document-with-text-lines design). Source PNGs live in `packaging/AppIcon.iconset`; `make app` compiles them to `AppIcon.icns` via `iconutil` and `Info.plist` references it (`CFBundleIconFile`). Shown in Finder, Dock, and the app switcher.
 - **Scenario:** User opens `Markview.app` → its Dock/Finder icon is the Markview document glyph, not the generic placeholder.
 - **Acceptance:** `manual — maintainer — documents/checklists/icon.md`
 - **Status:** [x]
 
-### 3.9 FR-MENU: Read-only menu surface [ANC:fr:menu]
+### 3.10 FR-MENU: Read-only menu surface [ANC:fr:menu]
 - **Desc:** "Good enough" minimal-surgery approach: remove only the document-write commands meaningless for a read-only viewer, via the two contractual SwiftUI command groups that hold them (`ReadOnlyMenuCommands`: `.newItem`→∅, `.saveItem`→∅); leave everything else standard so macOS auto-disables inapplicable items and localizes them for free. A thin AppKit pass (`MenuArtifactCleaner`) removes the cosmetic artifacts SwiftUI emits when a group is emptied (a title-less placeholder drawn as "NSMenuItem" + orphaned separators). Removed from File: New, Save, Save As…, Duplicate, Rename…, Move To…, Revert To, Share, Close, Close All (the latter two fall out of `.saveItem`; window still closes via the title-bar button). Kept: File ▸ Open…, Open Recent. **Edit menu left fully standard** (Undo/Redo/Cut/Copy/Paste/Delete/Select All) — auto-disabled on non-editable content and properly localized; no custom buttons. View/Window/Help and the app menu unchanged. Localization: the bundle declares `CFBundleLocalizations` (en, ru) so standard items render in the system language (Файл, Правка, Открыть…).
 - **Scenario:** On a Russian system the File menu reads `Файл ▸ Открыть…, Открытие недавних` (no New/Save/Rename/Share, no "NSMenuItem"); `Правка` shows the standard, localized Edit items.
 - **Acceptance:** `Tests/MarkviewTests/MenuArtifactCleanerTests.swift::testRemovesPlaceholderAndTrailingSeparators` (artifact removal); `manual — maintainer — documents/checklists/menu.md` (semantic removal + localization)
@@ -83,11 +83,11 @@
 - **Reliability:** Malformed Markdown never crashes; renders best-effort.
 - **Sec:** No network, no JS bridge beyond the line-width message handler; `WKWebView` confined to bundled file URLs.
 - **Scale:** Multiple independent document windows; each handles large docs (multi-MB) without freezing the UI (off-main-thread load).
-- **UX:** Native document windows/toolbar/menus (Open Recent, tabs, restore via `DocumentGroup`); minimal chrome; the only persistent on-screen reading control is line width.
+- **UX:** Native document windows/menus (Open Recent, tabs, restore via `DocumentGroup`); minimal chrome; the only persistent on-screen reading control is line width, in a bottom bar.
 
 ## 5. Interfaces
-- **UI:** Native document windows (`DocumentGroup`) + toolbar (line-width control). Standard menu bar (File ▸ Open / Open Recent), state restoration. One window per document — no window tabs. Drag a file onto a window → opens it in a new window. Preview surface = `WKWebView`.
-- **Proto (internal):** Native → web view: set Markdown source; set `--content-width`. Web view → native: `WKScriptMessageHandler` for width-change persistence and link-open interception.
+- **UI:** Native document windows (`DocumentGroup`) + a bottom bar (line-width control). Standard menu bar (File ▸ Open / Open Recent), state restoration. One window per document — no window tabs. Drag a file onto a window → opens it in a new window. Preview surface = `WKWebView`.
+- **Proto (internal):** Native → web view (via `callAsyncJavaScript`): set Markdown source (`render`), set reading width (`setContentWidth`, `ch`), set appearance (`setDark`). Web → native: no message handler — link clicks are intercepted by the `WKNavigationDelegate` (external links open in the default browser via `NSWorkspace`); width changes persist natively (slider → `UserDefaults`).
 - **File types:** `.md`, `.markdown` (UTType conformance declared in the app).
 
 ## 6. Acceptance

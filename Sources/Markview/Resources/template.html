@@ -59,7 +59,7 @@
             return '<pre class="hljs"><code>' +
               window.hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
               '</code></pre>';
-          } catch (e) { /* fall through to default escaping */ }
+          } catch (e) { console.warn('highlight failed for language ' + lang, e); }
         }
         return '<pre class="hljs"><code>' + escapeHtml(str) + '</code></pre>';
       }
@@ -83,8 +83,10 @@
       if (window.mermaid) {
         var nodes = el.querySelectorAll('pre.mermaid');
         if (nodes.length) {
+          // Malformed diagram: leave the source text in place, never throw, but
+          // surface the cause for debugging in the Web Inspector.
           try { await window.mermaid.run({ nodes: nodes }); }
-          catch (e) { /* malformed diagram: leave source text, never throw */ }
+          catch (e) { console.warn('mermaid.run failed', e); }
         }
       }
       return true;

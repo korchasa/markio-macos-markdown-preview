@@ -28,7 +28,14 @@ final class DocumentModel: ObservableObject {
         started = true
         self.url = url
         currentText = text
-        await preview.loadTemplate()
+        do {
+            try await preview.loadTemplate()
+        } catch {
+            // Without the shell loaded, rendering is impossible — log and stop
+            // rather than silently driving a blank page. [REF:fr:offline]
+            Log.app.error("template load failed: \(error.localizedDescription)")
+            return
+        }
         await preview.setContentWidth(Int(contentWidth))
         await preview.setDark(Self.systemIsDark)
         await preview.render(text)
@@ -72,13 +79,9 @@ final class DocumentModel: ObservableObject {
         }
     }
 
+    /// True when the system appearance resolves to Dark Aqua. Uses optional
+    /// `NSApp` so it is safe to read before the app object exists (early launch).
     static var systemIsDark: Bool {
         NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    }
-}
-
-extension URL {
-    var isMarkdown: Bool {
-        ["md", "markdown"].contains(pathExtension.lowercased())
     }
 }

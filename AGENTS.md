@@ -196,7 +196,7 @@ Your memory resets between sessions. Documentation is the only link to past deci
 - Use GODS format (see below). Architectural decisions are recorded as regular tasks with weighed alternatives in the body — there is no separate ADR primitive.
 - Frontmatter: `date` (YYYY-MM-DD; required), `status: to do | in progress | done | superseded` (required), `implements: [FR-...]` (optional — present for FR-driven tasks, omitted for internal/maintenance), optional `tags`, optional `related_tasks` (markdown links to other task files), optional `migrated_from` for provenance, optional `superseded_by` (required when `status: superseded`).
 - Status auto-derives from `## Definition of Done` checkbox count on every commit for non-superseded tasks (commit workflows handle this — never edit `status` manually mid-flight). `status: superseded` preserves provenance and is excluded from DoD derivation.
-- Directory is **NOT gitignored** — tasks are persistent records. Validated by `scripts/check-task-format.ts` (path regex, status enum, status↔DoD consistency).
+- Directory is **NOT gitignored** — tasks are persistent records. Validated by `scripts/check-task-format.ts` (path regex, status enum, status↔DoD consistency) where the project ships such a script. This Swift/Makefile project ships no `scripts/` (see Command Scripts below); the format is maintained by convention until a `make`-based validator is added.
 
 ### GODS Format
 

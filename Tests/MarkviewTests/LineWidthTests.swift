@@ -28,7 +28,7 @@ final class LineWidthTests: XCTestCase {
             ContentWidthStore(defaults: defaults).width, 80, "Width must snap to nearest step")
 
         // Reflow: setting the width updates the live CSS custom property in `ch`.
-        let preview = await makeLoadedPreview()
+        let preview = try await makeLoadedPreview()
         await preview.setContentWidth(120)
         let applied = try await preview.evaluate("getContentWidth()") as? String
         XCTAssertEqual(applied, "120ch", "--content-width should reflect the applied width in ch")

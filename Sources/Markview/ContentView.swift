@@ -35,7 +35,14 @@ struct ContentView: View {
         guard let provider = providers.first else { return false }
         _ = provider.loadObject(ofClass: URL.self) { url, _ in
             guard let url, url.isMarkdown else { return }
-            Task { @MainActor in try? await openDocument(at: url) }
+            Task { @MainActor in
+                do {
+                    try await openDocument(at: url)
+                } catch {
+                    Log.app.error(
+                        "drop open failed for \(url.path): \(error.localizedDescription)")
+                }
+            }
         }
         return true
     }
