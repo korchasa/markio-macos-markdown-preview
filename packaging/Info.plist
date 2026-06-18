@@ -8,6 +8,17 @@
     <string>dev.markview.app</string>
     <key>CFBundleName</key>
     <string>Markview</string>
+    <!-- Declare supported languages so AppKit renders its standard menu items
+         (Файл, Правка, Открыть, Скопировать…) in the system language. The
+         viewer ships no custom user-facing strings, so listing the locales is
+         enough — no .lproj resources needed. -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>ru</string>
+    </array>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

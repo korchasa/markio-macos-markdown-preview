@@ -16,6 +16,23 @@ struct MarkviewApp: App {
         // Width = default reading column (740) + side margins; height fits a
         // comfortable reading area on a 13" display.
         .defaultSize(width: 900, height: 820)
+        .commands { ReadOnlyMenuCommands() }
+    }
+}
+
+/// Trims the auto-generated `DocumentGroup` menu to a read-only-viewer surface
+/// using only the two contractual SwiftUI command groups that hold document-
+/// write commands. Everything else (notably the whole Edit menu) is left
+/// standard, so macOS auto-disables the inapplicable items on non-editable
+/// content and localizes every item for free. Emptying a group leaves a SwiftUI
+/// placeholder item — `MenuArtifactCleaner` removes that. [REF:fr:menu]
+struct ReadOnlyMenuCommands: Commands {
+    var body: some Commands {
+        // New — a viewer creates nothing.
+        CommandGroup(replacing: .newItem) {}
+        // Save/Save As/Duplicate/Rename/Move To/Revert/Share — and, sharing the
+        // same group, Close/Close All.
+        CommandGroup(replacing: .saveItem) {}
     }
 }
 
@@ -24,6 +41,9 @@ struct MarkviewApp: App {
 /// path passed on the command line, so we cover `swift run Markview <file>` /
 /// `make dev ARGS="<path>"` here. [REF:fr:open]
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Retains the menu cleaner delegates — `NSMenu.delegate` is weak. [REF:fr:menu]
+    private var menuCleaners: [MenuArtifactCleaner.Delegate] = []
+
     /// One document = one window: opt out of window tabbing app-wide before any
     /// window exists, so documents never merge into tabs regardless of the
     /// system "prefer tabs" setting. [REF:fr:multidoc]
@@ -33,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        DispatchQueue.main.async {
+            self.menuCleaners = MenuArtifactCleaner.install(on: NSApp.mainMenu)
+        }
         guard
             let url = CommandLine.arguments
                 .dropFirst()

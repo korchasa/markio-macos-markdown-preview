@@ -64,6 +64,12 @@
 - **Acceptance:** `Tests/MarkviewTests/OfflineTests.swift::testNoNetworkRequests`
 - **Status:** [x]
 
+### 3.9 FR-MENU: Read-only menu surface [ANC:fr:menu]
+- **Desc:** "Good enough" minimal-surgery approach: remove only the document-write commands meaningless for a read-only viewer, via the two contractual SwiftUI command groups that hold them (`ReadOnlyMenuCommands`: `.newItem`→∅, `.saveItem`→∅); leave everything else standard so macOS auto-disables inapplicable items and localizes them for free. A thin AppKit pass (`MenuArtifactCleaner`) removes the cosmetic artifacts SwiftUI emits when a group is emptied (a title-less placeholder drawn as "NSMenuItem" + orphaned separators). Removed from File: New, Save, Save As…, Duplicate, Rename…, Move To…, Revert To, Share, Close, Close All (the latter two fall out of `.saveItem`; window still closes via the title-bar button). Kept: File ▸ Open…, Open Recent. **Edit menu left fully standard** (Undo/Redo/Cut/Copy/Paste/Delete/Select All) — auto-disabled on non-editable content and properly localized; no custom buttons. View/Window/Help and the app menu unchanged. Localization: the bundle declares `CFBundleLocalizations` (en, ru) so standard items render in the system language (Файл, Правка, Открыть…).
+- **Scenario:** On a Russian system the File menu reads `Файл ▸ Открыть…, Открытие недавних` (no New/Save/Rename/Share, no "NSMenuItem"); `Правка` shows the standard, localized Edit items.
+- **Acceptance:** `Tests/MarkviewTests/MenuArtifactCleanerTests.swift::testRemovesPlaceholderAndTrailingSeparators` (artifact removal); `manual — maintainer — documents/checklists/menu.md` (semantic removal + localization)
+- **Status:** [x]
+
 ---
 
 ## 4. Non-Functional
