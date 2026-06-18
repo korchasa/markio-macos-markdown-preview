@@ -13,8 +13,8 @@ struct MarkviewApp: App {
             ContentView(document: configuration.document, fileURL: configuration.fileURL)
         }
         // First-launch size only; macOS restores each window's frame after that.
-        // Width = default reading column (740) + side margins; height fits a
-        // comfortable reading area on a 13" display.
+        // Wide enough for the default reading column (80 ch) plus margins; height
+        // fits a comfortable reading area on a 13" display.
         .defaultSize(width: 900, height: 820)
         .commands { ReadOnlyMenuCommands() }
     }

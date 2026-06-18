@@ -41,8 +41,8 @@
 - **Status:** [x]
 
 ### 3.5 FR-LINE-WIDTH: Adjust line width on preview [ANC:fr:line-width]
-- **Desc:** A control on the preview screen adjusts the text content width live (sets CSS `--content-width`); the value persists across launches.
-- **Scenario:** User drags the width slider → content column reflows immediately; on relaunch the last width is restored.
+- **Desc:** A control in a **bottom bar** below the preview adjusts the reading-column width live. The width is an **absolute character count** (CSS `--content-width` in `ch` units — the native CSS char-width unit, = advance of the '0' glyph), stepped through presets **40…200 by 20** (default 80); the slider shows the current value (e.g. `80 ch`). The value persists across launches. By design the column never exceeds the window: when a requested width is wider than the current window can show, the column is capped at the window width (absolute char width is independent of window size only up to that physical limit), so high presets visibly widen the text only on a sufficiently wide/maximized window.
+- **Scenario:** User drags the bottom-bar slider → it snaps to the next 20-char preset and the content column reflows immediately to that character width; on relaunch the last width is restored.
 - **Acceptance:** `Tests/MarkviewTests/LineWidthTests.swift::testWidthPersistsAndReflows`
 - **Status:** [x]
 
@@ -62,6 +62,12 @@
 - **Desc:** All rendering assets load from the bundle; the web view performs no network requests.
 - **Scenario:** With networking disabled, rendering (incl. Mermaid) still works fully.
 - **Acceptance:** `Tests/MarkviewTests/OfflineTests.swift::testNoNetworkRequests`
+- **Status:** [x]
+
+### 3.10 FR-ICON: App icon [ANC:fr:icon]
+- **Desc:** The `.app` bundle ships a Markview app icon (document-with-text-lines design). Source PNGs live in `packaging/AppIcon.iconset`; `make app` compiles them to `AppIcon.icns` via `iconutil` and `Info.plist` references it (`CFBundleIconFile`). Shown in Finder, Dock, and the app switcher.
+- **Scenario:** User opens `Markview.app` → its Dock/Finder icon is the Markview document glyph, not the generic placeholder.
+- **Acceptance:** `manual — maintainer — documents/checklists/icon.md`
 - **Status:** [x]
 
 ### 3.9 FR-MENU: Read-only menu surface [ANC:fr:menu]

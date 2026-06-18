@@ -35,8 +35,9 @@ final class DocumentModel: ObservableObject {
         if let url { startWatching(url) }
     }
 
-    func setWidth(_ pixels: Double) {
-        let clamped = Double(ContentWidthStore.clamp(Int(pixels)))
+    /// Set the reading width in characters; clamps + snaps to a preset step.
+    func setWidth(_ chars: Double) {
+        let clamped = Double(ContentWidthStore.clamp(Int(chars)))
         contentWidth = clamped
         widthStore.width = Int(clamped)
         Task { await preview.setContentWidth(Int(clamped)) }

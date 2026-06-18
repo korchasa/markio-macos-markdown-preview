@@ -40,13 +40,13 @@ final class PreviewController: NSObject {
         )
     }
 
-    /// Set the reading-column width (CSS px); returns the applied value.
-    /// [REF:fr:line-width]
+    /// Set the reading-column width in characters (CSS `ch`); returns the
+    /// applied value (e.g. `"80ch"`). [REF:fr:line-width]
     @discardableResult
-    func setContentWidth(_ pixels: Int) async -> String? {
+    func setContentWidth(_ chars: Int) async -> String? {
         let result = try? await webView.callAsyncJavaScript(
-            "return setContentWidth(px);",
-            arguments: ["px": pixels],
+            "return setContentWidth(chars);",
+            arguments: ["chars": chars],
             contentWorld: .page
         )
         return result as? String

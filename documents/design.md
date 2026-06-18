@@ -75,30 +75,31 @@ flowchart TD
 - **Deps:** WebKit.
 
 ### 3.5 LineWidthControl [ANC:sds:line-width]
-- **Purpose:** On-screen slider/stepper bound to content width; persists the value. Implements [REF:fr:line-width | FR-LINE-WIDTH].
-- **Interfaces:** Reads/writes `UserDefaults` key `contentWidth`; on change calls `WebViewHost.setContentWidth`.
+- **Purpose:** Bottom-bar slider bound to the reading width in **characters**; persists the value. Implements [REF:fr:line-width | FR-LINE-WIDTH].
+- **Interfaces:** `ContentView.bottomBar` — a `.safeAreaInset(edge: .bottom)` bar holding a stepped `Slider` (range `minWidth…maxWidth`, `step`) plus a `N ch` readout. `ContentWidthStore` reads/writes `UserDefaults` key `contentWidthChars` (Int, characters) and `clamp`s to `[40, 200]` snapped to the 20-step grid; default 80. `DocumentModel.setWidth` → `PreviewController.setContentWidth(chars)` → JS `setContentWidth` sets `--content-width: <n>ch`.
+- **Decision:** Character width via the CSS `ch` unit (absolute, window-independent up to the physical window-width cap — a column wider than the window is clipped to it) over a px or window-fraction width; a stepped slider (presets) over free-form. New `UserDefaults` key (`contentWidthChars`) so legacy px values are not misread. Note: `ch` = advance of the '0' glyph (a wide glyph), so a column set to N fits ≳N typical letters per line.
 - **Deps:** SwiftUI, Foundation.
 
 ### 3.6 Vendored web bundle [ANC:sds:vendor]
 - **Purpose:** Offline rendering assets under `Sources/Markview/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
-- **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(px)`, `getContentWidth()`, `setDark(bool)`; reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
+- **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(chars)` (sets `--content-width` in `ch`), `getContentWidth()`, `setDark(bool)`; reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
 - **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1. markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
 
 ## 4. Data
-- **Entities:** No persistent model beyond `UserDefaults`: `contentWidth: Int (px)`. Recent files + window state are fully system-managed by `DocumentGroup` (`NSDocumentController` recents, state restoration).
+- **Entities:** No persistent model beyond `UserDefaults`: `contentWidthChars: Int` (reading width in characters, 40–200 by 20). Recent files + window state are fully system-managed by `DocumentGroup` (`NSDocumentController` recents, state restoration).
 - **ERD:** N/A (no database).
 - **Migration:** N/A.
 
 ## 5. Logic
-- **Algos:** Render = read file → `render(markdown)` in page → md parser produces HTML → `mermaid.run()` over `.language-mermaid` blocks → highlight over remaining code blocks. Width = native control → message/eval sets `document.documentElement.style.setProperty('--content-width', ...)`; content column `max-width: var(--content-width)`.
+- **Algos:** Render = read file → `render(markdown)` in page → md parser produces HTML → `mermaid.run()` over `.language-mermaid` blocks → highlight over remaining code blocks. Width = bottom-bar control → `setContentWidth(chars)` sets `--content-width: <n>ch`; content column `max-width: var(--content-width)` → an absolute N-character reading measure, window-independent.
 - **Rules:** Confine `WKWebView` to bundled file URLs; intercept external links → open in default browser via `NSWorkspace` (never navigate the view). Debounce file-change events. Load file I/O off the main thread; render calls marshaled to main.
 
 ## 6. Non-Functional
 - **Scale/Fault/Sec/Logs:** Off-main-thread file reads keep UI responsive on large docs. Malformed Markdown → best-effort render, no crash. Security: no network (offline FR), minimal JS bridge (width + link interception only). Logging via `os.Logger`, subsystem `dev.markview`.
 
 ## 7. Constraints
-- **Packaging:** `make app`/`make prod` assemble a real `Markview.app` (binary + SwiftPM resource bundle + `packaging/Info.plist`, built under `.build/`). The bundle (bundle id + `CFBundleDocumentTypes` for `.md`/`.markdown`) is what gives macOS single-instance behavior, "Open With" routing, and one-window-per-document. `make dev` runs the raw SwiftPM binary (no bundle → a separate process per launch) for fast iteration.
+- **Packaging:** `make app`/`make prod` assemble a real `Markview.app` (binary + SwiftPM resource bundle + `packaging/Info.plist`, built under `.build/`). The bundle (bundle id + `CFBundleDocumentTypes` for `.md`/`.markdown`) is what gives macOS single-instance behavior, "Open With" routing, and one-window-per-document. The app icon is compiled at this step: `iconutil -c icns packaging/AppIcon.iconset` → `Contents/Resources/AppIcon.icns`, referenced by `CFBundleIconFile` ([REF:fr:icon | FR-ICON]). `make dev` runs the raw SwiftPM binary (no bundle → a separate process per launch, no icon) for fast iteration.
 - **Swift 6 concurrency (AppKit glue):** (1) Make AppKit-bridging coordinators `@MainActor` — a global-actor-isolated class is implicitly `Sendable`, clearing "non-Sendable capture / sending self" errors. (2) `NotificationCenter`/KVO closures are `@Sendable`; when registered with `queue: .main`, run the isolated work via `MainActor.assumeIsolated { … }`. (3) A nonisolated `deinit` cannot touch non-Sendable stored properties — invalidate observers in `viewDidMoveToWindow(nil)`/on rebind, not `deinit`.
 - **Platform:** macOS 14+ (Swift 6 language mode). Min raised from 13 → 14 to use modern SwiftUI `onChange` and keep a zero-warning build.
-- **Simplified:** Read-only documents (no Save/edit); minimal toolbar (line width). System appearance only (no custom theme picker in v1). No welcome screen — fresh launch shows the system Open panel.
+- **Simplified:** Read-only documents (no Save/edit); minimal chrome — one bottom-bar control (reading width in characters), no toolbar. System appearance only (no custom theme picker in v1). No welcome screen — fresh launch shows the system Open panel.
 - **Deferred:** Search-in-document, print/export, custom themes, TOC sidebar — explicitly out of v1 scope per minimalism priority. (Window-per-document, Open Recent, and state restoration come free from `DocumentGroup`; window tabbing is deliberately disabled — one document = one window.)

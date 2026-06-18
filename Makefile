@@ -58,6 +58,8 @@ app:
 	cp -R "$(RELEASE_RESBUNDLE)" "$(APP_BUNDLE)/Contents/MacOS/"
 	cp -R "$(RELEASE_RESBUNDLE)" "$(APP_BUNDLE)/Contents/Resources/"
 	cp packaging/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
+	# Compile the app icon (.iconset → .icns) into the bundle.
+	iconutil -c icns packaging/AppIcon.iconset -o "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	@echo "app: built $(APP_BUNDLE)"
 
 ## prod — build the .app and launch it (single instance). Pass a file:

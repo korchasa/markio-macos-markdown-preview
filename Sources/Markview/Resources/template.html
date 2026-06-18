@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="vendor/highlight/github.min.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="vendor/highlight/github-dark.min.css" media="(prefers-color-scheme: dark)">
   <style>
-    :root { --content-width: 740px; }
+    :root { --content-width: 80ch; }
     html, body { margin: 0; padding: 0; }
     /* System colors follow light/dark automatically. [REF:fr:appearance] */
     html { color-scheme: light dark; }
@@ -90,8 +90,11 @@
       return true;
     }
 
-    function setContentWidth(px) {
-      document.documentElement.style.setProperty('--content-width', String(px) + 'px');
+    // Width is an absolute character count: the `ch` unit = advance width of
+    // the '0' glyph, so the reading column is N characters wide regardless of
+    // window size. [REF:fr:line-width]
+    function setContentWidth(chars) {
+      document.documentElement.style.setProperty('--content-width', String(chars) + 'ch');
       return getContentWidth();
     }
 
