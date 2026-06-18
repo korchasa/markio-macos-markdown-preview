@@ -21,6 +21,7 @@
 ---
 ## Project Rules
 - **Native first.** Prefer AppKit/SwiftUI and platform APIs over third-party frameworks. The web engine is an implementation detail of content rendering, never of the app shell (window, toolbar, menus, file handling).
+- **Verify UI in the real run target before declaring done.** For menu/toolbar/window changes, build the `.app` bundle and observe the actual UI (menu dump / screenshot). A green `make check` proves it compiles, not that the UI changed.
 - **Minimalism is a feature, not a constraint.** This is a read-only Markdown previewer — nothing else. Reject scope creep: no editing, no export pipelines, no plugins, no settings sprawl. Every added control must justify itself against the three priorities below.
 - **Priority order (use to break ties):** 1) nativeness, 2) minimalism, 3) UX.
 - **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/Markview/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
@@ -324,6 +325,8 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 - `test <path>` → `make test ARGS="--filter <suite>"` → `swift test --filter <suite>`
 - `dev` → `make dev` → `swift run Markview` (debug build; optional file argument)
 - `prod` → `make prod` → `swift build -c release && swift run -c release Markview`
+
+> **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`make app` → `open .build/Markview.app`). The bare `make dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markview" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
 
 ### Command Scripts
 > None yet. The standard interface will live in a root `Makefile` wrapping SPM. No `scripts/` wrappers are needed — SPM handles build/test/run directly.
