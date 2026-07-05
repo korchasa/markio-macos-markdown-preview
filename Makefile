@@ -1,16 +1,16 @@
-# Markview — standard command interface over SwiftPM.
+# Markio — standard command interface over SwiftPM.
 # Verbs: check (build+scan+lint+test), test, dev, prod, fmt.
 export NO_COLOR := 1
 
 SWIFT_SOURCES := Sources Tests
 
 # .app packaging (built under .build, which is gitignored / clean-able).
-APP_NAME := Markview
+APP_NAME := Markio
 APP_BUNDLE := .build/$(APP_NAME).app
 RELEASE_BIN := .build/release/$(APP_NAME)
 RELEASE_RESBUNDLE := .build/release/$(APP_NAME)_$(APP_NAME).bundle
 
-.PHONY: check build scan fmt fmt-lint test dev app prod clean
+.PHONY: check build scan fmt fmt-lint test dev app dist prod clean
 
 ## check — comprehensive verification: build, comment-scan, format lint, tests.
 check: build scan fmt-lint test
@@ -44,9 +44,9 @@ test:
 
 ## dev — run the app (debug). Pass a file: make dev ARGS="path/to/file.md".
 dev:
-	swift run Markview $(ARGS)
+	swift run Markio $(ARGS)
 
-## app — release build packaged as a proper Markview.app bundle.
+## app — release build packaged as a proper Markio.app bundle.
 ## A bundle (with Info.plist + bundle id) makes macOS keep a single instance and
 ## route every open into it (window-per-document), unlike the raw dev binary.
 app:
@@ -54,13 +54,29 @@ app:
 	rm -rf "$(APP_BUNDLE)"
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(RELEASE_BIN)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
-	# Resource bundle next to the binary AND in Resources so Bundle.module resolves it.
-	cp -R "$(RELEASE_RESBUNDLE)" "$(APP_BUNDLE)/Contents/MacOS/"
+	# Resource bundle goes in Contents/Resources only. Bundle.module resolves it via
+	# Bundle.main.resourceURL. (A .bundle under Contents/MacOS/ breaks codesign:
+	# "bundle format unrecognized" — that dir is for Mach-O executables only.)
 	cp -R "$(RELEASE_RESBUNDLE)" "$(APP_BUNDLE)/Contents/Resources/"
 	cp packaging/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
-	# Compile the app icon (.iconset → .icns) into the bundle.
-	iconutil -c icns packaging/AppIcon.iconset -o "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
+	# Compile the app icon as an asset catalog (Assets.car + AppIcon.icns).
+	# App Store validation (ITMS-90546) rejects bundles with only a loose .icns.
+	xcrun actool packaging/Assets.xcassets \
+		--compile "$(APP_BUNDLE)/Contents/Resources" \
+		--platform macosx --minimum-deployment-target 14.0 \
+		--app-icon AppIcon \
+		--output-partial-info-plist .build/assetcatalog-info.plist >/dev/null
+	# Drop the loose AppIcon.icns actool also emits (capped at 256×256). The
+	# App Store icon must come from Assets.car (1024×1024) via CFBundleIconName;
+	# leaving the .icns lets ingest pick the low-res file instead.
+	rm -f "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
 	@echo "app: built $(APP_BUNDLE)"
+
+## dist — produce the UNSIGNED .app bundle for the App Store. Signing and .pkg
+## packaging are done by app-store-factory (the App Sandbox is declared in
+## packaging/Markio.entitlements, applied by the factory at signing time).
+dist: app
+	@echo "dist: unsigned bundle ready at $(APP_BUNDLE) — sign via app-store-factory"
 
 ## prod — build the .app and launch it (single instance). Pass a file:
 ## make prod ARGS="path/to/file.md".

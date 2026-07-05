@@ -1,4 +1,4 @@
-# Markview
+# Markio
 
 A native macOS app for **viewing** Markdown — nothing more. It renders GitHub
 Flavored Markdown and Mermaid diagrams in a clean, minimal, offline reading
@@ -24,17 +24,17 @@ surface. The one on-screen reading control is **line width**.
 ```sh
 make dev                       # launch raw debug binary (fast; each run = new process)
 make dev ARGS="path/to.md"     # open a file on launch
-make app                       # release build packaged as .build/Markview.app
+make app                       # release build packaged as .build/Markio.app
 make prod                      # build the .app and launch it (single instance)
 make prod ARGS="path/to.md"    # …and open a file
 ```
 
-`make prod` builds a real `Markview.app` bundle, so macOS keeps a **single
+`make prod` builds a real `Markio.app` bundle, so macOS keeps a **single
 instance** and routes every open into it (one window per document), and Finder
-"Open With ▸ Markview" works. The raw `make dev` binary has no bundle, so each
+"Open With ▸ Markio" works. The raw `make dev` binary has no bundle, so each
 launch is a separate process — fine for quick debugging.
 
-Open a document with ⌘O, drag-and-drop onto a window, or *Open With ▸ Markview*
+Open a document with ⌘O, drag-and-drop onto a window, or *Open With ▸ Markio*
 from Finder. Each file opens in its own window (no tabs — one document = one
 window); *File ▸ Open Recent* and state restoration are provided by the system.
 
@@ -51,7 +51,7 @@ make fmt      # apply formatting
 Native AppKit/SwiftUI document app (`DocumentGroup`): one window per file, each
 hosting a confined `WKWebView`. The shell owns all OS integration (windows,
 toolbar, menus, file handling, line-width control); the web view only renders
-content via vendored JS/CSS (`Sources/Markview/Resources/vendor`). See
+content via vendored JS/CSS (`Sources/Markio/Resources/vendor`). See
 `documents/design.md`.
 
 ## Scope

@@ -3,13 +3,13 @@ date: 2026-06-17
 status: done
 tags: [init, scaffolding]
 related_tasks:
-  - "[Implement Markview app](implement-markview-app.md)"
+  - "[Implement Markio app](implement-markio-app.md)"
 ---
 # Init: project context & first scaffold
 
 ## Goal
 
-Capture the discovered context of the Markview repo at init time and define the first implementation slice, so future sessions can start from a documented baseline rather than re-deriving the architecture.
+Capture the discovered context of the Markio repo at init time and define the first implementation slice, so future sessions can start from a documented baseline rather than re-deriving the architecture.
 
 ## Overview
 
@@ -22,18 +22,18 @@ Native macOS Markdown previewer. Product brief: GFM + Mermaid support; prioritie
 Repo contains only an empty source skeleton and a stale SwiftPM build cache — no application code, no manifest:
 
 ```
-Sources/Markview/Resources/vendor/   (empty)
+Sources/Markio/Resources/vendor/   (empty)
 .build/                              (stale cache from a prior build; gitignored)
 AGENTS.md, CLAUDE.md -> AGENTS.md
 documents/requirements.md, documents/design.md
 ```
 
-No `Package.swift`, no `.swift` sources, no `Makefile`, no commits yet (`main` has no history). The `.build` cache references WebKit/JavaScriptCore/SwiftUI and a `Markview_Markview.bundle/template.html`, confirming the intended hybrid design.
+No `Package.swift`, no `.swift` sources, no `Makefile`, no commits yet (`main` has no history). The `.build` cache references WebKit/JavaScriptCore/SwiftUI and a `Markio_Markio.bundle/template.html`, confirming the intended hybrid design.
 
 ### Constraints
 
 - macOS only; native shell mandatory (web engine confined to content rendering).
-- Offline: vendor all JS/CSS under `Sources/Markview/Resources/vendor`; no network/CDN.
+- Offline: vendor all JS/CSS under `Sources/Markio/Resources/vendor`; no network/CDN.
 - Read-only previewer — no editing/export/plugins.
 - Tooling = SwiftPM + `Makefile` (no Deno / foreign toolchain).
 - This init delivered documentation only — no application code was written.
@@ -42,11 +42,11 @@ No `Package.swift`, no `.swift` sources, no `Makefile`, no commits yet (`main` h
 
 Each item below is the entry point for a follow-up `plan`; acceptance references are declared in the SRS FRs they implement.
 
-- [x] FR-OPEN: SwiftPM `Package.swift` + executable target `Markview` builds via `make check`
-  - Test: `Tests/MarkviewTests/RenderTests.swift::testGFMTableAndTaskList`
+- [x] FR-OPEN: SwiftPM `Package.swift` + executable target `Markio` builds via `make check`
+  - Test: `Tests/MarkioTests/RenderTests.swift::testGFMTableAndTaskList`
   - Evidence: `make check`
 - [x] FR-LINE-WIDTH: line-width control reflows content and persists
-  - Test: `Tests/MarkviewTests/LineWidthTests.swift::testWidthPersistsAndReflows`
+  - Test: `Tests/MarkioTests/LineWidthTests.swift::testWidthPersistsAndReflows`
   - Evidence: `make test ARGS="--filter LineWidthTests"`
 
 ## Solution

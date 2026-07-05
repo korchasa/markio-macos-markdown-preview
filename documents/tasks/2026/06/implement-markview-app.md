@@ -14,7 +14,7 @@ tags: [implementation, swift, webkit]
 related_tasks:
   - "[Init: project context & first scaffold](init-project-context.md)"
 ---
-# Implement Markview app
+# Implement Markio app
 
 ## Goal
 
@@ -32,33 +32,33 @@ committed; runtime stays offline.
 
 ### Current State
 
-Implemented. SwiftPM executable `Markview` + test target. `make check` green.
+Implemented. SwiftPM executable `Markio` + test target. `make check` green.
 
 ### Constraints
 
 - Native shell mandatory; web engine confined to content rendering.
-- Offline: all JS/CSS vendored under `Sources/Markview/Resources/vendor`.
+- Offline: all JS/CSS vendored under `Sources/Markio/Resources/vendor`.
 - Read-only previewer; no editing/export/plugins.
 
 ## Definition of Done
 
 - [x] FR-GFM: tables + task lists render
-  - Test: `Tests/MarkviewTests/RenderTests.swift::testGFMTableAndTaskList`
+  - Test: `Tests/MarkioTests/RenderTests.swift::testGFMTableAndTaskList`
   - Evidence: `make check`
 - [x] FR-MERMAID: fenced `mermaid` blocks render as SVG
-  - Test: `Tests/MarkviewTests/RenderTests.swift::testMermaidFlowchartRenders`
+  - Test: `Tests/MarkioTests/RenderTests.swift::testMermaidFlowchartRenders`
   - Evidence: `make check`
 - [x] FR-HIGHLIGHT: code blocks syntax-highlighted
-  - Test: `Tests/MarkviewTests/RenderTests.swift::testCodeBlockHighlighted`
+  - Test: `Tests/MarkioTests/RenderTests.swift::testCodeBlockHighlighted`
   - Evidence: `make check`
 - [x] FR-LINE-WIDTH: width reflows live and persists
-  - Test: `Tests/MarkviewTests/LineWidthTests.swift::testWidthPersistsAndReflows`
+  - Test: `Tests/MarkioTests/LineWidthTests.swift::testWidthPersistsAndReflows`
   - Evidence: `make check`
 - [x] FR-LIVE-RELOAD: external edits trigger reload
-  - Test: `Tests/MarkviewTests/WatcherTests.swift::testReloadsOnFileChange`
+  - Test: `Tests/MarkioTests/WatcherTests.swift::testReloadsOnFileChange`
   - Evidence: `make check`
 - [x] FR-OFFLINE: shell has no external URLs; links externalized
-  - Test: `Tests/MarkviewTests/OfflineTests.swift::testNoNetworkRequests`
+  - Test: `Tests/MarkioTests/OfflineTests.swift::testNoNetworkRequests`
   - Evidence: `make check`
 - [ ] FR-OPEN: open via dialog / drop / Finder (manual)
   - Test: `manual — maintainer — documents/checklists/open.md`
@@ -69,13 +69,13 @@ Implemented. SwiftPM executable `Markview` + test target. `make check` green.
 
 ## Solution
 
-- **Package**: SwiftPM executable target `Markview` (macOS 14, Swift 6 mode) +
-  `MarkviewTests`. Resources `template.html` + `vendor/` copied flat to bundle
+- **Package**: SwiftPM executable target `Markio` (macOS 14, Swift 6 mode) +
+  `MarkioTests`. Resources `template.html` + `vendor/` copied flat to bundle
   root so the page's relative URLs resolve.
 - **Vendored assets** (`Resources/vendor`): markdown-it 14 (+ task-lists plugin,
   wrapped as a browser global), highlight.js 11 (common langs) with github
   light/dark themes, mermaid 11 (UMD), github-markdown-css 5.
-- **Shell (native)**: `MarkviewApp` (SwiftUI `App`) + `AppDelegate` (Finder
+- **Shell (native)**: `MarkioApp` (SwiftUI `App`) + `AppDelegate` (Finder
   opens, activation), `ContentView` (preview + toolbar width slider),
   `AppModel` (state, open/drop/reload wiring).
 - **Web bridge**: `PreviewController` owns the `WKWebView`; `loadTemplate`,

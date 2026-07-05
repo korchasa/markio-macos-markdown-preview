@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// `MenuArtifactCleaner.clean` removes the title-less placeholder SwiftUI leaves
 /// after an emptied `CommandGroup` (drawn as "NSMenuItem") and collapses the

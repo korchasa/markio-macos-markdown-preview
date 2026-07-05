@@ -1,7 +1,7 @@
 # Manual checklist — FR-MULTIDOC (one window per document)
 
 Reviewer: maintainer. Run `make dev` (or a release `.app`) and verify each.
-Tip: inspect window titles via System Events AXTitle (`osascript -e 'tell application "System Events" to tell (first process whose name is "Markview") to get title of window 1'`) — `screencapture` needs Screen Recording permission and may be unavailable in headless/agent shells.
+Tip: inspect window titles via System Events AXTitle (`osascript -e 'tell application "System Events" to tell (first process whose name is "Markio") to get title of window 1'`) — `screencapture` needs Screen Recording permission and may be unavailable in headless/agent shells.
 
 
 

@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "Markview",
+    name: "Markio",
     platforms: [
         .macOS(.v14)
     ],
     targets: [
         .executableTarget(
-            name: "Markview",
-            path: "Sources/Markview",
+            name: "Markio",
+            path: "Sources/Markio",
             // Module doc, not a build input.
             exclude: ["AGENTS.md"],
             resources: [
@@ -23,9 +23,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "MarkviewTests",
-            dependencies: ["Markview"],
-            path: "Tests/MarkviewTests"
+            name: "MarkioTests",
+            dependencies: ["Markio"],
+            path: "Tests/MarkioTests"
         )
     ]
 )

@@ -1,4 +1,4 @@
-# Module: Markview (executable target)
+# Module: Markio (executable target)
 
 Native AppKit/SwiftUI shell hosting one confined `WKWebView` per document. The
 shell owns all OS integration; the web view owns only content rendering. See SDS
@@ -6,7 +6,7 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
 
 ## Responsibility
 
-- **App shell / OS integration** — `MarkviewApp` (`DocumentGroup`, command-line
+- **App shell / OS integration** — `MarkioApp` (`DocumentGroup`, command-line
   open, window-tabbing opt-out), `MenuArtifactCleaner` (trims the read-only menu),
   `WindowTitleSetter` (full-path title bar).
 - **Document** — `MarkdownDocument` (read-only `FileDocument`, UTF-8 decode,
@@ -20,7 +20,7 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
   live reload).
 - **Reading width** — `ContentWidthStore` (persisted absolute char width),
   driven by the bottom-bar slider in `ContentView`.
-- **Diagnostics** — `Log` (`os.Logger`, subsystem `dev.markview`): best-effort
+- **Diagnostics** — `Log` (`os.Logger`, subsystem `dev.markio`): best-effort
   paths (JS bridge, file opens) log failures instead of swallowing them.
 
 ## Key decisions

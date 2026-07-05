@@ -5,6 +5,6 @@ Reviewer: maintainer. Run `make dev` (or a release `.app`) and verify each:
 - [ ] `make dev ARGS="documents/checklists/open.md"` renders this file on launch.
 - [ ] ⌘O opens the panel; selecting a `.md` renders it; non-md files are filtered out.
 - [ ] Drag a `.md` onto a window → it opens in a new window; dragging a non-md is ignored.
-- [ ] Finder "Open With ▸ Markview" (release build) / `open -a Markview file.md` opens it.
+- [ ] Finder "Open With ▸ Markio" (release build) / `open -a Markio file.md` opens it.
 - [ ] File ▸ Open Recent lists previously opened documents.
 - [ ] Window title shows the document's full filesystem path (not just the file name).

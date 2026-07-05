@@ -3,13 +3,13 @@
 ## Setup
 
 - `make app`
-- Confirm `.build/Markview.app/Contents/Resources/AppIcon.icns` exists.
-- `open .build/Markview.app`
+- Confirm `.build/Markio.app/Contents/Resources/AppIcon.icns` exists.
+- `open .build/Markio.app`
 
 ## Checks
 
-- [ ] Dock icon is the Markview document glyph (text lines on a rounded card), not the generic app placeholder.
-- [ ] Finder shows the same icon for `Markview.app` (Get Info / icon view).
+- [ ] Dock icon is the Markio document glyph (text lines on a rounded card), not the generic app placeholder.
+- [ ] Finder shows the same icon for `Markio.app` (Get Info / icon view).
 - [ ] App switcher (⌘-Tab) shows the icon.
 
 > Note: macOS caches icons aggressively. If a stale icon shows, the bundle still

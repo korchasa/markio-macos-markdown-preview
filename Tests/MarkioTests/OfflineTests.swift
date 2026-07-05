@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// Offline contract: the shell references no external URLs and the navigation
 /// guard keeps the web view confined to bundled content. [REF:fr:offline]

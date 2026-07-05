@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Mac App Store build. App Sandbox is mandatory for MAS.
+      Markio is a Markdown viewer that opens user-chosen files (window per
+      document), so it needs read access to user-selected files. The bundled
+      template/vendor assets ship inside the .app, so no other entitlement is
+      required. Signing with these entitlements is performed by
+      app-store-factory, not by this repo.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+</dict>
+</plist>

@@ -21,7 +21,7 @@ struct ContentView: View {
             // Show the document's full filesystem path in the title bar instead
             // of the bare file name (DocumentGroup's default). The proxy icon
             // (represented URL) is kept. [REF:fr:multidoc]
-            .background(WindowTitleSetter(title: fileURL?.path ?? "Markview"))
+            .background(WindowTitleSetter(title: fileURL?.path ?? "Markio"))
             .onDrop(of: [.fileURL], isTargeted: nil) { handleDrop($0) }
             .task { await model.start(text: document.text, url: fileURL) }
             .onChange(of: colorScheme) { _, scheme in

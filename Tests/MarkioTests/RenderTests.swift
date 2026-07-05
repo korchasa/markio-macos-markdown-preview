@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// Exercises the real vendored pipeline (markdown-it + task-lists + highlight.js
 /// + mermaid) inside a `WKWebView`. [REF:fr:gfm] [REF:fr:mermaid] [REF:fr:highlight]

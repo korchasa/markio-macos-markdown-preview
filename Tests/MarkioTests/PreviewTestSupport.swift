@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 extension XCTestCase {
     /// Create a `PreviewController` with `template.html` fully loaded.

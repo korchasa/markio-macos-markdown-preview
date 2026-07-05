@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// End-to-end live reload: editing the open file on disk updates the rendered
 /// preview, exercising FileWatcher → DocumentModel.reload → WebView render.

@@ -1,7 +1,7 @@
 # SDS
 
 ## 1. Intro
-- **Purpose:** Define the architecture and implementation approach for Markview — a native macOS Markdown previewer with GFM + Mermaid, rendered in a confined `WKWebView`, with an on-screen line-width control.
+- **Purpose:** Define the architecture and implementation approach for Markio — a native macOS Markdown previewer with GFM + Mermaid, rendered in a confined `WKWebView`, with an on-screen line-width control.
 - **Rel to SRS:** Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:line-width | FR-LINE-WIDTH], [REF:fr:live-reload | FR-LIVE-RELOAD], [REF:fr:appearance | FR-APPEARANCE], [REF:fr:offline | FR-OFFLINE].
 
 ## 2. Arch
@@ -81,7 +81,7 @@ flowchart TD
 - **Deps:** SwiftUI, Foundation.
 
 ### 3.6 Vendored web bundle [ANC:sds:vendor]
-- **Purpose:** Offline rendering assets under `Sources/Markview/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
+- **Purpose:** Offline rendering assets under `Sources/Markio/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
 - **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(chars)` (sets `--content-width` in `ch`), `getContentWidth()`, `setDark(bool)`; reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
 - **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1. markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
 
@@ -95,10 +95,10 @@ flowchart TD
 - **Rules:** Confine `WKWebView` to bundled file URLs; intercept external links → open in default browser via `NSWorkspace` (never navigate the view). Debounce file-change events. Load file I/O off the main thread; render calls marshaled to main.
 
 ## 6. Non-Functional
-- **Scale/Fault/Sec/Logs:** Off-main-thread file reads keep UI responsive on large docs. Malformed Markdown → best-effort render, no crash. Security: no network (offline FR), minimal JS bridge (width + link interception only). Logging via `os.Logger`, subsystem `dev.markview`.
+- **Scale/Fault/Sec/Logs:** Off-main-thread file reads keep UI responsive on large docs. Malformed Markdown → best-effort render, no crash. Security: no network (offline FR), minimal JS bridge (width + link interception only). Logging via `os.Logger`, subsystem `dev.markio`.
 
 ## 7. Constraints
-- **Packaging:** `make app`/`make prod` assemble a real `Markview.app` (binary + SwiftPM resource bundle + `packaging/Info.plist`, built under `.build/`). The bundle (bundle id + `CFBundleDocumentTypes` for `.md`/`.markdown`) is what gives macOS single-instance behavior, "Open With" routing, and one-window-per-document. The app icon is compiled at this step: `iconutil -c icns packaging/AppIcon.iconset` → `Contents/Resources/AppIcon.icns`, referenced by `CFBundleIconFile` ([REF:fr:icon | FR-ICON]). `make dev` runs the raw SwiftPM binary (no bundle → a separate process per launch, no icon) for fast iteration.
+- **Packaging:** `make app`/`make prod` assemble a real `Markio.app` (binary + SwiftPM resource bundle + `packaging/Info.plist`, built under `.build/`). The bundle (bundle id + `CFBundleDocumentTypes` for `.md`/`.markdown`) is what gives macOS single-instance behavior, "Open With" routing, and one-window-per-document. The app icon is compiled at this step: `iconutil -c icns packaging/AppIcon.iconset` → `Contents/Resources/AppIcon.icns`, referenced by `CFBundleIconFile` ([REF:fr:icon | FR-ICON]). `make dev` runs the raw SwiftPM binary (no bundle → a separate process per launch, no icon) for fast iteration.
 - **Swift 6 concurrency (AppKit glue):** (1) Make AppKit-bridging coordinators `@MainActor` — a global-actor-isolated class is implicitly `Sendable`, clearing "non-Sendable capture / sending self" errors. (2) `NotificationCenter`/KVO closures are `@Sendable`; when registered with `queue: .main`, run the isolated work via `MainActor.assumeIsolated { … }`. (3) A nonisolated `deinit` cannot touch non-Sendable stored properties — invalidate observers in `viewDidMoveToWindow(nil)`/on rebind, not `deinit`.
 - **Platform:** macOS 14+ (Swift 6 language mode). Min raised from 13 → 14 to use modern SwiftUI `onChange` and keep a zero-warning build.
 - **Simplified:** Read-only documents (no Save/edit); minimal chrome — one bottom-bar control (reading width in characters), no toolbar. System appearance only (no custom theme picker in v1). No welcome screen — fresh launch shows the system Open panel.

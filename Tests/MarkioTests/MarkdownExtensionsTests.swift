@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// Guards the single source of truth for recognized Markdown extensions: the
 /// runtime list, the `URL` predicate, and the Info.plist declaration must agree
@@ -15,7 +15,7 @@ final class MarkdownExtensionsTests: XCTestCase {
 
     func testInfoPlistExtensionsMatchCanonicalList() throws {
         let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  // MarkviewTests
+            .deletingLastPathComponent()  // MarkioTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // package root
         let plistURL = root.appendingPathComponent("packaging/Info.plist")

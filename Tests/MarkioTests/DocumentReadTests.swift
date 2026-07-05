@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// `MarkdownDocument` read contract: decode UTF-8, fail fast on invalid bytes.
 /// The document is the per-window unit DocumentGroup builds on. [REF:fr:multidoc]

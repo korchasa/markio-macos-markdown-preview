@@ -9,7 +9,7 @@ import Foundation
 final class FileWatcher: @unchecked Sendable {
     private let url: URL
     private let onChange: @Sendable () -> Void
-    private let queue = DispatchQueue(label: "dev.markview.filewatcher")
+    private let queue = DispatchQueue(label: "dev.markio.filewatcher")
     private let debounce: DispatchTimeInterval
 
     private var source: DispatchSourceFileSystemObject?

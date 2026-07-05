@@ -6,7 +6,7 @@ has no effect on the bare `make dev` binary.
 ## Setup
 
 - `make app`
-- `open .build/Markview.app --args <some>.md`
+- `open .build/Markio.app --args <some>.md`
 
 ## File menu (Файл)
 
@@ -26,12 +26,12 @@ has no effect on the bare `make dev` binary.
 
 ## Unchanged
 
-- [ ] App (`Markview`), `View`, `Window`, `Help` menus are stock.
+- [ ] App (`Markio`), `View`, `Window`, `Help` menus are stock.
 
 ## Optional automated snapshot
 
 ```sh
-osascript -e 'tell application "System Events" to tell process "Markview" \
+osascript -e 'tell application "System Events" to tell process "Markio" \
   to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'
 # Russian system → Открыть…, Открытие недавних
 ```

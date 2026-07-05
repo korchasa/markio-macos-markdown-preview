@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// External edits trigger a reload callback. [REF:fr:live-reload]
 final class WatcherTests: XCTestCase {

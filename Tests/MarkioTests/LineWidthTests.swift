@@ -1,13 +1,13 @@
 import XCTest
 
-@testable import Markview
+@testable import Markio
 
 /// Line-width persistence (UserDefaults) and live reflow (CSS var). [REF:fr:line-width]
 @MainActor
 final class LineWidthTests: XCTestCase {
     func testWidthPersistsAndReflows() async throws {
         // Persistence: a fresh store on the same suite reads the saved value.
-        let suite = "dev.markview.tests.\(UUID().uuidString)"
+        let suite = "dev.markio.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
 

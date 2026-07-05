@@ -5,7 +5,7 @@ import SwiftUI
 /// window per file, plus File ▸ Open / Open Recent, window tabbing, and state
 /// restoration for free. [REF:sds:app-shell] [REF:fr:open] [REF:fr:multidoc]
 @main
-struct MarkviewApp: App {
+struct MarkioApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -38,7 +38,7 @@ struct ReadOnlyMenuCommands: Commands {
 
 /// Slim AppKit delegate. Finder "Open With", Dock drops, and `open file.md` are
 /// handled natively by `DocumentGroup`; the only thing it can't do is honor a
-/// path passed on the command line, so we cover `swift run Markview <file>` /
+/// path passed on the command line, so we cover `swift run Markio <file>` /
 /// `make dev ARGS="<path>"` here. [REF:fr:open]
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Retains the menu cleaner delegates — `NSMenu.delegate` is weak. [REF:fr:menu]
@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `--snapshot <dir>` renders App Store screenshots offscreen and exits;
+        // skip the normal launch path entirely. [REF:fr:open]
+        if Snapshot.runIfRequested() { return }
         NSApp.setActivationPolicy(.regular)
         DispatchQueue.main.async {
             self.menuCleaners = MenuArtifactCleaner.install(on: NSApp.mainMenu)

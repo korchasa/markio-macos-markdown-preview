@@ -24,22 +24,22 @@
 - **Verify UI in the real run target before declaring done.** For menu/toolbar/window changes, build the `.app` bundle and observe the actual UI (menu dump / screenshot). A green `make check` proves it compiles, not that the UI changed.
 - **Minimalism is a feature, not a constraint.** This is a read-only Markdown previewer — nothing else. Reject scope creep: no editing, no export pipelines, no plugins, no settings sprawl. Every added control must justify itself against the three priorities below.
 - **Priority order (use to break ties):** 1) nativeness, 2) minimalism, 3) UX.
-- **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/Markview/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
+- **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/Markio/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
 - **One in-screen control that matters: line width.** Text content width is adjustable directly on the preview screen (not buried in a settings window). Treat this as a first-class, always-reachable UI affordance.
 - **Document before code.** New/changed user-visible behavior → update SRS → update SDS → implement (see TDD Flow and Requirements Lifecycle).
 
 ## Project Information
-- Project Name: Markview
+- Project Name: Markio
 
 ## Project Vision
 A native macOS application for **viewing** Markdown files — nothing more. It renders GitHub Flavored Markdown (GFM) and Mermaid diagrams with a clean, minimal, distraction-free reading experience that feels like a first-class Mac citizen. The single in-screen reading control is **line width**, adjustable directly on the preview. Target users: developers, writers, and note-takers who want a fast, faithful, offline Markdown previewer without an editor or a heavy Electron app.
 
 ## Project tooling Stack
 - **Language:** Swift 6 (strict concurrency).
-- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markview`.
+- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`.
 - **App shell UI:** AppKit + SwiftUI (native window, toolbar, menus, file open / drag-and-drop / recent files).
 - **Content rendering:** WebKit `WKWebView` (hybrid). Markdown→HTML and Mermaid diagrams render inside the web view.
-- **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/Markview/Resources/vendor`, with an HTML shell `template.html`.
+- **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/Markio/Resources/vendor`, with an HTML shell `template.html`.
 - **Task runner:** `Makefile` wrapping `swift build` / `swift test` / `swift run`.
 - **Platform:** macOS (Apple Silicon + Intel). No cross-platform target.
 
@@ -65,7 +65,7 @@ flowchart LR
 ## Key Decisions
 - **Hybrid WKWebView rendering** chosen over pure-native text rendering: Mermaid is a JavaScript library and effectively requires a JS engine; GFM consistency is far easier to guarantee with a mature JS Markdown stack than re-implementing it natively. The native priority is preserved by keeping the *app shell* fully native and the web view confined to content.
 - **Vendored offline assets, no CDN:** guarantees offline use, privacy, and reproducibility; aligns with "native/minimal/private".
-- **SPM executable target** (`Sources/Markview`) with a resource bundle (`Resources/vendor`, `template.html`) over an Xcode project file: keeps the repo text-based, scriptable, and reviewable.
+- **SPM executable target** (`Sources/Markio`) with a resource bundle (`Resources/vendor`, `template.html`) over an Xcode project file: keeps the repo text-based, scriptable, and reviewable.
 - **Makefile standard interface** over raw `swift` invocations: gives the agent-standard `check`/`test`/`dev`/`prod` verbs without adding a non-Swift toolchain (Deno was considered and rejected to avoid a foreign dependency in a native macOS project).
 - **Line width as a live CSS variable** driven by a native control: the one reading setting that lives on the preview screen itself, per the product brief.
 - **Read-only previewer scope:** no editing/export/plugins — deliberately out of scope.
@@ -100,11 +100,11 @@ Cross-references between any two pieces of project knowledge — doc-to-doc, **a
 
 Maps source code paths to documentation sections that describe them. Used by commit workflows to determine which doc sections need updating when files change.
 
-- `Sources/Markview/*App*.swift`, app shell / window / toolbar → SDS §3 (App Shell) + SRS FR-OPEN, FR-APPEARANCE
-- `Sources/Markview/*WebView*.swift`, `*Render*.swift` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID, FR-HIGHLIGHT
-- `Sources/Markview/*Watcher*.swift`, file watching → SDS §3 (File loader + watcher) + SRS FR-LIVE-RELOAD
-- `Sources/Markview/*Width*.swift` + line-width control → SDS §5 (Line width) + SRS FR-LINE-WIDTH
-- `Sources/Markview/Resources/template.html`, `Resources/vendor/**` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID
+- `Sources/Markio/*App*.swift`, app shell / window / toolbar → SDS §3 (App Shell) + SRS FR-OPEN, FR-APPEARANCE
+- `Sources/Markio/*WebView*.swift`, `*Render*.swift` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID, FR-HIGHLIGHT
+- `Sources/Markio/*Watcher*.swift`, file watching → SDS §3 (File loader + watcher) + SRS FR-LIVE-RELOAD
+- `Sources/Markio/*Width*.swift` + line-width control → SDS §5 (Line width) + SRS FR-LINE-WIDTH
+- `Sources/Markio/Resources/template.html`, `Resources/vendor/**` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID
 - `Makefile` → AGENTS.md Development Commands
 - `README.md` → only for user-facing changes
 
@@ -323,10 +323,10 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 
 - `check` → `make check` → `swift build` + comment-scan + `swift format lint` + `swift test`
 - `test <path>` → `make test ARGS="--filter <suite>"` → `swift test --filter <suite>`
-- `dev` → `make dev` → `swift run Markview` (debug build; optional file argument)
-- `prod` → `make prod` → `swift build -c release && swift run -c release Markview`
+- `dev` → `make dev` → `swift run Markio` (debug build; optional file argument)
+- `prod` → `make prod` → `swift build -c release && swift run -c release Markio`
 
-> **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`make app` → `open .build/Markview.app`). The bare `make dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markview" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
+> **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`make app` → `open .build/Markio.app`). The bare `make dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markio" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
 
 ### Command Scripts
 > None yet. The standard interface will live in a root `Makefile` wrapping SPM. No `scripts/` wrappers are needed — SPM handles build/test/run directly.
