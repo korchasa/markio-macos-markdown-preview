@@ -5,3 +5,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# foxcode browser-automation session state
+.foxcode/
