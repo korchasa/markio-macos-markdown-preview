@@ -54,9 +54,11 @@ app:
 	rm -rf "$(APP_BUNDLE)"
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(RELEASE_BIN)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
-	# Resource bundle goes in Contents/Resources only. Bundle.module resolves it via
-	# Bundle.main.resourceURL. (A .bundle under Contents/MacOS/ breaks codesign:
-	# "bundle format unrecognized" — that dir is for Mach-O executables only.)
+	# Resource bundle goes in Contents/Resources only; ResourceLocator finds it
+	# there via Bundle.main.resourceURL (NOT SwiftPM's Bundle.module, whose
+	# accessor looks beside Bundle.main.bundleURL and crashed the packaged app).
+	# (A .bundle under Contents/MacOS/ breaks codesign: "bundle format
+	# unrecognized" — that dir is for Mach-O executables only.)
 	cp -R "$(RELEASE_RESBUNDLE)" "$(APP_BUNDLE)/Contents/Resources/"
 	cp packaging/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 	# Compile the app icon as an asset catalog (Assets.car + AppIcon.icns).
