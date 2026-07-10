@@ -28,6 +28,17 @@
       padding: 0;
     }
     .markdown-body pre.mermaid svg { max-width: 100%; height: auto; }
+    /* Find highlights: every match is wrapped in a <mark>, the current one
+       emphasized. Dark text on both swatches stays legible in light/dark. */
+    mark.markio-find {
+      background-color: #fadf78;
+      color: #1b1b1b;
+      border-radius: 2px;
+    }
+    mark.markio-find-current {
+      background-color: #ff8c1a;
+      color: #1b1b1b;
+    }
   </style>
   <script src="vendor/markdown-it/markdown-it.min.js"></script>
   <script src="vendor/markdown-it/markdown-it-task-lists.js"></script>
@@ -113,10 +124,119 @@
       return current.length;
     }
 
+    // ---- Find in document -------------------------------------------------
+    // Native find bar drives these; highlighting lives here (the web view owns
+    // content rendering). Matches are wrapped in <mark>; the current match is
+    // emphasized and scrolled into view. [REF:fr:find]
+    var __find = { matches: [], index: -1 };
+
+    // Remove every find <mark>, splicing its text back into the parent so the
+    // DOM (and textContent) is restored exactly.
+    function clearSearch() {
+      var marks = document.querySelectorAll('mark.markio-find');
+      for (var i = 0; i < marks.length; i++) {
+        var m = marks[i];
+        var parent = m.parentNode;
+        if (!parent) continue;
+        parent.replaceChild(document.createTextNode(m.textContent), m);
+        parent.normalize();
+      }
+      __find = { matches: [], index: -1 };
+      return { count: 0, current: 0 };
+    }
+
+    // Collect the visible text nodes under #content, skipping script/style and
+    // anything inside a Mermaid SVG so diagrams are never mangled.
+    function collectTextNodes(root) {
+      var nodes = [];
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
+          var p = node.parentNode;
+          while (p && p !== root) {
+            var tag = p.nodeName ? p.nodeName.toLowerCase() : '';
+            if (tag === 'script' || tag === 'style' || tag === 'svg') {
+              return NodeFilter.FILTER_REJECT;
+            }
+            p = p.parentNode;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      var n;
+      while ((n = walker.nextNode())) nodes.push(n);
+      return nodes;
+    }
+
+    // Case-insensitive live search. Wraps each occurrence in a <mark> and makes
+    // the first one current. Returns { count, current } (current is 1-based, 0
+    // when nothing matched).
+    function search(query) {
+      clearSearch();
+      query = query != null ? String(query) : '';
+      if (!query) return { count: 0, current: 0 };
+      var needle = query.toLowerCase();
+      var len = query.length;
+      var root = document.getElementById('content');
+      var textNodes = collectTextNodes(root);
+      for (var i = 0; i < textNodes.length; i++) {
+        var node = textNodes[i];
+        var text = node.nodeValue;
+        var hay = text.toLowerCase();
+        var idx = hay.indexOf(needle);
+        if (idx === -1) continue;
+        var frag = document.createDocumentFragment();
+        var pos = 0;
+        while (idx !== -1) {
+          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+          var mark = document.createElement('mark');
+          mark.className = 'markio-find';
+          mark.textContent = text.slice(idx, idx + len);
+          frag.appendChild(mark);
+          __find.matches.push(mark);
+          pos = idx + len;
+          idx = hay.indexOf(needle, pos);
+        }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+        if (node.parentNode) node.parentNode.replaceChild(frag, node);
+      }
+      if (__find.matches.length) setCurrent(0);
+      return { count: __find.matches.length, current: __find.matches.length ? 1 : 0 };
+    }
+
+    function setCurrent(i) {
+      var prev = __find.matches[__find.index];
+      if (prev) prev.classList.remove('markio-find-current');
+      __find.index = i;
+      var cur = __find.matches[i];
+      if (cur) {
+        cur.classList.add('markio-find-current');
+        if (cur.scrollIntoView) cur.scrollIntoView({ block: 'center', inline: 'nearest' });
+      }
+    }
+
+    function findNext() {
+      var total = __find.matches.length;
+      if (!total) return { count: 0, current: 0 };
+      setCurrent((__find.index + 1) % total);
+      return { count: total, current: __find.index + 1 };
+    }
+
+    function findPrev() {
+      var total = __find.matches.length;
+      if (!total) return { count: 0, current: 0 };
+      setCurrent((__find.index - 1 + total) % total);
+      return { count: total, current: __find.index + 1 };
+    }
+
     window.render = render;
     window.setContentWidth = setContentWidth;
     window.getContentWidth = getContentWidth;
     window.setDark = setDark;
+    window.search = search;
+    window.findNext = findNext;
+    window.findPrev = findPrev;
+    window.clearSearch = clearSearch;
   </script>
 </body>
 </html>

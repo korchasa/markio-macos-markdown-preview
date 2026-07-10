@@ -16,6 +16,11 @@ final class DocumentModel: ObservableObject {
 
     @Published var contentWidth: Double
 
+    // Find state, mirrored to the find bar. [REF:fr:find]
+    @Published var findPresented = false
+    @Published var findQuery = ""
+    @Published var findResult = FindResult.empty
+
     init() {
         contentWidth = Double(widthStore.width)
     }
@@ -55,6 +60,48 @@ final class DocumentModel: ObservableObject {
     func appearanceChanged(dark: Bool) async {
         await preview.setDark(dark)
         await preview.render(currentText)
+        await reapplyFindIfActive()
+    }
+
+    // MARK: - Find [REF:fr:find]
+
+    /// Open the find bar (the view focuses the field on this transition).
+    func openFind() { findPresented = true }
+
+    /// Close the find bar and drop all highlights.
+    func closeFind() {
+        findPresented = false
+        findQuery = ""
+        findResult = .empty
+        Task { await preview.clearSearch() }
+    }
+
+    /// Run the current query live (called on every keystroke). An empty query
+    /// clears highlights rather than matching everything.
+    func runSearch() {
+        Task {
+            if findQuery.isEmpty {
+                await preview.clearSearch()
+                findResult = .empty
+            } else {
+                findResult = await preview.search(findQuery)
+            }
+        }
+    }
+
+    func findNext() {
+        Task { findResult = await preview.findNext() }
+    }
+
+    func findPrev() {
+        Task { findResult = await preview.findPrev() }
+    }
+
+    /// After a re-render (live reload / appearance switch) the previous marks
+    /// are gone; re-run the active query against the fresh content.
+    private func reapplyFindIfActive() async {
+        guard findPresented, !findQuery.isEmpty else { return }
+        findResult = await preview.search(findQuery)
     }
 
     // MARK: - Watching [REF:fr:live-reload]
@@ -77,6 +124,7 @@ final class DocumentModel: ObservableObject {
         } else {
             await preview.render("# Unable to read file\n\n`\(url.path)`")
         }
+        await reapplyFindIfActive()
     }
 
     /// True when the system appearance resolves to Dark Aqua. Uses optional

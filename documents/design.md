@@ -2,7 +2,7 @@
 
 ## 1. Intro
 - **Purpose:** Define the architecture and implementation approach for Markio — a native macOS Markdown previewer with GFM + Mermaid, rendered in a confined `WKWebView`, with an on-screen line-width control.
-- **Rel to SRS:** Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:line-width | FR-LINE-WIDTH], [REF:fr:live-reload | FR-LIVE-RELOAD], [REF:fr:appearance | FR-APPEARANCE], [REF:fr:offline | FR-OFFLINE].
+- **Rel to SRS:** Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:line-width | FR-LINE-WIDTH], [REF:fr:live-reload | FR-LIVE-RELOAD], [REF:fr:appearance | FR-APPEARANCE], [REF:fr:offline | FR-OFFLINE], [REF:fr:find | FR-FIND].
 
 ## 2. Arch
 - **Diagram:**
@@ -80,9 +80,15 @@ flowchart TD
 - **Decision:** Character width via the CSS `ch` unit (absolute, window-independent up to the physical window-width cap — a column wider than the window is clipped to it) over a px or window-fraction width; a stepped slider (presets) over free-form. New `UserDefaults` key (`contentWidthChars`) so legacy px values are not misread. Note: `ch` = advance of the '0' glyph (a wide glyph), so a column set to N fits ≳N typical letters per line.
 - **Deps:** SwiftUI, Foundation.
 
+### 3.7 FindBar [ANC:sds:find-bar]
+- **Purpose:** Native find-in-document surface. Implements [REF:fr:find | FR-FIND].
+- **Interfaces:** Three cooperating pieces. (1) `DocumentModel` holds the find state (`findPresented`, `findQuery`, `findResult`) and the operations (`openFind`/`closeFind`/`runSearch`/`findNext`/`findPrev`), each delegating to `PreviewController`; on live-reload / appearance re-render it re-applies the active query. (2) `ContentView.findBar` — a floating HUD via `.overlay(alignment: .top)` (not a bar that pushes content): a `Capsule` filled with `windowBackgroundColor` (hairline border + shadow) holding a magnifier glyph, a borderless `FindTextField` (an `NSTextField` with no bezel/focus ring), a `current/total` counter, a separator, and round `HUDButton` prev/next/close controls. The field auto-focuses on open; Enter → next, Shift+Enter → previous, Esc/✕ → close. (3) `FindCommands: Commands` + a `FocusedValue` (`documentModel`) route a single app-level Find / Find Next / Find Previous menu (⌘F / ⌘G / ⌘⇧G) to the focused window's model.
+- **Bridge:** `PreviewController.search(_:) / findNext() / findPrev() / clearSearch()` call the page's `search`/`findNext`/`findPrev`/`clearSearch` via `callAsyncJavaScript`, returning `FindResult(count, current)`. Highlighting is done in the page (JS wraps matches in `<mark class="markio-find">`, current one `markio-find-current`) — the "web view owns content rendering" rule; the shell (bar, menu, keys) stays native.
+- **Deps:** SwiftUI, AppKit, WebKit.
+
 ### 3.6 Vendored web bundle [ANC:sds:vendor]
 - **Purpose:** Offline rendering assets under `Sources/Markio/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
-- **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(chars)` (sets `--content-width` in `ch`), `getContentWidth()`, `setDark(bool)`; reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
+- **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(chars)` (sets `--content-width` in `ch`), `getContentWidth()`, `setDark(bool)`, and the find API `search(query)`/`findNext()`/`findPrev()`/`clearSearch()` (each returns `{count, current}`); reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings) so relative URLs resolve.
 - **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1. markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
 
 ## 4. Data
@@ -102,4 +108,4 @@ flowchart TD
 - **Swift 6 concurrency (AppKit glue):** (1) Make AppKit-bridging coordinators `@MainActor` — a global-actor-isolated class is implicitly `Sendable`, clearing "non-Sendable capture / sending self" errors. (2) `NotificationCenter`/KVO closures are `@Sendable`; when registered with `queue: .main`, run the isolated work via `MainActor.assumeIsolated { … }`. (3) A nonisolated `deinit` cannot touch non-Sendable stored properties — invalidate observers in `viewDidMoveToWindow(nil)`/on rebind, not `deinit`.
 - **Platform:** macOS 14+ (Swift 6 language mode). Min raised from 13 → 14 to use modern SwiftUI `onChange` and keep a zero-warning build.
 - **Simplified:** Read-only documents (no Save/edit); minimal chrome — one bottom-bar control (reading width in characters), no toolbar. System appearance only (no custom theme picker in v1). No welcome screen — fresh launch shows the system Open panel.
-- **Deferred:** Search-in-document, print/export, custom themes, TOC sidebar — explicitly out of v1 scope per minimalism priority. (Window-per-document, Open Recent, and state restoration come free from `DocumentGroup`; window tabbing is deliberately disabled — one document = one window.)
+- **Deferred:** Print/export, custom themes, TOC sidebar — explicitly out of v1 scope per minimalism priority. (Window-per-document, Open Recent, and state restoration come free from `DocumentGroup`; window tabbing is deliberately disabled — one document = one window.)

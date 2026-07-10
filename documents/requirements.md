@@ -70,6 +70,12 @@
 - **Acceptance:** `manual — maintainer — documents/checklists/icon.md`
 - **Status:** [x]
 
+### 3.11 FR-FIND: Find text in document [ANC:fr:find]
+- **Desc:** A native find HUD (⌘F) searches the rendered content. It is a compact pill (window-background fill, hairline border, drop shadow) floating at the top-center of the content (overlay, not a bar that pushes the document): magnifier glyph, borderless query field, a `current/total` counter, a separator, round previous/next arrows, and a filled close (✕). Matching is case-insensitive and live (recomputed on each keystroke); every match is wrapped in a `<mark>` and the current one is emphasized and scrolled into view. With the caret in the query field, ↓ / Enter / ⌘G advances to the next match and ↑ / Shift+Enter / ⌘⇧G to the previous (arrows keep the caret in the field), both wrapping around; Esc (or ✕) closes the HUD and removes all highlights. Search runs only over rendered text nodes, never inside Mermaid SVGs or code-token markup structure. Find is per window; a single app-level Find menu drives the focused window. On live reload / appearance re-render, an open search re-applies to the fresh content.
+- **Scenario:** User presses ⌘F, types `alpha` in a doc with three (mixed-case) occurrences → the HUD shows `1/3`, all three are highlighted, the first is emphasized; Enter cycles `2/3`, `3/3`, `1/3`; Esc clears the highlights.
+- **Acceptance:** `Tests/MarkioTests/FindTests.swift::testFindsAllMatchesAndCycles`
+- **Status:** [x]
+
 ### 3.10 FR-MENU: Read-only menu surface [ANC:fr:menu]
 - **Desc:** "Good enough" minimal-surgery approach: remove only the document-write commands meaningless for a read-only viewer, via the two contractual SwiftUI command groups that hold them (`ReadOnlyMenuCommands`: `.newItem`→∅, `.saveItem`→∅); leave everything else standard so macOS auto-disables inapplicable items and localizes them for free. A thin AppKit pass (`MenuArtifactCleaner`) removes the cosmetic artifacts SwiftUI emits when a group is emptied (a title-less placeholder drawn as "NSMenuItem" + orphaned separators). Removed from File: New, Save, Save As…, Duplicate, Rename…, Move To…, Revert To, Share, Close, Close All (the latter two fall out of `.saveItem`; window still closes via the title-bar button). Kept: File ▸ Open…, Open Recent. **Edit menu left fully standard** (Undo/Redo/Cut/Copy/Paste/Delete/Select All) — auto-disabled on non-editable content and properly localized; no custom buttons. View/Window/Help and the app menu unchanged. Localization: the bundle declares `CFBundleLocalizations` (en, ru) so standard items render in the system language (Файл, Правка, Открыть…).
 - **Scenario:** On a Russian system the File menu reads `Файл ▸ Открыть…, Открытие недавних` (no New/Save/Rename/Share, no "NSMenuItem"); `Правка` shows the standard, localized Edit items.
@@ -87,7 +93,7 @@
 
 ## 5. Interfaces
 - **UI:** Native document windows (`DocumentGroup`) + a bottom bar (line-width control). Standard menu bar (File ▸ Open / Open Recent), state restoration. One window per document — no window tabs. Drag a file onto a window → opens it in a new window. Preview surface = `WKWebView`.
-- **Proto (internal):** Native → web view (via `callAsyncJavaScript`): set Markdown source (`render`), set reading width (`setContentWidth`, `ch`), set appearance (`setDark`). Web → native: no message handler — link clicks are intercepted by the `WKNavigationDelegate` (external links open in the default browser via `NSWorkspace`); width changes persist natively (slider → `UserDefaults`).
+- **Proto (internal):** Native → web view (via `callAsyncJavaScript`): set Markdown source (`render`), set reading width (`setContentWidth`, `ch`), set appearance (`setDark`), find text (`search`/`findNext`/`findPrev`/`clearSearch`). Web → native: no message handler — link clicks are intercepted by the `WKNavigationDelegate` (external links open in the default browser via `NSWorkspace`); width changes persist natively (slider → `UserDefaults`).
 - **File types:** `.md`, `.markdown` (UTType conformance declared in the app).
 
 ## 6. Acceptance

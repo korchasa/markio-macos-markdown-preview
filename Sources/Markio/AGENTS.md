@@ -20,6 +20,10 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
   live reload).
 - **Reading width** — `ContentWidthStore` (persisted absolute char width),
   driven by the bottom-bar slider in `ContentView`.
+- **Find** — native find bar (`ContentView.findBar`) + app-level Find menu
+  (`FindCommands` routed by the `documentModel` `FocusedValue`); the search/
+  highlight engine lives in `template.html` (`search`/`findNext`/`findPrev`/
+  `clearSearch`), bridged by `PreviewController` and driven by `DocumentModel`.
 - **Diagnostics** — `Log` (`os.Logger`, subsystem `dev.markio`): best-effort
   paths (JS bridge, file opens) log failures instead of swallowing them.
 

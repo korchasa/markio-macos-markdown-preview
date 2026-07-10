@@ -84,10 +84,60 @@ final class PreviewController: NSObject {
         }
     }
 
+    // MARK: - Find [REF:fr:find]
+
+    /// Case-insensitive search over the rendered content; highlights every
+    /// match, makes the first current, and returns the totals. [REF:fr:find]
+    @discardableResult
+    func search(_ query: String) async -> FindResult {
+        await callFind("return search(q);", ["q": query])
+    }
+
+    /// Move to the next match (wraps around). [REF:fr:find]
+    @discardableResult
+    func findNext() async -> FindResult {
+        await callFind("return findNext();", [:])
+    }
+
+    /// Move to the previous match (wraps around). [REF:fr:find]
+    @discardableResult
+    func findPrev() async -> FindResult {
+        await callFind("return findPrev();", [:])
+    }
+
+    /// Remove all find highlights, restoring the original DOM text. [REF:fr:find]
+    func clearSearch() async {
+        _ = await callFind("return clearSearch();", [:])
+    }
+
+    /// Invoke a find entrypoint and decode its `{count, current}` payload.
+    /// Best-effort: a bridge failure logs and yields an empty result.
+    private func callFind(_ javaScript: String, _ arguments: [String: Any]) async -> FindResult {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                javaScript, arguments: arguments, contentWorld: .page)
+            guard let dict = raw as? [String: Any] else { return .empty }
+            return FindResult(
+                count: (dict["count"] as? NSNumber)?.intValue ?? 0,
+                current: (dict["current"] as? NSNumber)?.intValue ?? 0)
+        } catch {
+            Log.preview.error("find failed: \(error.localizedDescription)")
+            return .empty
+        }
+    }
+
     /// Test/diagnostic hook: evaluate JS in the page world.
     func evaluate(_ javaScript: String) async throws -> Any? {
         try await webView.evaluateJavaScript(javaScript)
     }
+}
+
+/// Totals from a find operation: how many matches exist and the 1-based index
+/// of the current one (`0` when there are none). [REF:fr:find]
+struct FindResult: Equatable {
+    let count: Int
+    let current: Int
+    static let empty = FindResult(count: 0, current: 0)
 }
 
 extension PreviewController: WKNavigationDelegate {
