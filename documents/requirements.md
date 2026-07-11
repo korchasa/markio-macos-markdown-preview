@@ -82,6 +82,13 @@
 - **Acceptance:** `Tests/MarkioTests/MenuArtifactCleanerTests.swift::testRemovesPlaceholderAndTrailingSeparators` (artifact removal); `manual — maintainer — documents/checklists/menu.md` (semantic removal + localization)
 - **Status:** [x]
 
+### 3.12 FR-MATH: Render LaTeX math [ANC:fr:math]
+- **Desc:** Inline `$…$` and block `$$…$$` LaTeX render as typeset math via vendored KaTeX (offline). Math is tokenized at **parse time** (a markdown-it rule) so `*`/`_`/`\` inside a formula are never mangled by emphasis/escape rules, and `$` inside a code span stays literal. A money guard (no digit immediately after the closing `$`) keeps `$5 and $10`-style text literal. Malformed math renders best-effort (KaTeX error node), never crashing the render (NFR Reliability). Rendered math sets no explicit color → inherits `CanvasText`, following light/dark automatically.
+- **Tasks:** [REF:task:2026-07-add-math-support | add-math-support]
+- **Scenario:** A doc with inline `$E = mc^2$` and a block `$$\int_0^\infty e^{-x^2}\,dx$$` shows typeset math (display math centered), not raw TeX; `Pay $5 and $10` stays literal.
+- **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testMathRendersWithKatex`
+- **Status:** [x]
+
 ---
 
 ## 4. Non-Functional

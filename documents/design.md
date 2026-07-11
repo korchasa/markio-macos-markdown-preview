@@ -2,7 +2,7 @@
 
 ## 1. Intro
 - **Purpose:** Define the architecture and implementation approach for Markio — a native macOS Markdown previewer with GFM + Mermaid, rendered in a confined `WKWebView`, with an on-screen line-width control.
-- **Rel to SRS:** Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:line-width | FR-LINE-WIDTH], [REF:fr:live-reload | FR-LIVE-RELOAD], [REF:fr:appearance | FR-APPEARANCE], [REF:fr:offline | FR-OFFLINE], [REF:fr:find | FR-FIND].
+- **Rel to SRS:** Implements [REF:fr:open | FR-OPEN], [REF:fr:multidoc | FR-MULTIDOC], [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:line-width | FR-LINE-WIDTH], [REF:fr:live-reload | FR-LIVE-RELOAD], [REF:fr:appearance | FR-APPEARANCE], [REF:fr:offline | FR-OFFLINE], [REF:fr:find | FR-FIND], [REF:fr:math | FR-MATH].
 
 ## 2. Arch
 - **Diagram:**
@@ -88,9 +88,10 @@ flowchart TD
 - **Deps:** SwiftUI, AppKit, WebKit.
 
 ### 3.6 Vendored web bundle [ANC:sds:vendor]
-- **Purpose:** Offline rendering assets under `Sources/Markio/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE].
+- **Purpose:** Offline rendering assets under `Sources/Markio/Resources/vendor` + `Resources/template.html`. Implements [REF:fr:gfm | FR-GFM], [REF:fr:mermaid | FR-MERMAID], [REF:fr:highlight | FR-HIGHLIGHT], [REF:fr:offline | FR-OFFLINE], [REF:fr:math | FR-MATH].
 - **Interfaces:** `template.html` exposes JS entrypoints `render(markdown)`, `setContentWidth(chars)` (sets `--content-width` in `ch`), `getContentWidth()`, `setDark(bool)`, and the find API `search(query)`/`findNext()`/`findPrev()`/`clearSearch()` (each returns `{count, current}`); reads CSS var `--content-width`. Native calls them via `callAsyncJavaScript`. Copied flat to the bundle root (template + `vendor/` siblings); `ResourceLocator.selfContainedHTML()` reads them app-side and inlines every `<link>`/`<script src>` into a single document loaded with `baseURL: nil` (no `file:` subresource reads under the App Sandbox — see [REF:sds:webview-host]).
-- **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1. markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
+- **Deps (pinned, committed):** markdown-it 14.1.0 + markdown-it-task-lists 2.1.1 (wrapped as a browser global), highlight.js 11.10.0 (common langs) with github light/dark themes, mermaid 11.6.0 (UMD, `securityLevel:strict`), github-markdown-css 5.8.1, KaTeX 0.16.11 (`katex.min.js` global + `katex.css` with fonts inlined as `data:` URIs → self-contained, resolves with no base URL). markdown-it runs with `html:false` (read-only viewer drops raw inline HTML).
+- **Math rule:** an inline `mathPlugin` (in `template.html`) registers markdown-it rules `math_inline` (`$…$`, after `escape`) and `math_block` (`$$…$$`, after `blockquote`) so math tokenizes at parse time (emphasis/escape never touch formula content; `$` in code spans stays literal; standard `isValidDelim` no-digit-after-close money guard). Both rules render via `katex.renderToString(tex, { throwOnError:false, trust:false, displayMode })`. Implements [REF:fr:math | FR-MATH].
 
 ## 4. Data
 - **Entities:** No persistent model beyond `UserDefaults`: `contentWidthChars: Int` (reading width in characters, 40–200 by 20). Recent files + window state are fully system-managed by `DocumentGroup` (`NSDocumentController` recents, state restoration).
@@ -98,7 +99,7 @@ flowchart TD
 - **Migration:** N/A.
 
 ## 5. Logic
-- **Algos:** Render = read file → `render(markdown)` in page → md parser produces HTML → `mermaid.run()` over `.language-mermaid` blocks → highlight over remaining code blocks. Width = bottom-bar control → `setContentWidth(chars)` sets `--content-width: <n>ch`; content column `max-width: var(--content-width)` → an absolute N-character reading measure, window-independent.
+- **Algos:** Render = read file → `render(markdown)` in page → md parser produces HTML (math tokens `$…$`/`$$…$$` rendered inline via `katex.renderToString` at parse time) → `mermaid.run()` over `.language-mermaid` blocks → highlight over remaining code blocks. Width = bottom-bar control → `setContentWidth(chars)` sets `--content-width: <n>ch`; content column `max-width: var(--content-width)` → an absolute N-character reading measure, window-independent.
 - **Rules:** Confine `WKWebView` to bundled file URLs; intercept external links → open in default browser via `NSWorkspace` (never navigate the view). Debounce file-change events. Load file I/O off the main thread; render calls marshaled to main.
 
 ## 6. Non-Functional

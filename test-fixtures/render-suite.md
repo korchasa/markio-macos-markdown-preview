@@ -7,7 +7,7 @@
 > diagrams, Unicode, and layout under different reading widths.
 
 Markio feature coverage: GFM, Mermaid, syntax highlighting, offline assets,
-adjustable reading width, find-in-document. No math plugin (LaTeX shown literally).
+adjustable reading width, find-in-document, LaTeX math (KaTeX).
 
 ---
 
@@ -417,7 +417,7 @@ Combining marks: a̐éö̲, and math-ish: ∑ ∫ √ ≠ ≤ ≥ ∞ π.
 
 ---
 
-## 16. Math (no plugin — must render as literal text, not break the page)
+## 16. Math (KaTeX — inline and block LaTeX render as typeset math)
 
 Inline: $E = mc^2$ and $\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$.
 

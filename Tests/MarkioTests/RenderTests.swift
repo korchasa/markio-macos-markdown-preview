@@ -65,6 +65,34 @@ final class RenderTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tokens, 1, "Highlighted code should contain token spans")
     }
 
+    /// Inline `$…$` and block `$$…$$` LaTeX render as KaTeX; money `$` stays
+    /// literal; malformed math never crashes the render. [REF:fr:math]
+    func testMathRendersWithKatex() async throws {
+        let preview = try await makeLoadedPreview()
+
+        // Inline + block math both render to KaTeX DOM nodes. The block uses the
+        // multi-line `$$` form (delimiters on their own lines) so the block rule's
+        // multi-line scan path is exercised, not just the single-line shortcut.
+        await preview.render(
+            "Inline $E = mc^2$ and block:\n\n$$\n\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\n$$"
+        )
+        let katex = try await count(preview, "document.querySelectorAll('#content .katex').length")
+        XCTAssertGreaterThanOrEqual(katex, 2, "Inline and block math should both render as KaTeX")
+        let display = try await count(
+            preview, "document.querySelectorAll('#content .katex-display').length")
+        XCTAssertGreaterThanOrEqual(display, 1, "Block `$$…$$` should render as display math")
+
+        // Money guard: `$5 and $10` must stay literal text, not become math.
+        await preview.render("Pay $5 and $10 today.")
+        let money = try await count(preview, "document.querySelectorAll('#content .katex').length")
+        XCTAssertEqual(money, 0, "Dollar amounts must not be parsed as math")
+
+        // Malformed math renders best-effort and never crashes the surface.
+        await preview.render("Broken $\\frac{$ math")
+        let hasContent = try await count(preview, "document.getElementById('content') ? 1 : 0")
+        XCTAssertEqual(hasContent, 1, "Malformed math must not destroy the render surface")
+    }
+
     /// NFR Reliability: malformed Markdown renders best-effort and never crashes.
     func testMalformedMarkdownDoesNotCrash() async throws {
         let preview = try await makeLoadedPreview()

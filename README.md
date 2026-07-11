@@ -8,6 +8,7 @@ surface. The one on-screen reading control is **line width**.
 
 - GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks, code)
 - Mermaid diagrams
+- LaTeX math formulas (inline `$…$` and block `$$…$$`, via KaTeX, offline)
 - Syntax highlighting (light/dark, follows system appearance)
 - Live reload on external edits
 - Adjustable reading width (toolbar slider), persisted across launches
