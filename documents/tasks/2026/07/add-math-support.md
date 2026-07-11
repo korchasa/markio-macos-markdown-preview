@@ -7,7 +7,7 @@ tags:
   - rendering
   - vendor
 ---
-# Add LaTeX Math Support (KaTeX)
+# Add LaTeX Math Support (KaTeX) [ANC:task:2026-07-add-math-support]
 
 ## Goal
 
@@ -169,8 +169,8 @@ with matching doc-sync so docs stop lying:
    Money guard: render `Pay $5 and $10` and assert `#content .katex` count == 0
    (stays literal). Then render malformed `$\frac{$` and assert `#content` still
    present (no crash).
-6. **SRS** `documents/requirements.md`: add `### 3.12 FR-MATH: Render LaTeX math
-   [ANC:fr:math]` (Desc/Scenario/Acceptance/Status=[x] after GREEN) + a
+6. **SRS** `documents/requirements.md`: add `### 3.12 FR-MATH: Render LaTeX math`
+   `[ANC:fr:math]` (Desc/Scenario/Acceptance/Status=[x] after GREEN) + a
    `**Tasks:**` back-pointer to this task. Add FR-MATH to SDS §1 Rel-to-SRS ref
    list.
 7. **SDS** `documents/design.md`: §3.6 vendor bundle — add KaTeX 0.16.11
