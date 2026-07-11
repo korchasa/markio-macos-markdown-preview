@@ -6,13 +6,24 @@
       Mac App Store build. App Sandbox is mandatory for MAS.
       Markio is a Markdown viewer that opens user-chosen files (window per
       document), so it needs read access to user-selected files. The bundled
-      template/vendor assets ship inside the .app, so no other entitlement is
-      required. Signing with these entitlements is performed by
-      app-store-factory, not by this repo.
+      template/vendor assets ship inside the .app.
+
+      network.client is required even though Markio never fetches anything over
+      the network: under the App Sandbox, WKWebView's out-of-process WebContent
+      helper fails to launch without it, so the preview stays permanently blank
+      (navigation never completes — no didFinish/didFail; reproduced on the
+      signed TestFlight build, kernel denied file-read of com.apple.networkd.plist).
+      The rendering stays fully offline — the navigation delegate blocks every
+      web load; this entitlement only lets WebKit bring up its content process.
+
+      Signing with these entitlements is performed by app-store-factory, not by
+      this repo.
     -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
     <true/>
 </dict>
 </plist>

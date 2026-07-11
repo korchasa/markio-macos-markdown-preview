@@ -54,4 +54,61 @@ enum ResourceLocator {
     static var templateURL: URL {
         resourcesRoot.appendingPathComponent("template.html", isDirectory: false)
     }
+
+    /// `template.html` with every vendored `<link>`/`<script src>` replaced by its
+    /// inlined `<style>`/`<script>` body, producing a single self-contained
+    /// document with **no** subresource references.
+    ///
+    /// Why: under the Mac App Store App Sandbox, `WKWebView.loadFileURL(_:
+    /// allowingReadAccessTo:)` fails to render the packaged shell — the confined
+    /// WebContent process never completes the `file:` navigation, so the view
+    /// stays blank (reproduced on a signed TestFlight build). Reading the assets
+    /// app-side (own-bundle reads are always permitted in the sandbox) and handing
+    /// WebKit one `loadHTMLString(baseURL: nil)` avoids `file:` entirely.
+    /// [REF:sds:vendor] [REF:fr:offline]
+    static func selfContainedHTML() throws -> String {
+        let root = resourcesRoot
+        var html = try String(contentsOf: templateURL, encoding: .utf8)
+        // Stylesheets: <link rel="stylesheet" href="vendor/…" [media="…"]> → <style [media]>…</style>
+        let linkPattern =
+            #"<link\s+rel="stylesheet"\s+href="(vendor/[^"]+)""#
+            + #"(?:\s+media="([^"]*)")?\s*/?>"#
+        html = try inlineVendor(in: html, pattern: linkPattern, root: root) { body, media in
+            let mediaAttr = media.map { " media=\"\($0)\"" } ?? ""
+            return "<style\(mediaAttr)>\n\(body)\n</style>"
+        }
+        // Scripts: <script src="vendor/…"></script> → <script>…</script>
+        html = try inlineVendor(
+            in: html,
+            pattern: #"<script\s+src="(vendor/[^"]+)"\s*></script>"#,
+            root: root
+        ) { body, _ in "<script>\n\(body)\n</script>" }
+        return html
+    }
+
+    /// Replace every match of `pattern` (capture 1 = vendor-relative path,
+    /// optional capture 2 = media query) with `wrap(fileContents, media)`.
+    /// Matches are applied last-to-first so earlier ranges stay valid.
+    private static func inlineVendor(
+        in html: String,
+        pattern: String,
+        root: URL,
+        wrap: (_ body: String, _ media: String?) -> String
+    ) throws -> String {
+        let regex = try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        let ns = html as NSString
+        let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
+        var result = html
+        for match in matches.reversed() {
+            let rel = ns.substring(with: match.range(at: 1))
+            let media: String? =
+                match.numberOfRanges > 2 && match.range(at: 2).location != NSNotFound
+                ? ns.substring(with: match.range(at: 2)) : nil
+            let body = try String(
+                contentsOf: root.appendingPathComponent(rel), encoding: .utf8)
+            guard let range = Range(match.range, in: result) else { continue }
+            result.replaceSubrange(range, with: wrap(body, media))
+        }
+        return result
+    }
 }

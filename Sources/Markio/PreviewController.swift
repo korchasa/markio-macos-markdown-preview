@@ -28,13 +28,17 @@ final class PreviewController: NSObject {
     /// so a failed shell load is distinguishable from success — the caller must
     /// not proceed to `render` on a page that never loaded.
     func loadTemplate() async throws {
+        let html = try ResourceLocator.selfContainedHTML()
         try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<Void, Error>) in
             loadContinuation = continuation
-            webView.loadFileURL(
-                ResourceLocator.templateURL,
-                allowingReadAccessTo: ResourceLocator.resourcesRoot
-            )
+            // Self-contained document, no `file:` base: the shell carries its own
+            // inlined CSS/JS, so WebKit needs no subresource reads. (The MAS blank
+            // preview was ultimately the missing `network.client` entitlement that
+            // blocked WKWebView's WebContent process from launching at all — see
+            // packaging/Markio.entitlements; this validated load path stays.)
+            // [REF:sds:webview-host] [REF:fr:offline]
+            webView.loadHTMLString(html, baseURL: nil)
         }
     }
 
@@ -149,6 +153,7 @@ extension PreviewController: WKNavigationDelegate {
 
     /// Committed navigation failed → resume `loadTemplate` with the error.
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Log.preview.error("navigation: didFail: \(error.localizedDescription)")
         resumeLoad(.failure(error))
     }
 
@@ -158,6 +163,7 @@ extension PreviewController: WKNavigationDelegate {
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
+        Log.preview.error("navigation: didFailProvisional: \(error.localizedDescription)")
         resumeLoad(.failure(error))
     }
 
