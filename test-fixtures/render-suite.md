@@ -1,3 +1,11 @@
+---
+title: Markdown Rendering Test Suite
+author: Markio
+date: 2026-07-12
+tags: [gfm, mermaid, katex, frontmatter]
+draft: false
+---
+
 # Markdown Rendering Test Suite
 
 > A single comprehensive document that exercises every construct a Markdown

@@ -32,17 +32,17 @@
     /* Leading YAML frontmatter: a distinct, captioned metadata box so it reads
        as document metadata, not an author-written code block. The hljs theme
        already themes the background per light/dark; the border is a scheme-
-       neutral translucent grey. [REF:fr:frontmatter] */
-    .markdown-body pre.markio-frontmatter {
-      border: 1px solid rgba(128, 128, 128, 0.4);
-      border-radius: 6px;
+       neutral translucent grey. The border + caption live on a wrapper, not on
+       the <pre>, because highlight.js gives the <pre> `overflow:auto`, which
+       would clip a caption poking above its top edge. [REF:fr:frontmatter] */
+    .markdown-body .markio-frontmatter-box {
       position: relative;
       margin-top: 1.6em;
     }
-    .markdown-body pre.markio-frontmatter::before {
+    .markdown-body .markio-frontmatter-box::before {
       content: "frontmatter";
       position: absolute;
-      top: -0.75em;
+      top: -0.72em;
       left: 12px;
       padding: 0 6px;
       font-size: 0.7em;
@@ -50,6 +50,12 @@
       text-transform: uppercase;
       background-color: Canvas;
       color: rgba(128, 128, 128, 0.9);
+      z-index: 1;
+    }
+    .markdown-body pre.markio-frontmatter {
+      margin: 0;
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 6px;
     }
     /* Find highlights: every match is wrapped in a <mark>, the current one
        emphasized. Dark text on both swatches stays legible in light/dark. */
@@ -269,7 +275,8 @@
         } else {
           body = escapeHtml(yaml);
         }
-        return '<pre class="hljs markio-frontmatter"><code>' + body + '</code></pre>\n';
+        return '<div class="markio-frontmatter-box"><pre class="hljs markio-frontmatter">' +
+          '<code>' + body + '</code></pre></div>\n';
       };
     }
 
