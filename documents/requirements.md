@@ -96,12 +96,19 @@
 - **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testMathRendersWithKatex`
 - **Status:** [x]
 
+### 3.14 FR-INLINE-HTML: Render sanitized inline HTML [ANC:fr:inline-html]
+- **Desc:** Raw inline/block HTML in Markdown renders as real elements (GitHub parity) — e.g. `<table>` with `rowspan`/`colspan` that GFM pipe tables cannot express, `<details>`/`<summary>`, `<kbd>`, `<sub>`/`<sup>` — instead of escaped literal text. The entire markdown-it output passes through a DOMPurify allowlist gate (vendored, pinned) **before** DOM insertion: `<script>`/`<style>` elements, event-handler attributes (`onerror`, `onclick`, …), and `javascript:`/unknown-protocol URLs are stripped and never execute. Generated markup survives the gate: KaTeX HTML+MathML, hljs token spans, `pre.mermaid` blocks, task-list `<input>` checkboxes. A missing sanitizer asset fails the render loudly — content is never inserted unsanitized.
+- **Tasks:** [REF:task:2026-07-render-inline-html-sanitized | render-inline-html-sanitized]
+- **Scenario:** A document with one raw `<table>` using `rowspan`/`colspan` `<th>` cells renders a real table; `<img src=x onerror="…">` and `<script>` render nothing and execute nothing.
+- **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testInlineHTMLTableRenders`; `Tests/MarkioTests/RenderTests.swift::testInlineHTMLSanitized`
+- **Status:** [x]
+
 ---
 
 ## 4. Non-Functional
 - **Perf:** Open + first render of a typical (<200 KB) doc < 300 ms on Apple Silicon. Width-slider reflow feels instant (< 1 frame perceptible lag).
 - **Reliability:** Malformed Markdown never crashes; renders best-effort.
-- **Sec:** No network, no JS bridge beyond the line-width message handler; `WKWebView` confined to bundled file URLs.
+- **Sec:** No network, no JS bridge beyond the line-width message handler; `WKWebView` confined to bundled file URLs. Raw inline HTML passes a DOMPurify allowlist sanitizer before DOM insertion ([REF:fr:inline-html | FR-INLINE-HTML]).
 - **Scale:** Multiple independent document windows; each handles large docs (multi-MB) without freezing the UI (off-main-thread load).
 - **UX:** Native document windows/menus (Open Recent, tabs, restore via `DocumentGroup`); minimal chrome; the only persistent on-screen reading control is line width, in a bottom bar.
 

@@ -78,6 +78,11 @@ final class RenderTests: XCTestCase {
         )
         let katex = try await count(preview, "document.querySelectorAll('#content .katex').length")
         XCTAssertGreaterThanOrEqual(katex, 2, "Inline and block math should both render as KaTeX")
+        // KaTeX's default output is htmlAndMathml; the sanitize gate must
+        // preserve the MathML branch, not just the HTML spans. [REF:fr:inline-html]
+        let mathml = try await count(
+            preview, "document.querySelectorAll('#content .katex-mathml math').length")
+        XCTAssertGreaterThanOrEqual(mathml, 1, "KaTeX MathML branch must survive sanitization")
         let display = try await count(
             preview, "document.querySelectorAll('#content .katex-display').length")
         XCTAssertGreaterThanOrEqual(display, 1, "Block `$$…$$` should render as display math")
@@ -128,6 +133,75 @@ final class RenderTests: XCTestCase {
         let noFm = try await count(
             preview, "document.querySelectorAll('#content pre.markio-frontmatter').length")
         XCTAssertEqual(noFm, 0, "Plain document must have no frontmatter block")
+    }
+
+    /// Raw inline HTML renders as real elements (GitHub parity): a `<table>`
+    /// with `rowspan`/`colspan` — inexpressible as a GFM pipe table — must
+    /// become a real table, not escaped literal text. [REF:fr:inline-html]
+    func testInlineHTMLTableRenders() async throws {
+        let preview = try await makeLoadedPreview()
+        let markdown = """
+            Intro paragraph.
+
+            <table>
+            <thead>
+            <tr><th rowspan="2">Primitive</th><th colspan="2">Quality</th></tr>
+            <tr><th>Claude Code</th><th>Codex</th></tr>
+            </thead>
+            <tbody>
+            <tr><td><code>.claude/agents</code></td><td>Full</td><td>Archive</td></tr>
+            </tbody>
+            </table>
+            """
+        await preview.render(markdown)
+
+        let tables = try await count(preview, "document.querySelectorAll('#content table').length")
+        XCTAssertGreaterThanOrEqual(tables, 1, "Raw HTML table should render as a <table>")
+
+        let rowspans = try await count(
+            preview, "document.querySelectorAll('#content th[rowspan]').length")
+        XCTAssertGreaterThanOrEqual(rowspans, 1, "rowspan attribute must survive the allowlist")
+
+        let cellCode = try await count(
+            preview, "document.querySelectorAll('#content td code').length")
+        XCTAssertGreaterThanOrEqual(cellCode, 1, "Inline <code> inside cells must survive")
+
+        let escapedText = try await count(
+            preview,
+            "document.getElementById('content').textContent.indexOf('<table>') === -1 ? 1 : 0")
+        XCTAssertEqual(escapedText, 1, "Raw HTML must not appear as escaped literal text")
+    }
+
+    /// Dangerous raw HTML is stripped by the sanitizer before DOM insertion and
+    /// never executes — not merely escaped. [REF:fr:inline-html]
+    func testInlineHTMLSanitized() async throws {
+        let preview = try await makeLoadedPreview()
+        let markdown = """
+            <script>window.__xss = 1</script>
+
+            <img src="x" onerror="window.__xss = 1">
+
+            <a href="javascript:alert(1)">click</a>
+
+            <style>body { display: none }</style>
+            """
+        await preview.render(markdown)
+
+        let scripts = try await count(
+            preview, "document.querySelectorAll('#content script, #content style').length")
+        XCTAssertEqual(scripts, 0, "script/style elements must be stripped")
+
+        let handlers = try await count(
+            preview, "document.querySelectorAll('#content [onerror], #content [onclick]').length")
+        XCTAssertEqual(handlers, 0, "Event-handler attributes must be stripped")
+
+        let jsLinks = try await count(
+            preview, "document.querySelectorAll('#content a[href^=\"javascript:\"]').length")
+        XCTAssertEqual(jsLinks, 0, "javascript: URLs must be stripped")
+
+        let executed = try await count(
+            preview, "typeof window.__xss === 'undefined' ? 1 : 0")
+        XCTAssertEqual(executed, 1, "No injected handler may have executed")
     }
 
     /// NFR Reliability: malformed Markdown renders best-effort and never crashes.

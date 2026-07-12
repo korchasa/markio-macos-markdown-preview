@@ -69,6 +69,9 @@
       color: #1b1b1b;
     }
   </style>
+  <!-- Keep this tag exactly src-first with no other attributes:
+       ResourceLocator.inlineVendor()'s regex silently skips anything else. -->
+  <script src="vendor/dompurify/purify.min.js"></script>
   <script src="vendor/markdown-it/markdown-it.min.js"></script>
   <script src="vendor/markdown-it/markdown-it-task-lists.js"></script>
   <script src="vendor/highlight/highlight.min.js"></script>
@@ -87,9 +90,24 @@
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    // [REF:fr:inline-html] — allowlist gate between md.render() and the DOM.
+    // Runs BEFORE innerHTML assignment: inserting first and cleaning after
+    // would already fire `<img onerror>`. Profiles keep raw HTML (tables with
+    // rowspan/colspan, details, kbd, …) and KaTeX MathML; DOMPurify defaults
+    // strip script/event handlers/javascript: URLs; FORBID_TAGS blocks
+    // document-wide CSS injection via <style>. A missing DOMPurify global is
+    // a build defect — fail fast, never insert unsanitized content.
+    function sanitizeHtml(html) {
+      if (!window.DOMPurify) throw new Error('DOMPurify asset missing');
+      return window.DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true, mathMl: true },
+        FORBID_TAGS: ['style']
+      });
+    }
+
     // Render one LaTeX fragment to KaTeX HTML. Best-effort: throwOnError:false
     // makes malformed math render an error node instead of throwing (NFR
-    // Reliability); trust:false + the parser's html:false block HTML injection.
+    // Reliability); trust:false plus the sanitizeHtml() gate block HTML injection.
     // [REF:fr:math]
     function renderMath(tex, displayMode) {
       if (!window.katex) return escapeHtml(tex);
@@ -281,7 +299,8 @@
     }
 
     var md = window.markdownit({
-      html: false,        // do not pass raw HTML through (read-only viewer, safety)
+      html: true,         // raw HTML passes through; sanitizeHtml() gates it
+                          // before DOM insertion. [REF:fr:inline-html]
       linkify: true,      // GFM autolinks
       typographer: false,
       highlight: function (str, lang) {
@@ -314,7 +333,7 @@
     // Mermaid is async; awaiting it lets native/tests observe a settled DOM.
     async function render(markdown) {
       var el = document.getElementById('content');
-      el.innerHTML = md.render(markdown != null ? String(markdown) : '');
+      el.innerHTML = sanitizeHtml(md.render(markdown != null ? String(markdown) : ''));
       if (window.mermaid) {
         var nodes = el.querySelectorAll('pre.mermaid');
         if (nodes.length) {

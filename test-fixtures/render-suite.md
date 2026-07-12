@@ -333,9 +333,32 @@ Term
 
 ---
 
-## 12. Raw HTML (viewer runs with html:false — must be escaped/inert)
+## 12. Raw HTML (sanitized: safe markup renders, dangerous markup is stripped and inert)
 
-<div class="danger" onclick="alert('xss')">Block HTML should not execute.</div>
+Safe raw HTML renders as real elements — a table with rowspan/colspan that a
+GFM pipe table cannot express:
+
+<table>
+<thead>
+<tr><th rowspan="2">Primitive</th><th colspan="2">Migration quality</th></tr>
+<tr><th>Claude Code</th><th>Codex</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.claude/agents</code></td><td>✅ Full</td><td>📦 Archive only</td></tr>
+</tbody>
+</table>
+
+<details>
+<summary>Collapsible details/summary</summary>
+
+Hidden content with <kbd>⌘</kbd>+<kbd>F</kbd>, H<sub>2</sub>O and E=mc<sup>2</sup>.
+
+</details>
+
+Dangerous markup below must be stripped by the sanitizer (nothing renders,
+nothing executes — no red background, no alerts):
+
+<div class="danger" onclick="alert('xss')">The onclick must be gone; this text may render.</div>
 
 Inline <b>HTML</b> and <img src="x" onerror="alert(1)"> must not run scripts.
 

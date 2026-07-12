@@ -10,6 +10,8 @@ surface. The one on-screen reading control is **line width**.
 - Mermaid diagrams
 - LaTeX math formulas (inline `$…$` and block `$$…$$`, via KaTeX, offline)
 - YAML frontmatter rendered as a highlighted metadata block
+- Inline HTML (tables with `rowspan`/`colspan`, `<details>`, `<kbd>`, …) rendered
+  through a DOMPurify allowlist sanitizer — scripts and event handlers never run
 - Syntax highlighting (light/dark, follows system appearance)
 - Live reload on external edits
 - Adjustable reading width (toolbar slider), persisted across launches
