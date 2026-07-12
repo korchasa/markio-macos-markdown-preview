@@ -289,6 +289,7 @@ Scope discipline prevents over-formalization: (1) pure bug fixes reuse an existi
 - Run all tests before finishing, not just the ones you changed.
 - When a test fails, fix the source code — not the test. Do not modify a failing test to make it pass, do not add error swallowing or skip logic.
 - Do not create source files with guessed or fabricated data to satisfy imports — if the data source is missing, that is a blocker (see Diagnosing Failures).
+- Run `make fmt` before `make check` when a test adds long inline strings: WebView DOM-query assertions in `RenderTests` routinely exceed swift-format's line-length limit, so `check` fails on formatting first; formatting up front auto-wraps them and avoids the check→fmt→check retry.
 
 ## Diagnosing Failures
 
