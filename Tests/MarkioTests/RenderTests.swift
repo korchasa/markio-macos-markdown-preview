@@ -93,6 +93,43 @@ final class RenderTests: XCTestCase {
         XCTAssertEqual(hasContent, 1, "Malformed math must not destroy the render surface")
     }
 
+    /// Leading YAML frontmatter renders as a distinct highlighted metadata block;
+    /// a `---` anywhere but the document start stays a normal thematic break; a
+    /// document with no frontmatter is unchanged. [REF:fr:frontmatter]
+    func testFrontmatterRendersAsMetadata() async throws {
+        let preview = try await makeLoadedPreview()
+
+        // Leading frontmatter → a highlighted YAML box, body still parses.
+        await preview.render("---\ntitle: Hello\ntags: [a, b]\n---\n\n# Body")
+        let fm = try await count(
+            preview, "document.querySelectorAll('#content pre.markio-frontmatter').length")
+        XCTAssertGreaterThanOrEqual(fm, 1, "Leading frontmatter should render as a metadata block")
+        let tokens = try await count(
+            preview,
+            "document.querySelectorAll('#content pre.markio-frontmatter span[class^=\"hljs-\"]').length"
+        )
+        XCTAssertGreaterThanOrEqual(tokens, 1, "Frontmatter YAML should be syntax-highlighted")
+        let bodyHeadings = try await count(
+            preview, "document.querySelectorAll('#content h1').length")
+        XCTAssertGreaterThanOrEqual(
+            bodyHeadings, 1, "Body after frontmatter must render as Markdown")
+
+        // A `---` mid-document is NOT frontmatter; the block is doc-start-only.
+        await preview.render("# Body\n\n---\ntitle: x\n---")
+        let midFm = try await count(
+            preview, "document.querySelectorAll('#content pre.markio-frontmatter').length")
+        XCTAssertEqual(midFm, 0, "A `---` block mid-document must not be treated as frontmatter")
+
+        // A plain `---` after a blank line stays a thematic break.
+        await preview.render("Text\n\n---\n\nMore")
+        let rules = try await count(preview, "document.querySelectorAll('#content hr').length")
+        XCTAssertGreaterThanOrEqual(
+            rules, 1, "A standalone `---` must still render a horizontal rule")
+        let noFm = try await count(
+            preview, "document.querySelectorAll('#content pre.markio-frontmatter').length")
+        XCTAssertEqual(noFm, 0, "Plain document must have no frontmatter block")
+    }
+
     /// NFR Reliability: malformed Markdown renders best-effort and never crashes.
     func testMalformedMarkdownDoesNotCrash() async throws {
         let preview = try await makeLoadedPreview()

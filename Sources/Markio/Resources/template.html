@@ -29,6 +29,28 @@
       padding: 0;
     }
     .markdown-body pre.mermaid svg { max-width: 100%; height: auto; }
+    /* Leading YAML frontmatter: a distinct, captioned metadata box so it reads
+       as document metadata, not an author-written code block. The hljs theme
+       already themes the background per light/dark; the border is a scheme-
+       neutral translucent grey. [REF:fr:frontmatter] */
+    .markdown-body pre.markio-frontmatter {
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 6px;
+      position: relative;
+      margin-top: 1.6em;
+    }
+    .markdown-body pre.markio-frontmatter::before {
+      content: "frontmatter";
+      position: absolute;
+      top: -0.75em;
+      left: 12px;
+      padding: 0 6px;
+      font-size: 0.7em;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background-color: Canvas;
+      color: rgba(128, 128, 128, 0.9);
+    }
     /* Find highlights: every match is wrapped in a <mark>, the current one
        emphasized. Dark text on both swatches stays legible in light/dark. */
     mark.markio-find {
@@ -190,6 +212,67 @@
       };
     }
 
+    // markdown-it frontmatter plugin: a YAML block fenced by `---` at the VERY
+    // top of the document is tokenized before the `hr`/`lheading` rules (which
+    // otherwise mangle it into a setext heading + rule) and rendered as a
+    // highlighted YAML box. Document-start-only: a `---` block anywhere else is
+    // left to the normal thematic-break / setext handling. [REF:fr:frontmatter]
+    function frontMatterPlugin(md) {
+      var DASH = 0x2D;  // '-'
+
+      // True when the line is nothing but `-` characters (>= min), no indent.
+      function isFence(state, line) {
+        if (state.tShift[line] !== 0) return false;
+        var start = state.bMarks[line] + state.tShift[line];
+        var max = state.eMarks[line];
+        if (max - start < 3) return false;
+        for (var pos = start; pos < max; pos++) {
+          if (state.src.charCodeAt(pos) !== DASH) return false;
+        }
+        return true;
+      }
+
+      function frontMatter(state, startLine, endLine, silent) {
+        // Only at the very start of the document, at the outermost indent.
+        if (startLine !== 0 || state.blkIndent !== 0) return false;
+        if (!isFence(state, startLine)) return false;
+        // Seek the closing fence.
+        var closeLine = startLine, found = false;
+        for (;;) {
+          closeLine++;
+          if (closeLine >= endLine) break;
+          if (isFence(state, closeLine)) { found = true; break; }
+        }
+        if (!found) return false;   // no closing fence → not frontmatter
+        if (silent) return true;
+        var token = state.push('front_matter', '', 0);
+        token.markup = '---';
+        token.content = state.getLines(startLine + 1, closeLine, 0, false);
+        token.map = [startLine, closeLine + 1];
+        state.line = closeLine + 1;
+        return true;
+      }
+
+      md.block.ruler.before('table', 'front_matter', frontMatter, {
+        alt: ['paragraph', 'reference', 'blockquote', 'list']
+      });
+      md.renderer.rules.front_matter = function (tokens, idx) {
+        var yaml = tokens[idx].content;
+        var body;
+        if (window.hljs && window.hljs.getLanguage('yaml')) {
+          try {
+            body = window.hljs.highlight(yaml, { language: 'yaml', ignoreIllegals: true }).value;
+          } catch (e) {
+            console.warn('frontmatter highlight failed', e);
+            body = escapeHtml(yaml);
+          }
+        } else {
+          body = escapeHtml(yaml);
+        }
+        return '<pre class="hljs markio-frontmatter"><code>' + body + '</code></pre>\n';
+      };
+    }
+
     var md = window.markdownit({
       html: false,        // do not pass raw HTML through (read-only viewer, safety)
       linkify: true,      // GFM autolinks
@@ -207,7 +290,8 @@
         }
         return '<pre class="hljs"><code>' + escapeHtml(str) + '</code></pre>';
       }
-    }).use(window.markdownitTaskLists, { enabled: false }).use(mathPlugin);
+    }).use(window.markdownitTaskLists, { enabled: false })
+      .use(mathPlugin).use(frontMatterPlugin);
 
     function initMermaid() {
       if (!window.mermaid) return;

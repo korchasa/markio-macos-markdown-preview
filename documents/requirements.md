@@ -82,6 +82,13 @@
 - **Acceptance:** `Tests/MarkioTests/MenuArtifactCleanerTests.swift::testRemovesPlaceholderAndTrailingSeparators` (artifact removal); `manual — maintainer — documents/checklists/menu.md` (semantic removal + localization)
 - **Status:** [x]
 
+### 3.13 FR-FRONTMATTER: Render leading YAML frontmatter [ANC:fr:frontmatter]
+- **Desc:** A YAML frontmatter block delimited by `---` fences at the **very top** of a document (first line exactly `---`, a later line exactly `---`) renders as a distinct, readable metadata block — a syntax-highlighted YAML box (vendored highlight.js `yaml` grammar) with a subtle border and a "frontmatter" caption — instead of the mangled setext-heading + `<hr>` markdown-it produces without a frontmatter rule. Recognized **only** at document start (a `---` block anywhere else stays a normal thematic break / setext heading); a document without frontmatter is unchanged. Best-effort: an opening `---` with no closing fence falls through to default parsing, never crashing (NFR Reliability). Offline — reuses the already-vendored highlight.js, no new dependency.
+- **Tasks:** [REF:task:2026-07-add-frontmatter-display | add-frontmatter-display]
+- **Scenario:** A note starting with `---\ntitle: Hello\ntags: [a, b]\n---\n\n# Body` shows the metadata as a highlighted YAML box and `# Body` as an `<h1>`; a `---` on its own line mid-document still renders a horizontal rule.
+- **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testFrontmatterRendersAsMetadata`
+- **Status:** [x]
+
 ### 3.12 FR-MATH: Render LaTeX math [ANC:fr:math]
 - **Desc:** Inline `$…$` and block `$$…$$` LaTeX render as typeset math via vendored KaTeX (offline). Math is tokenized at **parse time** (a markdown-it rule) so `*`/`_`/`\` inside a formula are never mangled by emphasis/escape rules, and `$` inside a code span stays literal. A money guard (no digit immediately after the closing `$`) keeps `$5 and $10`-style text literal. Malformed math renders best-effort (KaTeX error node), never crashing the render (NFR Reliability). Rendered math sets no explicit color → inherits `CanvasText`, following light/dark automatically.
 - **Tasks:** [REF:task:2026-07-add-math-support | add-math-support]
