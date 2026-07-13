@@ -213,6 +213,7 @@ final class RenderTests: XCTestCase {
             String(repeating: "> ", count: 5000) + "deeply nested",
             "| broken | table\n| --- \n| 1",
             "<script>alert(1)</script> & <unclosed",
+            "```swift\nlet unterminated = true",  // unclosed fence [REF:fr:code-copy]
         ]
         for input in inputs {
             await preview.render(input)  // render() is best-effort and never throws

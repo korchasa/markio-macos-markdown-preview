@@ -17,6 +17,8 @@ surface. The one on-screen reading control is **line width**.
   agent write a document without losing your place
 - Table-of-contents sidebar (⌥⌘S): the heading tree, click to jump, current
   section highlighted while you scroll
+- Copy button on code blocks: hover a fenced block to reveal Copy and a
+  language badge; one click puts the raw code on the clipboard
 - Adjustable reading width (toolbar slider), persisted across launches
 - Fully offline — all rendering assets are vendored; the web view never touches
   the network

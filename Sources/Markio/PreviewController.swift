@@ -15,25 +15,40 @@ final class PreviewController: NSObject {
     /// scroll-spy reports a section change. [REF:fr:toc]
     var onCurrentSectionChange: ((String) -> Void)?
 
+    /// Fired on the main actor with the raw code text after a copy-button click
+    /// landed on the pasteboard (test/UI hook). [REF:fr:code-copy]
+    var onCodeCopied: ((String) -> Void)?
+
     /// Retained separately because the user-content controller holds its
-    /// handler strongly — registering `self` directly would cycle
+    /// handlers strongly — registering `self` directly would cycle
     /// webView → configuration → handler → controller. [REF:fr:toc]
     private let tocMessageProxy = ScriptMessageProxy()
+    private let copyMessageProxy = ScriptMessageProxy()
 
-    /// Builds the confined `WKWebView`: exactly one message handler — the
-    /// read-only `markioTOC` scroll-spy channel (page → native, current heading
-    /// id) — wired to `self` as navigation delegate so every navigation is
-    /// gated by `decidePolicyFor` (only the initial `file:` load and in-page
-    /// file links are allowed; web links open externally).
-    override init() {
+    /// Destination for copy-button writes. Injected so tests use a private,
+    /// uniquely named pasteboard instead of the user's clipboard. [REF:fr:code-copy]
+    private let pasteboard: NSPasteboard
+
+    /// Builds the confined `WKWebView`: two one-way page→native message
+    /// handlers — the read-only `markioTOC` scroll-spy channel (current heading
+    /// id) and the `markioCopy` copy channel (raw code text → pasteboard) —
+    /// wired to `self` as navigation delegate so every navigation is gated by
+    /// `decidePolicyFor` (only the initial `file:` load and in-page file links
+    /// are allowed; web links open externally).
+    init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = false
         config.userContentController.add(tocMessageProxy, name: "markioTOC")
+        config.userContentController.add(copyMessageProxy, name: "markioCopy")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
         tocMessageProxy.onMessage = { [weak self] message in
             self?.handleTOCMessage(message)
+        }
+        copyMessageProxy.onMessage = { [weak self] message in
+            self?.handleCopyMessage(message)
         }
     }
 
@@ -201,6 +216,21 @@ final class PreviewController: NSObject {
         guard message.name == "markioTOC", let id = message.body as? String, !id.isEmpty
         else { return }
         onCurrentSectionChange?(id)
+    }
+
+    /// Validate a copy-button push and write the raw code text to the
+    /// pasteboard. Anything but a non-empty string payload is dropped;
+    /// a failed write is logged, never thrown (best-effort per NFR
+    /// Reliability). [REF:fr:code-copy]
+    private func handleCopyMessage(_ message: WKScriptMessage) {
+        guard message.name == "markioCopy", let code = message.body as? String, !code.isEmpty
+        else { return }
+        pasteboard.clearContents()
+        if !pasteboard.setString(code, forType: .string) {
+            Log.preview.error("pasteboard write failed for copied code block")
+            return
+        }
+        onCodeCopied?(code)
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.

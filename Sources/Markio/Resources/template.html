@@ -57,6 +57,40 @@
       border: 1px solid rgba(128, 128, 128, 0.4);
       border-radius: 6px;
     }
+    /* Copy button + language badge on fenced code blocks: hover-revealed UI in
+       the block's top-right corner. The wrapper (not the <pre>) is positioned
+       because highlight.js gives the <pre> `overflow:auto` — an absolutely
+       positioned child would scroll away with long lines. Scheme-neutral
+       colors match the frontmatter box. [REF:fr:code-copy] */
+    .markdown-body .markio-codeblock { position: relative; }
+    .markdown-body .markio-code-ui {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .markdown-body .markio-codeblock:hover .markio-code-ui,
+    .markdown-body .markio-codeblock:focus-within .markio-code-ui { opacity: 1; }
+    .markdown-body .markio-code-lang {
+      font-size: 0.72em;
+      letter-spacing: 0.05em;
+      color: rgba(128, 128, 128, 0.9);
+    }
+    .markdown-body button.markio-copy {
+      font: inherit;
+      font-size: 0.72em;
+      padding: 2px 8px;
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 6px;
+      background-color: Canvas;
+      color: CanvasText;
+      cursor: pointer;
+    }
+    .markdown-body button.markio-copy:hover { border-color: rgba(128, 128, 128, 0.8); }
     /* Find highlights: every match is wrapped in a <mark>, the current one
        emphasized. Dark text on both swatches stays legible in light/dark. */
     mark.markio-find {
@@ -88,6 +122,12 @@
 
     function escapeHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Attribute-context escape: escapeHtml plus quotes, so a fence info string
+    // can never break out of a data-* attribute. [REF:fr:code-copy]
+    function escapeAttr(s) {
+      return escapeHtml(s).replace(/"/g, '&quot;');
     }
 
     // [REF:fr:inline-html] — allowlist gate between md.render() and the DOM.
@@ -307,14 +347,18 @@
         if (lang === 'mermaid') {
           return '<pre class="mermaid">' + escapeHtml(str) + '</pre>';
         }
+        // Carry the fence info's language so the post-render decoration pass
+        // can show a badge. DOMPurify keeps data-* attributes (ALLOW_DATA_ATTR
+        // default), so the attribute survives the sanitize gate. [REF:fr:code-copy]
+        var langAttr = lang ? ' data-lang="' + escapeAttr(lang) + '"' : '';
         if (lang && window.hljs && window.hljs.getLanguage(lang)) {
           try {
-            return '<pre class="hljs"><code>' +
+            return '<pre class="hljs"' + langAttr + '><code>' +
               window.hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
               '</code></pre>';
           } catch (e) { console.warn('highlight failed for language ' + lang, e); }
         }
-        return '<pre class="hljs"><code>' + escapeHtml(str) + '</code></pre>';
+        return '<pre class="hljs"' + langAttr + '><code>' + escapeHtml(str) + '</code></pre>';
       }
     }).use(window.markdownitTaskLists, { enabled: false })
       .use(mathPlugin).use(frontMatterPlugin);
@@ -342,6 +386,7 @@
       var el = document.getElementById('content');
       el.innerHTML = sanitizeHtml(md.render(markdown != null ? String(markdown) : ''));
       rebuildTOC();
+      decorateCodeBlocks();
       if (window.mermaid) {
         var nodes = el.querySelectorAll('pre.mermaid');
         if (nodes.length) {
@@ -355,6 +400,60 @@
       postCurrentSection();
       return true;
     }
+
+    // ---- Copy button on code blocks -----------------------------------------
+    // The page owns the hover UI (button + badge); the clipboard write is
+    // native: a click posts the raw code text to the one-way `markioCopy`
+    // message handler and PreviewController writes NSPasteboard (in-page
+    // navigator.clipboard is unreliable in the sandboxed WKWebView).
+    // Decoration is re-created on every render — no state to preserve across
+    // live reloads. Fenced blocks only: mermaid (`pre.mermaid`) and the
+    // frontmatter box (`pre.markio-frontmatter`) are excluded. [REF:fr:code-copy]
+    function decorateCodeBlocks() {
+      var root = document.getElementById('content');
+      var pres = root.querySelectorAll('pre.hljs:not(.markio-frontmatter)');
+      for (var i = 0; i < pres.length; i++) {
+        var pre = pres[i];
+        var wrap = document.createElement('div');
+        wrap.className = 'markio-codeblock';
+        pre.parentNode.replaceChild(wrap, pre);
+        wrap.appendChild(pre);
+        var ui = document.createElement('div');
+        ui.className = 'markio-code-ui';
+        var lang = pre.getAttribute('data-lang');
+        if (lang) {
+          var badge = document.createElement('span');
+          badge.className = 'markio-code-lang';
+          badge.textContent = lang;
+          ui.appendChild(badge);
+        }
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'markio-copy';
+        btn.textContent = 'Copy';
+        ui.appendChild(btn);
+        wrap.appendChild(ui);
+      }
+    }
+
+    // One delegated listener (#content survives re-renders, buttons do not):
+    // post the block's raw code — the <code> textContent is markup-free by
+    // construction — and flash optimistic "Copied" feedback. The handler guard
+    // keeps the page working headless. [REF:fr:code-copy]
+    document.getElementById('content').addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ?
+        e.target.closest('button.markio-copy') : null;
+      if (!btn) return;
+      var wrap = btn.closest('.markio-codeblock');
+      var code = wrap ? wrap.querySelector('pre.hljs > code') : null;
+      if (!code) return;
+      if (window.webkit && window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.markioCopy) {
+        window.webkit.messageHandlers.markioCopy.postMessage(code.textContent);
+      }
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
 
     // ---- Table of contents --------------------------------------------------
     // The native sidebar owns the chrome; the page owns the content mechanics:
@@ -507,6 +606,11 @@
             // Skip KaTeX-rendered math: splicing <mark> into its spans/MathML
             // would corrupt the layout. [REF:fr:math]
             if (p.classList && p.classList.contains('katex')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            // Skip the copy button / language badge: page UI, not document
+            // content — "Copy" must never be a search match. [REF:fr:code-copy]
+            if (p.classList && p.classList.contains('markio-code-ui')) {
               return NodeFilter.FILTER_REJECT;
             }
             p = p.parentNode;

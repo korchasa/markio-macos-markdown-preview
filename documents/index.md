@@ -4,6 +4,7 @@ Navigation aggregator across linkable artifacts (FR / SDS / NFR).
 
 ## FR
 
+- [REF:fr:code-copy | FR-CODE-COPY] — Hover Copy button + language badge on fenced code blocks; raw code → clipboard — [x]
 - [REF:fr:frontmatter | FR-FRONTMATTER] — Render leading YAML frontmatter as a highlighted metadata block — [x]
 - [REF:fr:inline-html | FR-INLINE-HTML] — Render raw inline HTML through a DOMPurify tag-allowlist sanitizer — [x]
 - [REF:fr:live-reload | FR-LIVE-RELOAD] — Refresh the preview on external file edits, preserving scroll position — [x]
