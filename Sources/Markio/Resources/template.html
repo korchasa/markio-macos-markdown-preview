@@ -538,6 +538,37 @@
     // and the cached heading list keeps the recompute O(headings).
     window.addEventListener('scroll', postCurrentSection);
 
+    // ---- Scroll position persistence ----------------------------------------
+    // The page reports the reading position to native, which persists it per
+    // document and pushes it back on the next open (relaunch / Open Recent /
+    // reopen). True debounce: the page-global timer resets on every scroll
+    // event and fires 250 ms after the last one — continuous saving survives
+    // even a force quit. The handler guard keeps the page working headless.
+    // [REF:fr:session-restore]
+    var __scrollPost = { timer: null, lastPosted: -1 };
+    function postScrollPosition() {
+      if (__scrollPost.timer) clearTimeout(__scrollPost.timer);
+      __scrollPost.timer = setTimeout(function () {
+        __scrollPost.timer = null;
+        var y = Math.round(window.scrollY);
+        if (y === __scrollPost.lastPosted) return;
+        __scrollPost.lastPosted = y;
+        if (window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.markioScroll) {
+          window.webkit.messageHandlers.markioScroll.postMessage(String(y));
+        }
+      }, 250);
+    }
+    window.addEventListener('scroll', postScrollPosition);
+
+    // Restore entrypoint: the browser clamps a position beyond the (possibly
+    // shorter) document, so the applied value is returned for verification.
+    function setScrollY(y) {
+      window.scrollTo(window.scrollX, Number(y) || 0);
+      return window.scrollY;
+    }
+    function getScrollY() { return window.scrollY; }
+
     // Jump so the heading sits at the viewport top (TOC semantics; find keeps
     // its block:'center'). Returns whether the id existed.
     function scrollToHeading(id) {
@@ -695,6 +726,8 @@
     window.getOutline = getOutline;
     window.getCurrentSection = getCurrentSection;
     window.scrollToHeading = scrollToHeading;
+    window.setScrollY = setScrollY;
+    window.getScrollY = getScrollY;
   </script>
 </body>
 </html>

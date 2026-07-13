@@ -19,11 +19,16 @@ final class PreviewController: NSObject {
     /// landed on the pasteboard (test/UI hook). [REF:fr:code-copy]
     var onCodeCopied: ((String) -> Void)?
 
+    /// Fired on the main actor with the page's debounced scroll position so
+    /// the owner can persist the reading place. [REF:fr:session-restore]
+    var onScrollPositionChange: ((Double) -> Void)?
+
     /// Retained separately because the user-content controller holds its
     /// handlers strongly — registering `self` directly would cycle
     /// webView → configuration → handler → controller. [REF:fr:toc]
     private let tocMessageProxy = ScriptMessageProxy()
     private let copyMessageProxy = ScriptMessageProxy()
+    private let scrollMessageProxy = ScriptMessageProxy()
 
     /// Destination for copy-button writes. Injected so tests use a private,
     /// uniquely named pasteboard instead of the user's clipboard. [REF:fr:code-copy]
@@ -41,6 +46,7 @@ final class PreviewController: NSObject {
         config.suppressesIncrementalRendering = false
         config.userContentController.add(tocMessageProxy, name: "markioTOC")
         config.userContentController.add(copyMessageProxy, name: "markioCopy")
+        config.userContentController.add(scrollMessageProxy, name: "markioScroll")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
@@ -49,6 +55,9 @@ final class PreviewController: NSObject {
         }
         copyMessageProxy.onMessage = { [weak self] message in
             self?.handleCopyMessage(message)
+        }
+        scrollMessageProxy.onMessage = { [weak self] message in
+            self?.handleScrollMessage(message)
         }
     }
 
@@ -114,6 +123,24 @@ final class PreviewController: NSObject {
             )
         } catch {
             Log.preview.error("setDark(\(dark)) failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Scroll the page to a saved reading position; returns the applied
+    /// (browser-clamped) value, or `nil` if the bridge call failed (logged) —
+    /// the same best-effort contract as `setContentWidth`. [REF:fr:session-restore]
+    @discardableResult
+    func setScrollY(_ y: Double) async -> Double? {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                "return setScrollY(y);",
+                arguments: ["y": y],
+                contentWorld: .page
+            )
+            return (raw as? NSNumber)?.doubleValue
+        } catch {
+            Log.preview.error("setScrollY(\(y)) failed: \(error.localizedDescription)")
+            return nil
         }
     }
 
@@ -231,6 +258,18 @@ final class PreviewController: NSObject {
             return
         }
         onCodeCopied?(code)
+    }
+
+    /// Validate a scroll-position push: a non-empty string parseable as a
+    /// non-negative finite number; anything else is dropped. [REF:fr:session-restore]
+    private func handleScrollMessage(_ message: WKScriptMessage) {
+        guard
+            message.name == "markioScroll",
+            let text = message.body as? String,
+            let y = Double(text),
+            y.isFinite, y >= 0
+        else { return }
+        onScrollPositionChange?(y)
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.

@@ -53,6 +53,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// system "prefer tabs" setting. [REF:fr:multidoc]
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Quit always keeps Markio's windows: relaunch reopens the documents
+        // that were open at quit (DocumentGroup/AppKit state restoration;
+        // sandbox access is system-managed). Written to the app's defaults
+        // domain — `register(defaults:)` would lose to the user's global
+        // "Close windows when quitting" setting, the app domain overrides it.
+        // [REF:fr:session-restore]
+        UserDefaults.standard.set(true, forKey: "NSQuitAlwaysKeepsWindows")
+    }
+
+    /// Opt into secure state restoration (macOS 14 requirement for restoring
+    /// windows without a console warning). [REF:fr:session-restore]
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

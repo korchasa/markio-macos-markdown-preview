@@ -20,6 +20,8 @@ surface. The one on-screen reading control is **line width**.
 - Copy button on code blocks: hover a fenced block to reveal Copy and a
   language badge; one click puts the raw code on the clipboard
 - Adjustable reading width (toolbar slider), persisted across launches
+- Picks up where you left off: File ▸ Open Recent, windows reopen on relaunch,
+  and every document returns at its last scroll position
 - Fully offline — all rendering assets are vendored; the web view never touches
   the network
 

@@ -8,8 +8,9 @@ import SwiftUI
 @MainActor
 final class DocumentModel: ObservableObject {
     let preview = PreviewController()
-    private let widthStore = ContentWidthStore()
-    private let tocStore = TOCStore()
+    private let widthStore: ContentWidthStore
+    private let tocStore: TOCStore
+    private let scrollStore: ScrollPositionStore
     private var watcher: FileWatcher?
     private var started = false
     private var currentText = ""
@@ -27,11 +28,21 @@ final class DocumentModel: ObservableObject {
     @Published var outline: [TOCItem] = []
     @Published var currentHeadingID: String?
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        widthStore = ContentWidthStore(defaults: defaults)
+        tocStore = TOCStore(defaults: defaults)
+        scrollStore = ScrollPositionStore(defaults: defaults)
         contentWidth = Double(widthStore.width)
         tocVisible = tocStore.visible
         preview.onCurrentSectionChange = { [weak self] id in
             self?.currentHeadingID = id
+        }
+        // Persist the reading place continuously (the page debounces), so the
+        // position survives window close, quit, and even a force quit.
+        // [REF:fr:session-restore]
+        preview.onScrollPositionChange = { [weak self] y in
+            guard let self, let url = self.url else { return }
+            self.scrollStore.setPosition(y, for: url)
         }
     }
 
@@ -55,6 +66,14 @@ final class DocumentModel: ObservableObject {
         await preview.setDark(Self.systemIsDark)
         await preview.render(text)
         await refreshOutline()
+        // Reopening a known document restores the reader's last position —
+        // once per window (this method is `started`-guarded), covering
+        // relaunch, Open Recent, and plain reopen alike. A position beyond a
+        // now-shorter document is clamped by the browser.
+        // [REF:fr:session-restore]
+        if let url, let savedY = scrollStore.position(for: url) {
+            await preview.setScrollY(savedY)
+        }
         if let url { startWatching(url) }
     }
 
