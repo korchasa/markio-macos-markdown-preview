@@ -8,7 +8,7 @@ related_tasks:
   - "[Implement Markio app](../../2026/06/implement-markview-app.md)"
   - "[Daily-use feature backlog](daily-use-feature-backlog.md)"
 ---
-# Live reload preserves scroll position
+# Live reload preserves scroll position [ANC:task:2026-07-live-reload-preserve-scroll]
 
 ## Goal
 
