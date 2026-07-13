@@ -11,16 +11,30 @@ final class PreviewController: NSObject {
     private var loadContinuation: CheckedContinuation<Void, Error>?
     private var didFinishInitialLoad = false
 
-    /// Builds the confined `WKWebView`: a default configuration with no message
-    /// handlers, wired to `self` as navigation delegate so every navigation is
+    /// Fired on the main actor with the current heading id whenever the page's
+    /// scroll-spy reports a section change. [REF:fr:toc]
+    var onCurrentSectionChange: ((String) -> Void)?
+
+    /// Retained separately because the user-content controller holds its
+    /// handler strongly — registering `self` directly would cycle
+    /// webView → configuration → handler → controller. [REF:fr:toc]
+    private let tocMessageProxy = ScriptMessageProxy()
+
+    /// Builds the confined `WKWebView`: exactly one message handler — the
+    /// read-only `markioTOC` scroll-spy channel (page → native, current heading
+    /// id) — wired to `self` as navigation delegate so every navigation is
     /// gated by `decidePolicyFor` (only the initial `file:` load and in-page
     /// file links are allowed; web links open externally).
     override init() {
         let config = WKWebViewConfiguration()
         config.suppressesIncrementalRendering = false
+        config.userContentController.add(tocMessageProxy, name: "markioTOC")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
+        tocMessageProxy.onMessage = { [weak self] message in
+            self?.handleTOCMessage(message)
+        }
     }
 
     /// Load `template.html`, scoping read access to the vendored bundle only.
@@ -130,9 +144,90 @@ final class PreviewController: NSObject {
         }
     }
 
+    // MARK: - Table of contents [REF:fr:toc]
+
+    /// The document's heading tree in document order. Best-effort: a bridge
+    /// failure logs and yields an empty outline.
+    func outline() async -> [TOCItem] {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                "return getOutline();", arguments: [:], contentWorld: .page)
+            guard let items = raw as? [[String: Any]] else { return [] }
+            return items.compactMap { dict in
+                guard
+                    let level = (dict["level"] as? NSNumber)?.intValue,
+                    let text = dict["text"] as? String,
+                    let id = dict["id"] as? String
+                else { return nil }
+                return TOCItem(level: level, text: text, id: id)
+            }
+        } catch {
+            Log.preview.error("outline failed: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    /// Scroll the heading with `id` to the top of the viewport. Returns whether
+    /// the heading existed; a bridge failure logs and reports `false`.
+    @discardableResult
+    func scrollToHeading(_ id: String) async -> Bool {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                "return scrollToHeading(id);", arguments: ["id": id], contentWorld: .page)
+            return (raw as? Bool) ?? (raw as? NSNumber)?.boolValue ?? false
+        } catch {
+            Log.preview.error("scrollToHeading(\(id)) failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Id of the section currently at the viewport top, or `nil` when the
+    /// document has no headings (or the bridge call failed — logged).
+    func currentSection() async -> String? {
+        do {
+            let raw = try await webView.callAsyncJavaScript(
+                "return getCurrentSection();", arguments: [:], contentWorld: .page)
+            guard let id = raw as? String, !id.isEmpty else { return nil }
+            return id
+        } catch {
+            Log.preview.error("currentSection failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Validate and forward a scroll-spy push. Anything but a non-empty string
+    /// payload is dropped.
+    private func handleTOCMessage(_ message: WKScriptMessage) {
+        guard message.name == "markioTOC", let id = message.body as? String, !id.isEmpty
+        else { return }
+        onCurrentSectionChange?(id)
+    }
+
     /// Test/diagnostic hook: evaluate JS in the page world.
     func evaluate(_ javaScript: String) async throws -> Any? {
         try await webView.evaluateJavaScript(javaScript)
+    }
+}
+
+/// One entry of the document's heading tree: `level` 1–6, the heading's text,
+/// and its GitHub-style slug id (deduplicated, so usable as `Identifiable`).
+/// [REF:fr:toc]
+struct TOCItem: Equatable, Identifiable {
+    let level: Int
+    let text: String
+    let id: String
+}
+
+/// Weak-forwarding `WKScriptMessageHandler`: the user-content controller
+/// retains its handlers strongly, so the web-view owner must not register
+/// itself. [REF:fr:toc]
+private final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
+    var onMessage: ((WKScriptMessage) -> Void)?
+
+    func userContentController(
+        _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
+    ) {
+        onMessage?(message)
     }
 }
 

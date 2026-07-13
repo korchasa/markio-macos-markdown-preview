@@ -104,18 +104,25 @@
 - **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testInlineHTMLTableRenders`; `Tests/MarkioTests/RenderTests.swift::testInlineHTMLSanitized`
 - **Status:** [x]
 
+### 3.15 FR-TOC: Table-of-contents sidebar [ANC:fr:toc]
+- **Desc:** A toggleable **native** sidebar lists the document's headings (`h1`–`h6`) as an indented tree in document order. Clicking a heading scrolls the preview so that heading sits at the top of the viewport; while the reader scrolls, the entry for the current section (the last heading at/above the viewport top) stays highlighted and visible in the sidebar. Toggled via `View ▸ Show/Hide Table of Contents` (⌥⌘S, the macOS sidebar convention); the visibility choice is a global reading preference persisted across launches (`UserDefaults`, like the line width). Heading anchors are GitHub-style slugs deduplicated with numeric suffixes, assigned by the page on every render — so after a live reload / appearance re-render the outline is re-pulled and jump/highlight keep working ([REF:fr:live-reload | FR-LIVE-RELOAD] interplay). A document with no headings shows an empty-state placeholder. The sidebar is native chrome (the web view still owns only content rendering); the scroll-spy is the app's single page→native message (see §5).
+- **Tasks:** [REF:task:2026-07-toc-sidebar | toc-sidebar]
+- **Scenario:** Reading a long agent-written report, the user presses ⌥⌘S → the heading tree appears; clicking "Results" jumps the preview there; scrolling onward moves the highlight to the next section; the file is re-saved by the agent → the tree matches the new document. Relaunching the app keeps the sidebar shown.
+- **Acceptance:** `Tests/MarkioTests/TOCTests.swift::testOutlineExtractsHeadingTree`; `Tests/MarkioTests/TOCTests.swift::testJumpScrollsToHeading`; `Tests/MarkioTests/TOCTests.swift::testCurrentSectionTracksScroll`; `Tests/MarkioTests/TOCTests.swift::testSidebarVisibilityPersists`; `Tests/MarkioTests/TOCTests.swift::testOutlineSurvivesRerender`
+- **Status:** [x]
+
 ---
 
 ## 4. Non-Functional
 - **Perf:** Open + first render of a typical (<200 KB) doc < 300 ms on Apple Silicon. Width-slider reflow feels instant (< 1 frame perceptible lag).
 - **Reliability:** Malformed Markdown never crashes; renders best-effort.
-- **Sec:** No network, no JS bridge beyond the line-width message handler; `WKWebView` confined to bundled file URLs. Raw inline HTML passes a DOMPurify allowlist sanitizer before DOM insertion ([REF:fr:inline-html | FR-INLINE-HTML]).
+- **Sec:** No network; the JS bridge is native→web calls plus exactly one read-only page→native message handler (`markioTOC`, current heading id — [REF:fr:toc | FR-TOC]); `WKWebView` confined to bundled file URLs. Raw inline HTML passes a DOMPurify allowlist sanitizer before DOM insertion ([REF:fr:inline-html | FR-INLINE-HTML]).
 - **Scale:** Multiple independent document windows; each handles large docs (multi-MB) without freezing the UI (off-main-thread load).
 - **UX:** Native document windows/menus (Open Recent, tabs, restore via `DocumentGroup`); minimal chrome; the only persistent on-screen reading control is line width, in a bottom bar.
 
 ## 5. Interfaces
 - **UI:** Native document windows (`DocumentGroup`) + a bottom bar (line-width control). Standard menu bar (File ▸ Open / Open Recent), state restoration. One window per document — no window tabs. Drag a file onto a window → opens it in a new window. Preview surface = `WKWebView`.
-- **Proto (internal):** Native → web view (via `callAsyncJavaScript`): set Markdown source (`render`), set reading width (`setContentWidth`, `ch`), set appearance (`setDark`), find text (`search`/`findNext`/`findPrev`/`clearSearch`). Web → native: no message handler — link clicks are intercepted by the `WKNavigationDelegate` (external links open in the default browser via `NSWorkspace`); width changes persist natively (slider → `UserDefaults`).
+- **Proto (internal):** Native → web view (via `callAsyncJavaScript`): set Markdown source (`render`), set reading width (`setContentWidth`, `ch`), set appearance (`setDark`), find text (`search`/`findNext`/`findPrev`/`clearSearch`), read the outline (`getOutline`), jump to a heading (`scrollToHeading`), read the current section (`getCurrentSection`). Web → native: exactly one read-only `WKScriptMessageHandler` (`markioTOC`) — the page pushes the current heading id (string) when it changes on scroll ([REF:fr:toc | FR-TOC]); link clicks are intercepted by the `WKNavigationDelegate` (external links open in the default browser via `NSWorkspace`); width changes persist natively (slider → `UserDefaults`).
 - **File types:** `.md`, `.markdown` (UTType conformance declared in the app).
 
 ## 6. Acceptance

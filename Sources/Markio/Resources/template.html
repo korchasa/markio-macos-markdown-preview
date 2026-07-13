@@ -341,6 +341,7 @@
       var scrollX = window.scrollX, scrollY = window.scrollY;
       var el = document.getElementById('content');
       el.innerHTML = sanitizeHtml(md.render(markdown != null ? String(markdown) : ''));
+      rebuildTOC();
       if (window.mermaid) {
         var nodes = el.querySelectorAll('pre.mermaid');
         if (nodes.length) {
@@ -351,6 +352,100 @@
         }
       }
       window.scrollTo(scrollX, scrollY);
+      postCurrentSection();
+      return true;
+    }
+
+    // ---- Table of contents --------------------------------------------------
+    // The native sidebar owns the chrome; the page owns the content mechanics:
+    // heading ids, outline extraction, jump scrolling, and the current-section
+    // math. Heading elements are re-created on every render, so the cache is
+    // rebuilt in render() — stale nodes never leak across a live reload.
+    // [REF:fr:toc]
+    var __toc = { headings: [], lastPosted: '' };
+
+    // GitHub-style slug: lowercase, punctuation stripped (unicode letters and
+    // digits kept), whitespace collapsed to dashes.
+    function slugify(text) {
+      return text.trim().toLowerCase()
+        .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+        .replace(/\s+/g, '-');
+    }
+
+    // Walk #content h1–h6 in document order: assign deduplicated slug ids
+    // (`beta`, `beta-1`, …) and cache the outline. Headings whose trimmed text
+    // is empty still get ids but are excluded from the outline — they carry no
+    // navigational meaning.
+    function rebuildTOC() {
+      var root = document.getElementById('content');
+      var els = root.querySelectorAll('h1,h2,h3,h4,h5,h6');
+      var used = Object.create(null);
+      var items = [];
+      for (var i = 0; i < els.length; i++) {
+        var heading = els[i];
+        var text = (heading.textContent || '').trim();
+        var base = slugify(text) || 'section';
+        var id = base;
+        var n = 1;
+        while (used[id]) { id = base + '-' + (n++); }
+        used[id] = true;
+        heading.id = id;
+        if (text) {
+          items.push({
+            level: Number(heading.tagName[1]), text: text, id: id, el: heading
+          });
+        }
+      }
+      __toc.headings = items;
+    }
+
+    function getOutline() {
+      return __toc.headings.map(function (h) {
+        return { level: h.level, text: h.text, id: h.id };
+      });
+    }
+
+    // The current section is the last heading at/above a small viewport-top
+    // threshold; before any heading crosses it the first heading is current.
+    // Empty string when the document has no headings.
+    function computeCurrentSection() {
+      var hs = __toc.headings;
+      if (!hs.length) return '';
+      var current = hs[0].id;
+      for (var i = 0; i < hs.length; i++) {
+        if (hs[i].el.getBoundingClientRect().top <= 12) current = hs[i].id;
+        else break;
+      }
+      return current;
+    }
+
+    function getCurrentSection() { return computeCurrentSection(); }
+
+    // Push the current section id to native when (and only when) it changes —
+    // rapid scrolling produces at most one message per section boundary. The
+    // handler guard keeps the page working headless (tests drive it via
+    // evaluate, where no messageHandlers bridge exists).
+    function postCurrentSection() {
+      var id = computeCurrentSection();
+      if (id === __toc.lastPosted) return;
+      __toc.lastPosted = id;
+      if (window.webkit && window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.markioTOC) {
+        window.webkit.messageHandlers.markioTOC.postMessage(id);
+      }
+    }
+
+    // Synchronous on purpose: rAF does not fire in offscreen web views (tests),
+    // and the cached heading list keeps the recompute O(headings).
+    window.addEventListener('scroll', postCurrentSection);
+
+    // Jump so the heading sits at the viewport top (TOC semantics; find keeps
+    // its block:'center'). Returns whether the id existed.
+    function scrollToHeading(id) {
+      var heading = document.getElementById(String(id));
+      if (!heading) return false;
+      heading.scrollIntoView({ block: 'start', inline: 'nearest' });
+      postCurrentSection();
       return true;
     }
 
@@ -493,6 +588,9 @@
     window.findNext = findNext;
     window.findPrev = findPrev;
     window.clearSearch = clearSearch;
+    window.getOutline = getOutline;
+    window.getCurrentSection = getCurrentSection;
+    window.scrollToHeading = scrollToHeading;
   </script>
 </body>
 </html>

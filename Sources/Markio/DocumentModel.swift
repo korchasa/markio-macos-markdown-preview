@@ -9,6 +9,7 @@ import SwiftUI
 final class DocumentModel: ObservableObject {
     let preview = PreviewController()
     private let widthStore = ContentWidthStore()
+    private let tocStore = TOCStore()
     private var watcher: FileWatcher?
     private var started = false
     private var currentText = ""
@@ -21,8 +22,17 @@ final class DocumentModel: ObservableObject {
     @Published var findQuery = ""
     @Published var findResult = FindResult.empty
 
+    // TOC state, mirrored to the sidebar. [REF:fr:toc]
+    @Published var tocVisible: Bool
+    @Published var outline: [TOCItem] = []
+    @Published var currentHeadingID: String?
+
     init() {
         contentWidth = Double(widthStore.width)
+        tocVisible = tocStore.visible
+        preview.onCurrentSectionChange = { [weak self] id in
+            self?.currentHeadingID = id
+        }
     }
 
     /// One-time page setup + initial render; safe to call from `.task` on every
@@ -44,6 +54,7 @@ final class DocumentModel: ObservableObject {
         await preview.setContentWidth(Int(contentWidth))
         await preview.setDark(Self.systemIsDark)
         await preview.render(text)
+        await refreshOutline()
         if let url { startWatching(url) }
     }
 
@@ -61,6 +72,31 @@ final class DocumentModel: ObservableObject {
         await preview.setDark(dark)
         await preview.render(currentText)
         await reapplyFindIfActive()
+        await refreshOutline()
+    }
+
+    // MARK: - TOC [REF:fr:toc]
+
+    /// Show/hide the sidebar; the choice is a global reading preference
+    /// persisted across launches.
+    func toggleTOC() {
+        tocVisible.toggle()
+        tocStore.visible = tocVisible
+    }
+
+    /// Jump the preview to a heading. The highlight updates optimistically; the
+    /// page's scroll-spy confirms with the same id through the message handler.
+    func jumpToHeading(_ id: String) {
+        currentHeadingID = id
+        Task { await preview.scrollToHeading(id) }
+    }
+
+    /// Re-pull the heading tree after a render — heading DOM nodes are
+    /// re-created on every render, so the outline is refreshed alongside the
+    /// find re-apply on live reload / appearance switches. [REF:fr:live-reload]
+    private func refreshOutline() async {
+        outline = await preview.outline()
+        currentHeadingID = await preview.currentSection()
     }
 
     // MARK: - Find [REF:fr:find]
@@ -125,6 +161,7 @@ final class DocumentModel: ObservableObject {
             await preview.render("# Unable to read file\n\n`\(url.path)`")
         }
         await reapplyFindIfActive()
+        await refreshOutline()
     }
 
     /// True when the system appearance resolves to Dark Aqua. Uses optional

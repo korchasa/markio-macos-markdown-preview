@@ -13,28 +13,36 @@ struct ContentView: View {
     @Environment(\.openDocument) private var openDocument
 
     var body: some View {
-        PreviewView(webView: model.preview.webView)
-            .frame(minWidth: 480, minHeight: 320)
-            // The find HUD floats over the top-center of the content (it does
-            // not push the document down). [REF:fr:find]
-            .overlay(alignment: .top) {
-                if model.findPresented { findBar.padding(.top, 12) }
+        HStack(spacing: 0) {
+            // Toggleable native TOC sidebar to the left of the preview.
+            // [REF:fr:toc]
+            if model.tocVisible {
+                TOCSidebar(model: model)
+                Divider()
             }
-            // The width control lives in a bottom bar (not the toolbar), pinned
-            // below the preview. [REF:fr:line-width]
-            .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-            // Route the app-level Find menu to this (focused) window's model.
-            // [REF:fr:find]
-            .focusedSceneValue(\.documentModel, model)
-            // Show the document's full filesystem path in the title bar instead
-            // of the bare file name (DocumentGroup's default). The proxy icon
-            // (represented URL) is kept. [REF:fr:multidoc]
-            .background(WindowTitleSetter(title: fileURL?.path ?? "Markio"))
-            .onDrop(of: [.fileURL], isTargeted: nil) { handleDrop($0) }
-            .task { await model.start(text: document.text, url: fileURL) }
-            .onChange(of: colorScheme) { _, scheme in
-                Task { await model.appearanceChanged(dark: scheme == .dark) }
-            }
+            PreviewView(webView: model.preview.webView)
+                .frame(minWidth: 480, minHeight: 320)
+                // The find HUD floats over the top-center of the content (it
+                // does not push the document down). [REF:fr:find]
+                .overlay(alignment: .top) {
+                    if model.findPresented { findBar.padding(.top, 12) }
+                }
+        }
+        // The width control lives in a bottom bar (not the toolbar), pinned
+        // below the preview and spanning the whole window. [REF:fr:line-width]
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+        // Route the app-level Find/TOC menus to this (focused) window's model.
+        // [REF:fr:find] [REF:fr:toc]
+        .focusedSceneValue(\.documentModel, model)
+        // Show the document's full filesystem path in the title bar instead
+        // of the bare file name (DocumentGroup's default). The proxy icon
+        // (represented URL) is kept. [REF:fr:multidoc]
+        .background(WindowTitleSetter(title: fileURL?.path ?? "Markio"))
+        .onDrop(of: [.fileURL], isTargeted: nil) { handleDrop($0) }
+        .task { await model.start(text: document.text, url: fileURL) }
+        .onChange(of: colorScheme) { _, scheme in
+            Task { await model.appearanceChanged(dark: scheme == .dark) }
+        }
     }
 
     /// Dropping a file opens it in a NEW window rather than replacing this one.

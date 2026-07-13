@@ -19,6 +19,7 @@ struct MarkioApp: App {
         .commands {
             ReadOnlyMenuCommands()
             FindCommands()
+            TOCCommands()
         }
     }
 }

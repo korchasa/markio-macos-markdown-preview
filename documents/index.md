@@ -8,3 +8,4 @@ Navigation aggregator across linkable artifacts (FR / SDS / NFR).
 - [REF:fr:inline-html | FR-INLINE-HTML] — Render raw inline HTML through a DOMPurify tag-allowlist sanitizer — [x]
 - [REF:fr:live-reload | FR-LIVE-RELOAD] — Refresh the preview on external file edits, preserving scroll position — [x]
 - [REF:fr:math | FR-MATH] — Render inline `$…$` and block `$$…$$` LaTeX math via KaTeX (offline) — [x]
+- [REF:fr:toc | FR-TOC] — Toggleable native sidebar with the document's heading tree: click-to-jump, current section highlighted on scroll — [x]

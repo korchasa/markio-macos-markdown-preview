@@ -15,6 +15,8 @@ surface. The one on-screen reading control is **line width**.
 - Syntax highlighting (light/dark, follows system appearance)
 - Live reload on external edits, keeping your scroll position — watch an AI
   agent write a document without losing your place
+- Table-of-contents sidebar (⌥⌘S): the heading tree, click to jump, current
+  section highlighted while you scroll
 - Adjustable reading width (toolbar slider), persisted across launches
 - Fully offline — all rendering assets are vendored; the web view never touches
   the network
