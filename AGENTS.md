@@ -94,6 +94,8 @@ Cross-references between any two pieces of project knowledge — doc-to-doc, **a
 
 - **Rejected forms** — do NOT use ID-only shortcuts (`[FR-CMD-EXEC]`), wikilinks (`[[X]]`), bare ID strings (`// FR-CMD-EXEC`), custom anchor mechanisms (`{#my-anchor}`, `<a name=...>`), GFM-form cross-references (`[FR-X](path.md#…)`), or salp-short (`[ANC:id]` without namespace). Validators ship with the framework reject all of these.
 
+- **Quoting tokens as examples** — an `[ANC:…]`/`[REF:…]` token quoted in prose (e.g. citing a future SRS heading in a task file) must sit inside a single-line inline-code span. A code span wrapped across lines re-activates the token for the validator (duplicate-ANC / dead-REF).
+
 - **Drift discipline** — removing or renaming an anchor obliges updating every reference to it. Checked mechanically by `scripts/check-salp.ts` (dead-REF / duplicate-ANC / surviving-legacy-grammar) where the project ships such a script.
 
 ## Documentation Map
