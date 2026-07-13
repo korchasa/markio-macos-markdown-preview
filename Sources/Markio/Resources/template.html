@@ -332,6 +332,13 @@
     // Render Markdown into the page. Returns true when DOM + diagrams are ready.
     // Mermaid is async; awaiting it lets native/tests observe a settled DOM.
     async function render(markdown) {
+      // Preserve the reader's scroll position across the re-render (live
+      // reload / appearance switch). While Mermaid SVGs are momentarily
+      // replaced by their short source text the document shrinks and WebKit
+      // clamps the window scroll — restore it once the page has settled. The
+      // browser re-clamps if the new document is genuinely shorter, and a
+      // fresh page restores to 0 (no-op). [REF:fr:live-reload]
+      var scrollX = window.scrollX, scrollY = window.scrollY;
       var el = document.getElementById('content');
       el.innerHTML = sanitizeHtml(md.render(markdown != null ? String(markdown) : ''));
       if (window.mermaid) {
@@ -343,6 +350,7 @@
           catch (e) { console.warn('mermaid.run failed', e); }
         }
       }
+      window.scrollTo(scrollX, scrollY);
       return true;
     }
 

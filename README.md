@@ -13,7 +13,8 @@ surface. The one on-screen reading control is **line width**.
 - Inline HTML (tables with `rowspan`/`colspan`, `<details>`, `<kbd>`, …) rendered
   through a DOMPurify allowlist sanitizer — scripts and event handlers never run
 - Syntax highlighting (light/dark, follows system appearance)
-- Live reload on external edits
+- Live reload on external edits, keeping your scroll position — watch an AI
+  agent write a document without losing your place
 - Adjustable reading width (toolbar slider), persisted across launches
 - Fully offline — all rendering assets are vendored; the web view never touches
   the network

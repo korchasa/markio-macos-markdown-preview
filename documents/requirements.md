@@ -47,9 +47,10 @@
 - **Status:** [x]
 
 ### 3.6 FR-LIVE-RELOAD: Live reload on external edits [ANC:fr:live-reload]
-- **Desc:** When the open file changes on disk, the preview refreshes automatically (FSEvents/`DispatchSource`), preserving scroll position where feasible.
-- **Scenario:** User edits the file in another editor and saves → preview updates without manual reopen.
-- **Acceptance:** `Tests/MarkioTests/WatcherTests.swift::testReloadsOnFileChange`
+- **Desc:** When the open file changes on disk, the preview refreshes automatically (FSEvents/`DispatchSource`), preserving the reader's scroll position across the re-render — including Mermaid-bearing documents, whose intermediate layout is shorter while diagrams re-render (the page restores the position after settling; a genuinely shorter document clamps to the nearest valid position).
+- **Tasks:** [REF:task:2026-07-live-reload-preserve-scroll | live-reload-preserve-scroll]
+- **Scenario:** User edits the file in another editor and saves → preview updates without manual reopen. Key case: an AI agent (Claude/Cursor) keeps writing the document — the reader watches it grow without losing their place.
+- **Acceptance:** `Tests/MarkioTests/WatcherTests.swift::testReloadsOnFileChange`; `Tests/MarkioTests/LiveReloadTests.swift::testRerenderPreservesScrollPosition`
 - **Status:** [x]
 
 ### 3.7 FR-APPEARANCE: Follow system light/dark [ANC:fr:appearance]

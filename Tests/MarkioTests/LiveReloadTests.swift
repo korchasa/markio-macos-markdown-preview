@@ -28,6 +28,37 @@ final class LiveReloadTests: XCTestCase {
         try await waitForContent(model, contains: "Beta marker")
     }
 
+    /// Re-rendering the same document must keep the reader's scroll position.
+    /// Mermaid docs are the regression trigger: during re-render the SVG is
+    /// momentarily replaced by its short source text, WebKit clamps the window
+    /// scroll to the shrunken document, and without an explicit restore the
+    /// view jumps up by the diagram height. [REF:fr:live-reload]
+    func testRerenderPreservesScrollPosition() async throws {
+        let controller = try await makeLoadedPreview()
+        // A zero-size frame collapses SVG heights to ~0, hiding the clamp —
+        // use a real viewport so the diagram actually contributes height.
+        controller.webView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+
+        let chain = (1...40).map { "n\($0)[Node \($0)]" }.joined(separator: " --> ")
+        let filler = (1...300).map { "Paragraph \($0) lorem ipsum dolor sit amet." }
+            .joined(separator: "\n\n")
+        let doc = "```mermaid\nflowchart TD\n" + chain + "\n```\n\n" + filler
+
+        await controller.render(doc)
+        let height = try await count(controller, "document.documentElement.scrollHeight")
+        XCTAssertGreaterThan(height, 1000, "document must be tall enough to scroll")
+
+        let target = height - 700
+        _ = try await controller.evaluate("window.scrollTo(0, \(target))")
+        let scrolled = try await count(controller, "window.scrollY")
+        XCTAssertEqual(scrolled, target, "precondition: scroll must reach the target")
+
+        // Same render path reloadFromDisk takes on an external file change.
+        await controller.render(doc)
+        let after = try await count(controller, "window.scrollY")
+        XCTAssertEqual(after, target, "re-render must preserve the scroll position")
+    }
+
     private func waitForContent(
         _ model: DocumentModel, contains needle: String, timeout: TimeInterval = 6
     ) async throws {
