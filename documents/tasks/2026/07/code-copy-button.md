@@ -7,7 +7,7 @@ tags: [daily-use, wave1]
 related_tasks:
   - [daily-use-feature-backlog](daily-use-feature-backlog.md)
 ---
-# Copy button on code blocks
+# Copy button on code blocks [ANC:task:2026-07-code-copy-button]
 
 ## Goal
 
