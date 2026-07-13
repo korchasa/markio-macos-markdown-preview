@@ -7,7 +7,7 @@ tags: [daily-use, wave1]
 related_tasks:
   - [daily-use-feature-backlog](daily-use-feature-backlog.md)
 ---
-# Find upgrades: minimap, cross-token matching, "N of M" counter
+# Find upgrades: minimap, cross-token matching, "N of M" counter [ANC:task:2026-07-find-upgrades]
 
 ## Goal
 
