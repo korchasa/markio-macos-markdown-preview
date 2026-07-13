@@ -19,6 +19,9 @@ surface. The one on-screen reading control is **line width**.
   section highlighted while you scroll
 - Copy button on code blocks: hover a fenced block to reveal Copy and a
   language badge; one click puts the raw code on the clipboard
+- In-document find (⌘F): every match highlighted with an "N of M" counter, an
+  overview strip at the right edge marks match positions, and matches are found
+  even across syntax-highlighting inside code blocks and tables
 - Adjustable reading width (toolbar slider), persisted across launches
 - Picks up where you left off: File ▸ Open Recent, windows reopen on relaunch,
   and every document returns at its last scroll position

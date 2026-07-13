@@ -102,6 +102,31 @@
       background-color: #ff8c1a;
       color: #1b1b1b;
     }
+    /* Find overview strip: a fixed minimap at the right edge with one tick per
+       match at its relative document position. Indication only — pointer
+       events pass through to the scrollbar underneath. Tick colors mirror the
+       <mark> swatches. */
+    #markio-find-minimap {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 10px;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #markio-find-minimap .markio-find-tick {
+      position: absolute;
+      left: 1px;
+      right: 1px;
+      height: 3px;
+      border-radius: 1px;
+      background-color: #fadf78;
+    }
+    #markio-find-minimap .markio-find-tick-current {
+      background-color: #ff8c1a;
+      height: 5px;
+    }
   </style>
   <!-- Keep this tag exactly src-first with no other attributes:
        ResourceLocator.inlineVendor()'s regex silently skips anything else. -->
@@ -602,8 +627,11 @@
 
     // ---- Find in document -------------------------------------------------
     // Native find bar drives these; highlighting lives here (the web view owns
-    // content rendering). Matches are wrapped in <mark>; the current match is
-    // emphasized and scrolled into view. [REF:fr:find]
+    // content rendering). __find.matches holds LOGICAL matches: each is an
+    // array of <mark> segments (a match crossing element boundaries — e.g.
+    // syntax-highlight token spans — is split into one <mark> per text-node
+    // segment). The current match is emphasized and scrolled into view; an
+    // overview strip at the right edge shows one tick per match. [REF:fr:find]
     var __find = { matches: [], index: -1 };
 
     // Remove every find <mark>, splicing its text back into the parent so the
@@ -617,6 +645,7 @@
         parent.replaceChild(document.createTextNode(m.textContent), m);
         parent.normalize();
       }
+      removeMinimap();
       __find = { matches: [], index: -1 };
       return { count: 0, current: 0 };
     }
@@ -654,52 +683,157 @@
       return nodes;
     }
 
-    // Case-insensitive live search. Wraps each occurrence in a <mark> and makes
-    // the first one current. Returns { count, current } (current is 1-based, 0
-    // when nothing matched).
+    // Tags that establish a block boundary for matching: text flowing from one
+    // of these into a sibling never forms a single match (paragraph→paragraph,
+    // cell→cell). Inline elements (em, strong, code spans, hljs tokens) do NOT
+    // break a match — that is the point of the two-phase search.
+    var BLOCK_TAGS = {
+      p: 1, div: 1, li: 1, td: 1, th: 1, pre: 1, blockquote: 1, caption: 1,
+      h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1, dt: 1, dd: 1, summary: 1,
+      figcaption: 1
+    };
+
+    function blockAncestor(node, root) {
+      var p = node.parentNode;
+      while (p && p !== root) {
+        if (p.nodeName && BLOCK_TAGS[p.nodeName.toLowerCase()]) return p;
+        p = p.parentNode;
+      }
+      return root;
+    }
+
+    // Case-insensitive live search, two-phase so a match may cross element
+    // boundaries (syntax-highlight token spans, inline formatting):
+    // 1) concatenate the visible text nodes into one haystack with an
+    //    offset→node map, separating different blocks with NUL (U+0000) (a query
+    //    can never contain NUL, so no match spans a block boundary);
+    // 2) locate occurrences, then wrap them from the LAST to the FIRST —
+    //    splitText only trims the tail of a mapped node, so earlier offsets
+    //    in the map stay valid. Each occurrence becomes one logical match of
+    //    1+ <mark> segments. Returns { count, current } (1-based, 0 = none).
     function search(query) {
       clearSearch();
       query = query != null ? String(query) : '';
       if (!query) return { count: 0, current: 0 };
       var needle = query.toLowerCase();
-      var len = query.length;
       var root = document.getElementById('content');
       var textNodes = collectTextNodes(root);
+      var hay = '';
+      var map = [];
+      var prevBlock = null;
       for (var i = 0; i < textNodes.length; i++) {
-        var node = textNodes[i];
-        var text = node.nodeValue;
-        var hay = text.toLowerCase();
-        var idx = hay.indexOf(needle);
-        if (idx === -1) continue;
-        var frag = document.createDocumentFragment();
-        var pos = 0;
-        while (idx !== -1) {
-          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
-          var mark = document.createElement('mark');
-          mark.className = 'markio-find';
-          mark.textContent = text.slice(idx, idx + len);
-          frag.appendChild(mark);
-          __find.matches.push(mark);
-          pos = idx + len;
-          idx = hay.indexOf(needle, pos);
-        }
-        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
-        if (node.parentNode) node.parentNode.replaceChild(frag, node);
+        var block = blockAncestor(textNodes[i], root);
+        if (prevBlock !== null && block !== prevBlock) hay += '\u0000';
+        map.push({ node: textNodes[i], start: hay.length, len: textNodes[i].nodeValue.length });
+        hay += textNodes[i].nodeValue;
+        prevBlock = block;
       }
-      if (__find.matches.length) setCurrent(0);
-      return { count: __find.matches.length, current: __find.matches.length ? 1 : 0 };
+      hay = hay.toLowerCase();
+      var starts = [];
+      var at = hay.indexOf(needle);
+      while (at !== -1) {
+        starts.push(at);
+        at = hay.indexOf(needle, at + needle.length);
+      }
+      var groups = [];
+      for (var m = starts.length - 1; m >= 0; m--) {
+        groups.push(wrapMatch(map, starts[m], starts[m] + needle.length));
+      }
+      groups.reverse();
+      __find.matches = groups;
+      buildMinimap();
+      if (groups.length) setCurrent(0);
+      return { count: groups.length, current: groups.length ? 1 : 0 };
+    }
+
+    // Wrap haystack range [start, end) in <mark> segments, last node first (so
+    // this match's own splits never invalidate its remaining segment offsets).
+    // Returns the segments in document order.
+    function wrapMatch(map, start, end) {
+      var segs = [];
+      for (var i = map.length - 1; i >= 0; i--) {
+        var entry = map[i];
+        if (entry.start >= end) continue;
+        if (entry.start + entry.len <= start) break;
+        var s = Math.max(start, entry.start) - entry.start;
+        var t = Math.min(end, entry.start + entry.len) - entry.start;
+        if (t <= s) continue;
+        var node = entry.node;
+        if (!node.parentNode) continue;
+        if (t < node.nodeValue.length) node.splitText(t);
+        var mid = s > 0 ? node.splitText(s) : node;
+        var mark = document.createElement('mark');
+        mark.className = 'markio-find';
+        mid.parentNode.replaceChild(mark, mid);
+        mark.appendChild(mid);
+        segs.push(mark);
+      }
+      segs.reverse();
+      return segs;
     }
 
     function setCurrent(i) {
+      var k;
       var prev = __find.matches[__find.index];
-      if (prev) prev.classList.remove('markio-find-current');
+      if (prev) {
+        for (k = 0; k < prev.length; k++) prev[k].classList.remove('markio-find-current');
+      }
       __find.index = i;
       var cur = __find.matches[i];
-      if (cur) {
-        cur.classList.add('markio-find-current');
-        if (cur.scrollIntoView) cur.scrollIntoView({ block: 'center', inline: 'nearest' });
+      if (cur && cur.length) {
+        for (k = 0; k < cur.length; k++) cur[k].classList.add('markio-find-current');
+        if (cur[0].scrollIntoView) cur[0].scrollIntoView({ block: 'center', inline: 'nearest' });
+      }
+      updateMinimapCurrent();
+    }
+
+    // ---- Find overview strip (minimap) --------------------------------------
+    // Lives on <body> (outside #content) so render()'s innerHTML swap never
+    // orphans it; rebuilt by every search(), removed by clearSearch().
+    function removeMinimap() {
+      var strip = document.getElementById('markio-find-minimap');
+      if (strip && strip.parentNode) strip.parentNode.removeChild(strip);
+    }
+
+    function buildMinimap() {
+      removeMinimap();
+      if (!__find.matches.length) return;
+      var strip = document.createElement('div');
+      strip.id = 'markio-find-minimap';
+      for (var i = 0; i < __find.matches.length; i++) {
+        var tick = document.createElement('div');
+        tick.className = 'markio-find-tick';
+        strip.appendChild(tick);
+      }
+      document.body.appendChild(strip);
+      layoutMinimap();
+    }
+
+    // Tick position = the match's document-absolute Y over the full document
+    // height. Recomputed on window resize (both terms change on reflow).
+    function layoutMinimap() {
+      var strip = document.getElementById('markio-find-minimap');
+      if (!strip) return;
+      var docHeight = document.documentElement.scrollHeight;
+      var ticks = strip.children;
+      for (var i = 0; i < __find.matches.length && i < ticks.length; i++) {
+        var first = __find.matches[i][0];
+        if (!first) continue;
+        var pageY = first.getBoundingClientRect().top + window.scrollY;
+        var pct = docHeight > 0 ? (pageY / docHeight) * 100 : 0;
+        ticks[i].style.top = Math.max(0, Math.min(100, pct)) + '%';
       }
     }
+
+    function updateMinimapCurrent() {
+      var strip = document.getElementById('markio-find-minimap');
+      if (!strip) return;
+      for (var i = 0; i < strip.children.length; i++) {
+        strip.children[i].classList.toggle('markio-find-tick-current', i === __find.index);
+      }
+    }
+
+    window.addEventListener('resize', layoutMinimap);
 
     function findNext() {
       var total = __find.matches.length;

@@ -306,6 +306,9 @@ struct FindResult: Equatable {
     let count: Int
     let current: Int
     static let empty = FindResult(count: 0, current: 0)
+
+    /// "N of M" reading for the find bar counter (e.g. "3 of 17"). [REF:fr:find]
+    var counterText: String { "\(current) of \(count)" }
 }
 
 extension PreviewController: WKNavigationDelegate {

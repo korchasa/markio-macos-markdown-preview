@@ -88,7 +88,7 @@ struct ContentView: View {
             )
             .frame(width: 150)
 
-            Text("\(model.findResult.current)/\(model.findResult.count)")
+            Text(model.findResult.counterText)
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.secondary)
                 .fixedSize()
