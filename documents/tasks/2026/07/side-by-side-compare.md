@@ -5,7 +5,7 @@ implements:
   - FR-COMPARE
 tags: [compare, scroll-sync, differentiation]
 ---
-# Side-by-side compare — two documents with synchronized scrolling
+# Side-by-side compare — two documents with synchronized scrolling [ANC:task:2026-07-side-by-side-compare]
 
 ## Goal
 
