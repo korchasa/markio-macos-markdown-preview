@@ -17,16 +17,16 @@
          icon blank. macOS 14+ resolves the Dock icon from the catalog too. -->
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
-    <!-- Declare supported languages so AppKit renders its standard menu items
-         (Файл, Правка, Открыть, Скопировать…) in the system language. The
-         viewer ships no custom user-facing strings, so listing the locales is
-         enough — no .lproj resources needed. -->
+    <!-- English only. The app's own menu items (Find…, Table of Contents,
+         Compare Side by Side…) ship untranslated, so declaring extra locales
+         makes AppKit render ITS standard items (Файл, Правка…) in the system
+         language while ours stay English — a mixed-language menu bar. One
+         declared locale keeps the whole UI in one language. -->
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleLocalizations</key>
     <array>
         <string>en</string>
-        <string>ru</string>
     </array>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
