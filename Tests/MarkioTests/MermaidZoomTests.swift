@@ -84,6 +84,10 @@ final class MermaidZoomTests: XCTestCase {
             (zoomed as? NSNumber)?.doubleValue ?? -1, 1.0,
             "Zoom-in button must grow the scale")
 
+        // The overlay opens centered (fitZoom), so pan is asserted as a delta
+        // from the current offset, not an absolute position.
+        let txBefore = try await preview.evaluate(
+            "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.tx)")
         _ = try await preview.evaluate(
             """
             var stage = document.querySelector('#markio-zoom .markio-zoom-stage');
@@ -97,8 +101,11 @@ final class MermaidZoomTests: XCTestCase {
             """)
         let tx = try await preview.evaluate(
             "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.tx)")
+        let panDelta =
+            ((tx as? NSNumber)?.doubleValue ?? 0)
+            - ((txBefore as? NSNumber)?.doubleValue ?? 0)
         XCTAssertEqual(
-            (tx as? NSNumber)?.doubleValue ?? 0, 60, accuracy: 0.5,
+            panDelta, 60, accuracy: 0.5,
             "Dragging must pan the diagram by the pointer delta")
 
         _ = try await preview.evaluate(

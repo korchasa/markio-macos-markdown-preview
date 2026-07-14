@@ -127,34 +127,50 @@
       touch-action: none;
     }
     #markio-zoom .markio-zoom-canvas {
+      /* Anchored at the stage origin so the translate/scale math is exact:
+         visual position of a diagram point is (tx + x·scale, ty + y·scale).
+         Centering/fit is done in tx/ty by fitZoom(), not by CSS margins —
+         a margin offset would silently skew the wheel's focal-point math. */
+      position: absolute;
+      left: 0;
+      top: 0;
       transform-origin: 0 0;
       width: max-content;
       padding: 48px;
       background-color: Canvas;
       border-radius: 8px;
-      margin: 48px auto;
     }
+    /* Floating HUD pill, bottom-center — the Quick Look/Preview overlay
+       idiom. Deliberately dark in both themes: it sits on the dimmed
+       backdrop, not on the document. */
     #markio-zoom .markio-zoom-controls {
       position: absolute;
-      top: 12px;
-      right: 12px;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
-      gap: 6px;
+      gap: 2px;
+      padding: 4px;
+      border-radius: 12px;
+      background: rgba(30, 30, 30, 0.72);
+      -webkit-backdrop-filter: blur(24px);
+      backdrop-filter: blur(24px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
       z-index: 1;
     }
     #markio-zoom .markio-zoom-controls button {
       font: inherit;
-      font-size: 0.85em;
-      min-width: 28px;
-      padding: 4px 10px;
-      border: 1px solid rgba(128, 128, 128, 0.5);
-      border-radius: 6px;
-      background-color: Canvas;
-      color: CanvasText;
+      font-size: 13px;
+      min-width: 30px;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.92);
       cursor: pointer;
     }
     #markio-zoom .markio-zoom-controls button:hover {
-      border-color: rgba(128, 128, 128, 0.9);
+      background: rgba(255, 255, 255, 0.16);
     }
     /* AI-artifact rendering. [REF:fr:ai-artifacts]
        (a) ANSI: style + 16-color palette classes for SGR-rendered spans,
@@ -969,10 +985,7 @@
           stage.clientWidth / 2, stage.clientHeight / 2);
       });
       reset.addEventListener('click', function () {
-        __zoomState.scale = 1;
-        __zoomState.tx = 0;
-        __zoomState.ty = 0;
-        applyZoomTransform();
+        fitZoom();
       });
       copy.addEventListener('click', function () {
         copyMermaidPNG(__zoomState.src, copy);
@@ -1025,6 +1038,30 @@
       return overlay;
     }
 
+    // Fit the diagram into the stage (downscale only, never above 1) and
+    // center it. Shared by open and the ⟲ button.
+    function fitZoom() {
+      var stage = __zoom.querySelector('.markio-zoom-stage');
+      var canvas = __zoom.querySelector('.markio-zoom-canvas');
+      // A zero-sized stage (headless/offscreen host with no layout) would
+      // compute scale 0 — fall back to the identity transform.
+      if (!stage.clientWidth || !stage.clientHeight) {
+        __zoomState.scale = 1;
+        __zoomState.tx = 0;
+        __zoomState.ty = 0;
+        applyZoomTransform();
+        return;
+      }
+      var scale = Math.min(
+        1,
+        stage.clientWidth / Math.max(1, canvas.offsetWidth),
+        stage.clientHeight / Math.max(1, canvas.offsetHeight));
+      __zoomState.scale = scale;
+      __zoomState.tx = Math.max(0, (stage.clientWidth - canvas.offsetWidth * scale) / 2);
+      __zoomState.ty = Math.max(0, (stage.clientHeight - canvas.offsetHeight * scale) / 2);
+      applyZoomTransform();
+    }
+
     function openZoom(pre) {
       var svg = pre.querySelector('svg');
       if (!svg) return;
@@ -1036,8 +1073,9 @@
       clone.style.maxWidth = 'none';
       canvas.appendChild(clone);
       __zoomState = { scale: 1, tx: 0, ty: 0, src: pre.dataset.markioSrc || '' };
-      applyZoomTransform();
+      // Measure after unhiding: a [hidden] subtree has zero layout boxes.
       overlay.hidden = false;
+      fitZoom();
     }
 
     function closeZoom() {

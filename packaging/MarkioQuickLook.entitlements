@@ -7,11 +7,12 @@
       loaded at all; Quick Look grants the extension read access to the
       previewed file itself. Rendering assets ship inside the .appex.
 
-      No network.client here: Quick Look ignores it (documented in
-      sbarex/QLTest), and WKWebView-based QL extensions demonstrably run
-      without it — unlike the host app, whose WebContent process needed it
-      (see Markio.entitlements). If a factory-signed build ever shows a blank
-      preview, revisit this (recorded in the task's Follow-ups).
+      network.client is REQUIRED despite the extension being fully offline:
+      without it the sandboxed WKWebView never launches its WebContent helper
+      ("WebProcess with PID 0" in the log) and render() hangs forever — Finder
+      shows an infinite spinner (reproduced 2026-07-14 on the wave-1 build).
+      Same failure mode as the host app (see Markio.entitlements). The host
+      cancels every post-load navigation, so no network is ever used.
 
       Ad-hoc signing with this file is done by `make app` so the extension is
       locally runnable; distribution signing is app-store-factory's job.
@@ -19,6 +20,8 @@
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
     <true/>
 </dict>
 </plist>
