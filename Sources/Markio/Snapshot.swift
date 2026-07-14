@@ -61,13 +61,28 @@ enum Snapshot {
         try await settle()
         try await shoot(preview.webView, to: dir.appendingPathComponent("01-light.png"))
 
-        // 02 — the Mermaid diagram in view.
+        // 03 — the Mermaid zoom lightbox open over the diagram (a click on the
+        // rendered SVG opens it; fitZoom sizes the diagram to the stage).
+        // Files 02/05 (TOC sidebar, side-by-side compare) are captured from
+        // the real app on screen — SwiftUI chrome is outside this web view.
         _ = try? await preview.evaluate(
             "document.querySelector('.mermaid, pre.mermaid')?.scrollIntoView({block: 'center'})")
         try await settle(seconds: 0.5)
-        try await shoot(preview.webView, to: dir.appendingPathComponent("02-mermaid.png"))
+        _ = try? await preview.evaluate(
+            "document.querySelector('.markio-mermaid pre.mermaid svg')"
+                + "?.dispatchEvent(new MouseEvent('click', {bubbles: true}))")
+        try await settle(seconds: 0.5)
+        try await shoot(preview.webView, to: dir.appendingPathComponent("03-zoom.png"))
+        _ = try? await preview.evaluate(
+            "window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
 
-        // 03 — same top view, dark appearance. The page's palette follows
+        // 04 — agent-output rendering (ANSI colors + diff backgrounds).
+        _ = try? await preview.evaluate(
+            "document.querySelector('.markio-ansi')?.scrollIntoView({block: 'center'})")
+        try await settle(seconds: 0.5)
+        try await shoot(preview.webView, to: dir.appendingPathComponent("04-agent.png"))
+
+        // 06 — same top view, dark appearance. The page's palette follows
         // `prefers-color-scheme`, i.e. the window appearance; `setDark` only
         // re-themes Mermaid, and a re-render applies it.
         window.appearance = NSAppearance(named: .darkAqua)
@@ -75,7 +90,7 @@ enum Snapshot {
         await preview.render(text)
         _ = try? await preview.evaluate("window.scrollTo(0, 0)")
         try await settle()
-        try await shoot(preview.webView, to: dir.appendingPathComponent("03-dark.png"))
+        try await shoot(preview.webView, to: dir.appendingPathComponent("06-dark.png"))
     }
 
     /// Let Mermaid, highlighting and lazy layout finish before capturing.
