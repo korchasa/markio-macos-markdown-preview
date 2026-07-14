@@ -158,7 +158,7 @@ Union dispositions (planner ∪ scout):
 - [x] FR-COMPARE: unlinking stops mirroring; closing/deallocating either side drops the pair (weak references, no retain)
   - Test: `Tests/MarkioTests/CompareTests.swift::testUnlinkStopsMirroring`; `Tests/MarkioTests/CompareTests.swift::testDeallocatedPeerDropsPair`
   - Evidence: `make test ARGS="--filter CompareTests"`
-- [ ] FR-COMPARE: `Window ▸ Compare Side by Side…` in a real `.app` prompts for the second file, opens it, tiles both windows left/right, and enables sync; `Window ▸ Stop Comparing` unlinks
+- [ ] FR-COMPARE: `File ▸ Compare Side by Side…` in a real `.app` prompts for the second file, opens it, tiles both windows left/right, and enables sync; `File ▸ Stop Comparing` unlinks
   - Test: `manual — maintainer — documents/checklists/compare.md`
   - Evidence: `make app && open .build/Markio.app` + checklist walk
 - [x] FR-COMPARE: SRS section added with filled `**Acceptance:**` (anchor `fr:compare`), SDS component section added, `documents/index.md` row added, README updated
@@ -193,7 +193,7 @@ Selected: **Variant B — window pairing + live proportional sync channel.** Two
 
 ### Step 4 — Menu (`Sources/Markio/CompareCommands.swift`, register in `MarkioApp`)
 
-- `CompareCommands: Commands` — `CommandGroup(before: .windowArrangement)`: `Window ▸ Compare Side by Side…` (enabled when a document window is focused) and `Window ▸ Stop Comparing` (enabled while the focused window is paired), routed through the existing `FocusedValue(\.documentModel)`. Registered by adding `CompareCommands()` to the `.commands { }` block in `MarkioApp.swift` (next to `FindCommands()` / `TOCCommands()`).
+- `CompareCommands: Commands` — `CommandGroup(after: .saveItem)` (File menu; the save group is emptied, its anchor persists): `File ▸ Compare Side by Side…` (enabled when a document window is focused) and `File ▸ Stop Comparing` (enabled while the focused window is paired), routed through the existing `FocusedValue(\.documentModel)`. Registered by adding `CompareCommands()` to the `.commands { }` block in `MarkioApp.swift` (next to `FindCommands()` / `TOCCommands()`).
 
 ### Step 5 — Docs
 
