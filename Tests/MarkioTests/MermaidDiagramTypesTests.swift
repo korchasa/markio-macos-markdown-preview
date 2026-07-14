@@ -19,7 +19,8 @@ final class MermaidDiagramTypesTests: XCTestCase {
         "journey": "journey\n  title T\n  section S\n    Do: 5: Me",
         "gantt": "gantt\n  title T\n  dateFormat YYYY-MM-DD\n  section S\n  A :a1, 2026-01-01, 3d",
         "pie": "pie title P\n  \"A\" : 1",
-        "quadrant": "quadrantChart\n  title Q\n  x-axis Low --> High\n  y-axis Slow --> Fast\n  A: [0.5, 0.5]",
+        "quadrant": "quadrantChart\n  title Q\n  x-axis Low --> High\n"
+            + "  y-axis Slow --> Fast\n  A: [0.5, 0.5]",
         "requirement": "requirementDiagram\n  requirement r {\n  id: 1\n  text: t\n  }",
         "gitgraph": "gitGraph\n  commit",
         "c4": "C4Context\n  Person(u, \"User\")",
