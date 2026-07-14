@@ -141,6 +141,41 @@ final class MermaidZoomTests: XCTestCase {
         XCTAssertTrue(hidden, "A backdrop click must close the overlay")
     }
 
+    func testHotkeysDriveZoom() async throws {
+        let (preview, _) = try await makeZoomPreview()
+        try await openOverlay(preview)
+
+        _ = try await preview.evaluate(
+            "window.dispatchEvent(new KeyboardEvent('keydown', {key: '+'})); true")
+        let zoomed = try await preview.evaluate(
+            "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.scale)"
+        )
+        XCTAssertEqual(
+            (zoomed as? NSNumber)?.doubleValue ?? -1, 1.25, accuracy: 0.001,
+            "'+' must zoom in by one step")
+
+        _ = try await preview.evaluate(
+            "window.dispatchEvent(new KeyboardEvent('keydown', {key: '0'})); true")
+        let fitted = try await preview.evaluate(
+            "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.scale)"
+        )
+        XCTAssertEqual(
+            (fitted as? NSNumber)?.doubleValue ?? -1, 1.0,
+            "'0' must re-fit (identity transform on a zero-sized stage)")
+
+        let tyBefore = try await preview.evaluate(
+            "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.ty)")
+        _ = try await preview.evaluate(
+            "window.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown'})); true")
+        let tyAfter = try await preview.evaluate(
+            "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.ty)")
+        XCTAssertEqual(
+            ((tyAfter as? NSNumber)?.doubleValue ?? 0)
+                - ((tyBefore as? NSNumber)?.doubleValue ?? 0),
+            -60, accuracy: 0.5,
+            "Arrow keys must pan by a fixed step")
+    }
+
     func testRerenderClosesOverlay() async throws {
         let (preview, _) = try await makeZoomPreview()
         try await openOverlay(preview)

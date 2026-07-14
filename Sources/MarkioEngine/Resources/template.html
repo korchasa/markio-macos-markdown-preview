@@ -173,6 +173,17 @@
     #markio-zoom .markio-zoom-controls button:hover {
       background: rgba(128, 128, 128, 0.18);
     }
+    /* Keycap hint inside a control's label ("Fit 0", "Close esc"). */
+    #markio-zoom .markio-zoom-controls .markio-key {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 0 5px;
+      font-size: 11px;
+      line-height: 16px;
+      border: 1px solid rgba(128, 128, 128, 0.45);
+      border-radius: 4px;
+      opacity: 0.75;
+    }
     /* AI-artifact rendering. [REF:fr:ai-artifacts]
        (a) ANSI: style + 16-color palette classes for SGR-rendered spans,
        scoped under .markio-ansi so document-authored HTML cannot invoke them.
@@ -960,20 +971,29 @@
       overlay.appendChild(stage);
       var controls = document.createElement('div');
       controls.className = 'markio-zoom-controls';
-      function mk(cls, label, title) {
+      // Every action is labeled with its hotkey: either the label IS the key
+      // (−/+) or a keycap hint is appended, so the shortcuts are discoverable
+      // without documentation.
+      function mk(cls, label, title, key) {
         var b = document.createElement('button');
         b.type = 'button';
         b.className = cls;
         b.textContent = label;
         b.title = title;
+        if (key) {
+          var kbd = document.createElement('span');
+          kbd.className = 'markio-key';
+          kbd.textContent = key;
+          b.appendChild(kbd);
+        }
         controls.appendChild(b);
         return b;
       }
-      var zoomOut = mk('markio-zoom-out', '−', 'Zoom out');
-      var zoomIn = mk('markio-zoom-in', '+', 'Zoom in');
-      var reset = mk('markio-zoom-reset', '⟲', 'Actual size');
-      var copy = mk('markio-mermaid-copy', 'Copy PNG', 'Copy diagram as PNG');
-      var close = mk('markio-zoom-close', '✕', 'Close');
+      var zoomOut = mk('markio-zoom-out', '−', 'Zoom out (−)');
+      var zoomIn = mk('markio-zoom-in', '+', 'Zoom in (+)');
+      var reset = mk('markio-zoom-reset', 'Fit', 'Fit to window (0)', '0');
+      var copy = mk('markio-mermaid-copy', 'Copy PNG', 'Copy diagram as PNG (C)', 'C');
+      var close = mk('markio-zoom-close', 'Close', 'Close (Esc)', 'esc');
       overlay.appendChild(controls);
       document.body.appendChild(overlay);
 
@@ -1032,8 +1052,37 @@
         closeZoom();
       });
 
+      // Overlay hotkeys (labeled on the buttons): + / = zoom in, − zoom out,
+      // 0 fit, C copy PNG, arrows pan, Esc close. Modified chords are left
+      // to the app so native menu shortcuts keep working.
       window.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && !overlay.hidden) closeZoom();
+        if (overlay.hidden) return;
+        if (e.key === 'Escape') { closeZoom(); return; }
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var cx = stage.clientWidth / 2;
+        var cy = stage.clientHeight / 2;
+        var step = 60;
+        switch (e.key) {
+          case '+': case '=':
+            setZoomScale(__zoomState.scale * 1.25, cx, cy); break;
+          case '-': case '_':
+            setZoomScale(__zoomState.scale / 1.25, cx, cy); break;
+          case '0':
+            fitZoom(); break;
+          case 'c': case 'C':
+            copyMermaidPNG(__zoomState.src, copy); break;
+          case 'ArrowLeft':
+            __zoomState.tx += step; applyZoomTransform(); break;
+          case 'ArrowRight':
+            __zoomState.tx -= step; applyZoomTransform(); break;
+          case 'ArrowUp':
+            __zoomState.ty += step; applyZoomTransform(); break;
+          case 'ArrowDown':
+            __zoomState.ty -= step; applyZoomTransform(); break;
+          default:
+            return;
+        }
+        e.preventDefault();
       });
       __zoom = overlay;
       return overlay;

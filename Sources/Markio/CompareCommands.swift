@@ -16,6 +16,7 @@ struct CompareCommands: Commands {
             Button("Compare Side by Side…") {
                 model?.startCompare()
             }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
             .disabled(model == nil)
 
             Button("Stop Comparing") {
