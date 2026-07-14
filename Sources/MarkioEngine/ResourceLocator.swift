@@ -12,12 +12,12 @@ import Foundation
 /// `Bundle.module` hits its `fatalError` — which is exactly what crashed the
 /// shipped build on launch of the first document. Instead we resolve the bundle
 /// ourselves across every layout we ship. [REF:sds:vendor]
-enum ResourceLocator {
+public enum ResourceLocator {
     /// A type whose defining bundle we can query at runtime.
     private final class BundleToken {}
 
     /// Basename of the SwiftPM-produced resource bundle.
-    private static let bundleName = "Markio_Markio.bundle"
+    private static let bundleName = "Markio_MarkioEngine.bundle"
 
     /// Directory holding `template.html` and the `vendor/` tree (bundle root).
     ///
@@ -27,7 +27,7 @@ enum ResourceLocator {
     /// the enclosing framework bundle. The first location that actually contains
     /// `template.html` wins; a hard failure here means the app was assembled
     /// without its resources, which is unrecoverable.
-    static var resourcesRoot: URL {
+    public static var resourcesRoot: URL {
         let tokenBundle = Bundle(for: BundleToken.self)
         let searchBases: [URL] = [
             Bundle.main.resourceURL,
@@ -51,7 +51,7 @@ enum ResourceLocator {
     }
 
     /// The HTML shell loaded into the web view.
-    static var templateURL: URL {
+    public static var templateURL: URL {
         resourcesRoot.appendingPathComponent("template.html", isDirectory: false)
     }
 
@@ -66,7 +66,7 @@ enum ResourceLocator {
     /// app-side (own-bundle reads are always permitted in the sandbox) and handing
     /// WebKit one `loadHTMLString(baseURL: nil)` avoids `file:` entirely.
     /// [REF:sds:vendor] [REF:fr:offline]
-    static func selfContainedHTML() throws -> String {
+    public static func selfContainedHTML() throws -> String {
         let root = resourcesRoot
         var html = try String(contentsOf: templateURL, encoding: .utf8)
         // Stylesheets: <link rel="stylesheet" href="vendor/…" [media="…"]> → <style [media]>…</style>

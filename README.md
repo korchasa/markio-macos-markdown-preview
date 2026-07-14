@@ -28,6 +28,9 @@ surface. The one on-screen reading control is **line width**.
 - Adjustable reading width (toolbar slider), persisted across launches
 - Picks up where you left off: File ▸ Open Recent, windows reopen on relaunch,
   and every document returns at its last scroll position
+- Quick Look: press Space on a `.md` file in Finder and see it rendered by the
+  same engine — Mermaid diagrams and math included, which the system preview
+  can't do
 - Fully offline — all rendering assets are vendored; the web view never touches
   the network
 
@@ -68,8 +71,9 @@ make fmt      # apply formatting
 Native AppKit/SwiftUI document app (`DocumentGroup`): one window per file, each
 hosting a confined `WKWebView`. The shell owns all OS integration (windows,
 toolbar, menus, file handling, line-width control); the web view only renders
-content via vendored JS/CSS (`Sources/Markio/Resources/vendor`). See
-`documents/design.md`.
+content via vendored JS/CSS (`Sources/MarkioEngine/Resources/vendor`, a shared
+library target also powering the Quick Look extension in
+`Contents/PlugIns/MarkioQuickLook.appex`). See `documents/design.md`.
 
 ## Scope
 

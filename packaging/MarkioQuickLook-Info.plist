@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>MarkioQuickLook</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.markio.app.quicklook</string>
+    <key>CFBundleName</key>
+    <string>Markio Quick Look</string>
+    <key>CFBundleDisplayName</key>
+    <string>Markio Quick Look</string>
+    <!-- App extensions are XPC services from the bundle-format viewpoint. -->
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <!-- ExtensionFoundation reads the platform when it builds the XPC
+         connection for an extension request and crashes on a nil key if these
+         are absent (hand-assembled bundles don't get them from Xcode). -->
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>DTPlatformName</key>
+    <string>macosx</string>
+    <key>DTSDKName</key>
+    <string>macosx14.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>7</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.quicklook.preview</string>
+        <!-- Verbatim @objc name of the QLPreviewingController subclass. -->
+        <key>NSExtensionPrincipalClass</key>
+        <string>PreviewViewController</string>
+        <key>NSExtensionAttributes</key>
+        <dict>
+            <!-- Markdown only. Deliberately NOT public.plain-text: the
+                 extension must never take over .txt previews. -->
+            <key>QLSupportedContentTypes</key>
+            <array>
+                <string>net.daringfireball.markdown</string>
+            </array>
+            <key>QLSupportsSearchableItems</key>
+            <false/>
+        </dict>
+    </dict>
+    <!-- The markdown UTI is not declared by the base system; import it so
+         .md/.markdown resolve to it even without Xcode or other declaring
+         apps installed. LaunchServices merges declarations across bundles. -->
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>net.daringfireball.markdown</string>
+            <key>UTTypeDescription</key>
+            <string>Markdown Document</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.plain-text</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>md</string>
+                    <string>markdown</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

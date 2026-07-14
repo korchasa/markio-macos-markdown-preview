@@ -7,9 +7,12 @@ let package = Package(
         .macOS(.v14)
     ],
     targets: [
-        .executableTarget(
-            name: "Markio",
-            path: "Sources/Markio",
+        // Shared rendering engine: the vendored web bundle (template.html +
+        // vendor/) and its locator/inliner. Depended on by the app and the
+        // Quick Look extension so the engine exists exactly once.
+        .target(
+            name: "MarkioEngine",
+            path: "Sources/MarkioEngine",
             // Module doc, not a build input.
             exclude: ["AGENTS.md"],
             resources: [
@@ -22,10 +25,39 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        .executableTarget(
+            name: "Markio",
+            dependencies: ["MarkioEngine"],
+            path: "Sources/Markio",
+            // Module doc, not a build input.
+            exclude: ["AGENTS.md"],
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
+        // Quick Look preview extension binary (.appex payload). App extensions
+        // have no main entry point of their own: the linker entry is
+        // Foundation's _NSExtensionMain, exactly as Xcode links
+        // com.apple.product-type.app-extension products. The .appex bundle
+        // around this binary is assembled by `make app`. [REF:fr:quicklook]
+        .executableTarget(
+            name: "MarkioQuickLook",
+            dependencies: ["MarkioEngine"],
+            path: "Sources/MarkioQuickLook",
+            // Module doc, not a build input.
+            exclude: ["AGENTS.md"],
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ],
+            linkerSettings: [
+                .linkedFramework("Quartz"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+            ]
+        ),
         .testTarget(
             name: "MarkioTests",
-            dependencies: ["Markio"],
+            dependencies: ["Markio", "MarkioEngine"],
             path: "Tests/MarkioTests"
-        )
+        ),
     ]
 )

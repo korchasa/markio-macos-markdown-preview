@@ -1,3 +1,4 @@
+import MarkioEngine
 import XCTest
 
 @testable import Markio

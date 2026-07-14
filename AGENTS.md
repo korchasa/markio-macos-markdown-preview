@@ -24,7 +24,7 @@
 - **Verify UI in the real run target before declaring done.** For menu/toolbar/window changes, build the `.app` bundle and observe the actual UI (menu dump / screenshot). A green `make check` proves it compiles, not that the UI changed.
 - **Minimalism is a feature, not a constraint.** This is a read-only Markdown previewer — nothing else. Reject scope creep: no editing, no export pipelines, no plugins, no settings sprawl. Every added control must justify itself against the three priorities below.
 - **Priority order (use to break ties):** 1) nativeness, 2) minimalism, 3) UX.
-- **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/Markio/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
+- **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/MarkioEngine/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
 - **One in-screen control that matters: line width.** Text content width is adjustable directly on the preview screen (not buried in a settings window). Treat this as a first-class, always-reachable UI affordance.
 - **Document before code.** New/changed user-visible behavior → update SRS → update SDS → implement (see TDD Flow and Requirements Lifecycle).
 
@@ -36,10 +36,10 @@ A native macOS application for **viewing** Markdown files — nothing more. It r
 
 ## Project tooling Stack
 - **Language:** Swift 6 (strict concurrency).
-- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`.
+- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`, shared library target `MarkioEngine` (rendering assets + locator), executable target `MarkioQuickLook` (Quick Look preview extension binary; `.appex` assembled by `make app`).
 - **App shell UI:** AppKit + SwiftUI (native window, toolbar, menus, file open / drag-and-drop / recent files).
 - **Content rendering:** WebKit `WKWebView` (hybrid). Markdown→HTML and Mermaid diagrams render inside the web view.
-- **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/Markio/Resources/vendor`, with an HTML shell `template.html`.
+- **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/MarkioEngine/Resources/vendor` (shared `MarkioEngine` library target), with an HTML shell `template.html`.
 - **Task runner:** `Makefile` wrapping `swift build` / `swift test` / `swift run`.
 - **Platform:** macOS (Apple Silicon + Intel). No cross-platform target.
 
@@ -65,7 +65,7 @@ flowchart LR
 ## Key Decisions
 - **Hybrid WKWebView rendering** chosen over pure-native text rendering: Mermaid is a JavaScript library and effectively requires a JS engine; GFM consistency is far easier to guarantee with a mature JS Markdown stack than re-implementing it natively. The native priority is preserved by keeping the *app shell* fully native and the web view confined to content.
 - **Vendored offline assets, no CDN:** guarantees offline use, privacy, and reproducibility; aligns with "native/minimal/private".
-- **SPM executable target** (`Sources/Markio`) with a resource bundle (`Resources/vendor`, `template.html`) over an Xcode project file: keeps the repo text-based, scriptable, and reviewable.
+- **SPM targets over an Xcode project file** (`Sources/Markio` app, `Sources/MarkioEngine` shared engine with the resource bundle `Resources/vendor` + `template.html`, `Sources/MarkioQuickLook` Quick Look extension): keeps the repo text-based, scriptable, and reviewable; even the `.appex` is hand-assembled by `make app`.
 - **Makefile standard interface** over raw `swift` invocations: gives the agent-standard `check`/`test`/`dev`/`prod` verbs without adding a non-Swift toolchain (Deno was considered and rejected to avoid a foreign dependency in a native macOS project).
 - **Line width as a live CSS variable** driven by a native control: the one reading setting that lives on the preview screen itself, per the product brief.
 - **Read-only previewer scope:** no editing/export/plugins — deliberately out of scope.
@@ -106,8 +106,9 @@ Maps source code paths to documentation sections that describe them. Used by com
 - `Sources/Markio/*WebView*.swift`, `*Render*.swift` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID, FR-HIGHLIGHT
 - `Sources/Markio/*Watcher*.swift`, file watching → SDS §3 (File loader + watcher) + SRS FR-LIVE-RELOAD
 - `Sources/Markio/*Width*.swift` + line-width control → SDS §5 (Line width) + SRS FR-LINE-WIDTH
-- `Sources/Markio/Resources/template.html`, `Resources/vendor/**` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID
+- `Sources/MarkioEngine/**` (template.html, `Resources/vendor/**`, ResourceLocator, MarkdownFileReader) → SDS §3 (Vendored web bundle) + SRS FR-GFM, FR-MERMAID, FR-QUICKLOOK
 - `Sources/Markio/*Link*.swift`, local link navigation → SDS §3 (LocalLinkNavigator) + SRS FR-LOCAL-LINKS
+- `Sources/MarkioQuickLook/**`, `packaging/MarkioQuickLook*` → SDS §3 (Quick Look extension) + SRS FR-QUICKLOOK
 - `Makefile` → AGENTS.md Development Commands
 - `README.md` → only for user-facing changes
 

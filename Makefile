@@ -8,7 +8,13 @@ SWIFT_SOURCES := Sources Tests
 APP_NAME := Markio
 APP_BUNDLE := .build/$(APP_NAME).app
 RELEASE_BIN := .build/release/$(APP_NAME)
-RELEASE_RESBUNDLE := .build/release/$(APP_NAME)_$(APP_NAME).bundle
+# SwiftPM resource bundle of the shared MarkioEngine target (<pkg>_<target>).
+RELEASE_RESBUNDLE := .build/release/$(APP_NAME)_MarkioEngine.bundle
+
+# Quick Look preview extension (.appex embedded under Contents/PlugIns).
+QL_NAME := MarkioQuickLook
+QL_BIN := .build/release/$(QL_NAME)
+QL_APPEX := $(APP_BUNDLE)/Contents/PlugIns/$(QL_NAME).appex
 
 .PHONY: check build scan fmt fmt-lint test dev app dist prod clean
 
@@ -72,6 +78,21 @@ app:
 	# App Store icon must come from Assets.car (1024×1024) via CFBundleIconName;
 	# leaving the .icns lets ingest pick the low-res file instead.
 	rm -f "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"
+	# Quick Look preview extension: hand-assembled .appex (no Xcode). The
+	# extension binary links with entry _NSExtensionMain (see Package.swift);
+	# it carries its own copy of the engine resource bundle — reading the
+	# host app's copy across the extension sandbox boundary is not
+	# guaranteed. [REF:fr:quicklook]
+	mkdir -p "$(QL_APPEX)/Contents/MacOS" "$(QL_APPEX)/Contents/Resources"
+	cp "$(QL_BIN)" "$(QL_APPEX)/Contents/MacOS/$(QL_NAME)"
+	cp -R "$(RELEASE_RESBUNDLE)" "$(QL_APPEX)/Contents/Resources/"
+	cp packaging/$(QL_NAME)-Info.plist "$(QL_APPEX)/Contents/Info.plist"
+	# Ad-hoc sign the .appex ONLY (extensions must be signed + sandboxed for
+	# pluginkit to load them, even locally). The host .app stays unsigned in
+	# this repo; app-store-factory re-signs everything (nested extension
+	# first) with real identities for distribution.
+	codesign --force --sign - \
+		--entitlements packaging/$(QL_NAME).entitlements "$(QL_APPEX)"
 	@echo "app: built $(APP_BUNDLE)"
 
 ## dist — produce the UNSIGNED .app bundle for the App Store. Signing and .pkg
