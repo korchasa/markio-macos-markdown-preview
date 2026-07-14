@@ -140,9 +140,10 @@
       background-color: Canvas;
       border-radius: 8px;
     }
-    /* Floating HUD pill, bottom-center — the Quick Look/Preview overlay
-       idiom. Deliberately dark in both themes: it sits on the dimmed
-       backdrop, not on the document. */
+    /* Floating pill, bottom-center, styled after the find HUD (solid
+       window-background capsule + hairline border, 13px system font). The
+       overlay lives outside .markdown-body, so the font stack must be
+       explicit — inheriting from <body> falls back to the UA serif. */
     #markio-zoom .markio-zoom-controls {
       position: absolute;
       bottom: 16px;
@@ -150,27 +151,27 @@
       transform: translateX(-50%);
       display: flex;
       gap: 2px;
-      padding: 4px;
-      border-radius: 12px;
-      background: rgba(30, 30, 30, 0.72);
-      -webkit-backdrop-filter: blur(24px);
-      backdrop-filter: blur(24px);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      padding: 4px 6px;
+      border-radius: 999px;
+      background-color: Canvas;
+      border: 1px solid rgba(128, 128, 128, 0.35);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
       z-index: 1;
     }
     #markio-zoom .markio-zoom-controls button {
-      font: inherit;
+      font-family: inherit;
       font-size: 13px;
       min-width: 30px;
-      padding: 5px 10px;
+      padding: 4px 10px;
       border: none;
-      border-radius: 8px;
+      border-radius: 999px;
       background: transparent;
-      color: rgba(255, 255, 255, 0.92);
+      color: CanvasText;
       cursor: pointer;
     }
     #markio-zoom .markio-zoom-controls button:hover {
-      background: rgba(255, 255, 255, 0.16);
+      background: rgba(128, 128, 128, 0.18);
     }
     /* AI-artifact rendering. [REF:fr:ai-artifacts]
        (a) ANSI: style + 16-color palette classes for SGR-rendered spans,
@@ -1038,27 +1039,37 @@
       return overlay;
     }
 
-    // Fit the diagram into the stage (downscale only, never above 1) and
-    // center it. Shared by open and the ⟲ button.
+    // Fit the diagram to ~90% of the stage (up- or downscale, capped at 4×)
+    // and center it. The fit is applied to the SVG's LAYOUT size, not the
+    // transform: a vector re-laid-out at the target size stays crisp, while
+    // an upscaling CSS transform rasterizes the layer and blurs. The
+    // transform stays identity here — wheel/buttons zoom on top of the
+    // fitted base. Shared by open and the ⟲ button.
     function fitZoom() {
       var stage = __zoom.querySelector('.markio-zoom-stage');
       var canvas = __zoom.querySelector('.markio-zoom-canvas');
-      // A zero-sized stage (headless/offscreen host with no layout) would
-      // compute scale 0 — fall back to the identity transform.
-      if (!stage.clientWidth || !stage.clientHeight) {
-        __zoomState.scale = 1;
-        __zoomState.tx = 0;
-        __zoomState.ty = 0;
-        applyZoomTransform();
-        return;
+      var svg = canvas.querySelector('svg');
+      __zoomState.scale = 1;
+      __zoomState.tx = 0;
+      __zoomState.ty = 0;
+      applyZoomTransform();
+      // A zero-sized stage (headless/offscreen host with no layout) has
+      // nothing to fit to — keep the identity transform.
+      if (!stage.clientWidth || !stage.clientHeight || !svg) return;
+      svg.style.width = '';
+      svg.style.height = '';
+      var rect = svg.getBoundingClientRect(); // transform is identity here
+      var pad = 48 * 2; // canvas padding, unscaled
+      var f = Math.min(
+        4,
+        (stage.clientWidth * 0.9 - pad) / Math.max(1, rect.width),
+        (stage.clientHeight * 0.9 - pad) / Math.max(1, rect.height));
+      if (f > 0 && isFinite(f)) {
+        svg.style.width = rect.width * f + 'px';
+        svg.style.height = rect.height * f + 'px';
       }
-      var scale = Math.min(
-        1,
-        stage.clientWidth / Math.max(1, canvas.offsetWidth),
-        stage.clientHeight / Math.max(1, canvas.offsetHeight));
-      __zoomState.scale = scale;
-      __zoomState.tx = Math.max(0, (stage.clientWidth - canvas.offsetWidth * scale) / 2);
-      __zoomState.ty = Math.max(0, (stage.clientHeight - canvas.offsetHeight * scale) / 2);
+      __zoomState.tx = Math.max(0, (stage.clientWidth - canvas.offsetWidth) / 2);
+      __zoomState.ty = Math.max(0, (stage.clientHeight - canvas.offsetHeight) / 2);
       applyZoomTransform();
     }
 
