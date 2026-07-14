@@ -37,6 +37,7 @@ A native macOS application for **viewing** Markdown files — nothing more. It r
 ## Project tooling Stack
 - **Language:** Swift 6 (strict concurrency).
 - **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`, shared library target `MarkioEngine` (rendering assets + locator), executable target `MarkioQuickLook` (Quick Look preview extension binary; `.appex` assembled by `make app`).
+- **Quick Look dev loop:** `make app` re-assembles the bundle and DROPS the appex's pluginkit registration — run `pluginkit -a .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex` after every rebuild (or use `make run`). `qlmanage -p` does NOT host modern `QLPreviewingController` extensions (zero invocations, no `dev.markio` log entries) — verify previews only via Finder + Space. Hang diagnosis: `/usr/bin/log show --predicate 'subsystem == "dev.markio"'` prints the extension's step breadcrumbs; the last logged step locates the hang.
 - **App shell UI:** AppKit + SwiftUI (native window, toolbar, menus, file open / drag-and-drop / recent files).
 - **Content rendering:** WebKit `WKWebView` (hybrid). Markdown→HTML and Mermaid diagrams render inside the web view.
 - **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/MarkioEngine/Resources/vendor` (shared `MarkioEngine` library target), with an HTML shell `template.html`.

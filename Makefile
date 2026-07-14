@@ -16,7 +16,7 @@ QL_NAME := MarkioQuickLook
 QL_BIN := .build/release/$(QL_NAME)
 QL_APPEX := $(APP_BUNDLE)/Contents/PlugIns/$(QL_NAME).appex
 
-.PHONY: check build scan fmt fmt-lint test dev app dist prod clean
+.PHONY: check build scan fmt fmt-lint test dev app run dist prod clean
 
 ## check — comprehensive verification: build, comment-scan, format lint, tests.
 check: build scan fmt-lint test
@@ -51,6 +51,16 @@ test:
 ## dev — run the app (debug). Pass a file: make dev ARGS="path/to/file.md".
 dev:
 	swift run Markio $(ARGS)
+
+## run — manual-QA loop in one step: rebuild the bundle, restart the app, and
+## re-register the Quick Look appex (a rebuild DROPS its pluginkit registration;
+## see AGENTS.md "Quick Look dev loop"). Pass a file: make run ARGS="doc.md".
+run: app
+	# Quit is asynchronous — without the pause `open` races the dying process
+	# and fails with LaunchServices -600 (procNotFound).
+	-osascript -e 'quit app "$(APP_NAME)"' 2>/dev/null; sleep 1
+	pluginkit -a "$(QL_APPEX)"
+	open -a "$(CURDIR)/$(APP_BUNDLE)" $(ARGS)
 
 ## app — release build packaged as a proper Markio.app bundle.
 ## A bundle (with Info.plist + bundle id) makes macOS keep a single instance and
