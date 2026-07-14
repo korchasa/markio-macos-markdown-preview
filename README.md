@@ -2,13 +2,20 @@
 
 A native macOS app for **viewing** Markdown — nothing more. It renders GitHub
 Flavored Markdown and Mermaid diagrams in a clean, minimal, offline reading
-surface. The one on-screen reading control is **line width**.
+surface, and it is built for documents written the way they are written now —
+by you, your team, and your AI: live reload keeps up with an agent writing a
+report, terminal logs render in color, repo links click through like a wiki.
+The one on-screen reading control is **line width**.
 
 ## Features
 
 - GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks, code)
 - Mermaid diagrams — click one to zoom and pan in a lightbox (wide flowcharts
-  stay readable), hover for Copy PNG to paste the diagram into a chat or doc
+  stay readable), hover for Copy PNG to paste the diagram into a chat or doc.
+  All 21 built-in diagram types of the vendored Mermaid 11.6 render offline
+  (flowchart, sequence, class, state, ER, user journey, Gantt, pie, quadrant,
+  requirement, git graph, C4, mindmap, timeline, Sankey, XY chart, block,
+  packet, kanban, architecture, radar — guarded by a test)
 - LaTeX math formulas (inline `$…$` and block `$$…$$`, via KaTeX, offline)
 - YAML frontmatter rendered as a highlighted metadata block
 - Inline HTML (tables with `rowspan`/`colspan`, `<details>`, `<kbd>`, …) rendered
@@ -56,6 +63,7 @@ make dev ARGS="path/to.md"     # open a file on launch
 make app                       # release build packaged as .build/Markio.app
 make prod                      # build the .app and launch it (single instance)
 make prod ARGS="path/to.md"    # …and open a file
+make run ARGS="path/to.md"     # manual-QA loop: rebuild, restart, re-register Quick Look
 ```
 
 `make prod` builds a real `Markio.app` bundle, so macOS keeps a **single
