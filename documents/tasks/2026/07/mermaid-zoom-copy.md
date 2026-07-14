@@ -163,7 +163,7 @@ re-render with `htmlLabels: false` and a new one-way `markioCopyImage` channel.*
    rendered SVG (delegated listener on `#content`, ignoring clicks on the copy
    button) opens it: clone the displayed SVG into the overlay stage, reset
    `scale=1`/`tx=ty=0`, apply via CSS `transform`. Controls (top-right):
-   `+`, `−`, `⟲` (reset), `Copy PNG`, `✕`. Wheel → zoom around cursor;
+   `−`, `+`, `Copy PNG`, `Close` (hotkeys: −/+/0-fit/C/Esc/arrows). Wheel → zoom around cursor;
    drag → pan; Esc / backdrop click / ✕ → close. `render()` closes the overlay
    if open (stale content).
 3. **Rasterization** — `copyMermaidPNG(src)`:

@@ -990,8 +990,7 @@
         return b;
       }
       var zoomOut = mk('markio-zoom-out', '−', 'Zoom out (−)');
-      var zoomIn = mk('markio-zoom-in', '+', 'Zoom in (+)');
-      var reset = mk('markio-zoom-reset', 'Fit', 'Fit to window (0)');
+      var zoomIn = mk('markio-zoom-in', '+', 'Zoom in (+); 0 fits to window');
       var copy = mk('markio-mermaid-copy', 'Copy PNG', 'Copy diagram as PNG (C)', 'C');
       var close = mk('markio-zoom-close', 'Close', 'Close (Esc)', 'esc');
       overlay.appendChild(controls);
@@ -1004,9 +1003,6 @@
       zoomOut.addEventListener('click', function () {
         setZoomScale(__zoomState.scale / 1.25,
           stage.clientWidth / 2, stage.clientHeight / 2);
-      });
-      reset.addEventListener('click', function () {
-        fitZoom();
       });
       copy.addEventListener('click', function () {
         copyMermaidPNG(__zoomState.src, copy);
@@ -1093,7 +1089,7 @@
     // transform: a vector re-laid-out at the target size stays crisp, while
     // an upscaling CSS transform rasterizes the layer and blurs. The
     // transform stays identity here — wheel/buttons zoom on top of the
-    // fitted base. Shared by open and the ⟲ button.
+    // fitted base. Shared by open and the 0 hotkey.
     function fitZoom() {
       var stage = __zoom.querySelector('.markio-zoom-stage');
       var canvas = __zoom.querySelector('.markio-zoom-canvas');

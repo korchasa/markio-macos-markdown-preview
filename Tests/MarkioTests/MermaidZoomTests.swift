@@ -109,13 +109,13 @@ final class MermaidZoomTests: XCTestCase {
             "Dragging must pan the diagram by the pointer delta")
 
         _ = try await preview.evaluate(
-            "document.querySelector('#markio-zoom button.markio-zoom-reset').click(); true")
+            "window.dispatchEvent(new KeyboardEvent('keydown', {key: '0'})); true")
         let reset = try await preview.evaluate(
             "parseFloat(document.querySelector('#markio-zoom .markio-zoom-canvas').dataset.scale)"
         )
         XCTAssertEqual(
             (reset as? NSNumber)?.doubleValue ?? -1, 1.0,
-            "Reset must restore scale 1")
+            "The 0 hotkey must restore the fitted scale")
     }
 
     func testOverlayCloses() async throws {
