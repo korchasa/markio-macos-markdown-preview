@@ -222,6 +222,171 @@ final class RenderTests: XCTestCase {
         XCTAssertEqual(hasContent, 1, "Render surface must survive every malformed input")
     }
 
+    /// ANSI SGR sequences inside fenced code blocks render as colored/styled
+    /// spans; non-SGR escapes are stripped; no raw escape residue is visible;
+    /// a truecolor span's inline `style` survives the sanitize gate.
+    /// [REF:fr:ai-artifacts]
+    func testANSIEscapesRenderAsColors() async throws {
+        let preview = try await makeLoadedPreview()
+        let esc = "\u{1B}"
+        let bel = "\u{07}"
+        let markdown = """
+            ```
+            \(esc)[31mERROR\(esc)[0m plain \(esc)[1;32mok\(esc)[0m
+            \(esc)[38;5;196mpalette\(esc)[0m \(esc)[38;2;255;0;0mtruecolor\(esc)[0m
+            \(esc)[2Kerased\(esc)]0;wintitle\(bel)after
+            ```
+            """
+        await preview.render(markdown)
+
+        let ansiPre = try await count(
+            preview, "document.querySelectorAll('#content pre.markio-ansi').length")
+        XCTAssertGreaterThanOrEqual(
+            ansiPre, 1, "ANSI-bearing block should render as pre.markio-ansi")
+
+        let redSpans = try await count(
+            preview, "document.querySelectorAll('#content pre.markio-ansi span.ansi-fg-1').length")
+        XCTAssertGreaterThanOrEqual(redSpans, 1, "SGR 31 should produce a red-class span")
+
+        let boldSpans = try await count(
+            preview,
+            "document.querySelectorAll('#content pre.markio-ansi span.ansi-bold.ansi-fg-2').length")
+        XCTAssertGreaterThanOrEqual(boldSpans, 1, "SGR 1;32 should produce a bold green span")
+
+        // Truecolor relies on an inline style attribute surviving DOMPurify —
+        // silent truecolor failure is the risk this assertion guards.
+        let truecolor = try await count(
+            preview,
+            "Array.from(document.querySelectorAll('#content pre.markio-ansi span'))"
+                + ".filter(function (s) { return getComputedStyle(s).color === 'rgb(255, 0, 0)'; })"
+                + ".length")
+        XCTAssertGreaterThanOrEqual(truecolor, 1, "38;2;255;0;0 must survive sanitize as red")
+
+        let residue = try await count(
+            preview,
+            "(function () { var t = document.querySelector('#content pre.markio-ansi code').textContent;"
+                + " return (t.indexOf('\\u001b') === -1 && t.indexOf('[31m') === -1"
+                + " && t.indexOf('[2K') === -1 && t.indexOf('wintitle') === -1"
+                + " && t.indexOf('ERROR') !== -1 && t.indexOf('erased') !== -1"
+                + " && t.indexOf('after') !== -1) ? 1 : 0; })()")
+        XCTAssertEqual(residue, 1, "No escape residue; non-SGR CSI + OSC stripped; text kept")
+    }
+
+    /// ```diff``` fences show full-width green/red line backgrounds for +/-
+    /// lines, covering the full scrolled line width. [REF:fr:ai-artifacts]
+    func testDiffBlockLineBackgrounds() async throws {
+        let preview = try await makeLoadedPreview()
+        preview.webView.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let longTail = String(repeating: "x", count: 300)
+        let markdown = """
+            ```diff
+            @@ -1,3 +1,3 @@
+            -removed line
+            +added line
+            +added long line \(longTail)
+            ```
+            """
+        await preview.render(markdown)
+
+        let additions = try await count(
+            preview, "document.querySelectorAll('#content pre.hljs .hljs-addition').length")
+        XCTAssertGreaterThanOrEqual(additions, 2, "each + line should carry hljs-addition")
+        let deletions = try await count(
+            preview, "document.querySelectorAll('#content pre.hljs .hljs-deletion').length")
+        XCTAssertGreaterThanOrEqual(deletions, 1, "the - line should carry hljs-deletion")
+
+        let lineStyle = try await count(
+            preview,
+            "(function () { var a = document.querySelector('#content pre.hljs .hljs-addition');"
+                + " var s = getComputedStyle(a);"
+                + " return (s.display === 'inline-block'"
+                + " && s.backgroundColor !== 'rgba(0, 0, 0, 0)') ? 1 : 0; })()")
+        XCTAssertEqual(lineStyle, 1, "+/- lines must be full-width blocks with a background")
+
+        // The background must cover the horizontally scrolled width, not just
+        // the visible viewport (min-width:100% + shrink-to-fit widest line).
+        let scrolledCoverage = try await count(
+            preview,
+            "(function () { var pre = document.querySelector('#content pre.hljs');"
+                + " if (pre.scrollWidth <= pre.clientWidth) return 0;"
+                + " var w = 0;"
+                + " document.querySelectorAll('#content pre.hljs .hljs-addition').forEach("
+                + "   function (s) { w = Math.max(w, s.getBoundingClientRect().width); });"
+                + " return w >= pre.scrollWidth - 40 ? 1 : 0; })()")
+        XCTAssertEqual(scrolledCoverage, 1, "line background must span the scrolled width")
+    }
+
+    /// Long unbroken tokens (paths, hashes, URLs) never widen the page beyond
+    /// the viewport — prose/inline-code/table content wraps or scrolls locally;
+    /// fenced code keeps scrolling horizontally. [REF:fr:ai-artifacts]
+    func testLongTokensDoNotBreakLayout() async throws {
+        let preview = try await makeLoadedPreview()
+        preview.webView.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let token = "/very/long/path/" + String(repeating: "segment/", count: 40) + "file.swift"
+        let markdown = """
+            Prose with \(token) inside.
+
+            Inline `\(token)` code.
+
+            | Column |
+            | --- |
+            | \(token) |
+
+            [link](https://example.com/\(token))
+
+            ```text
+            \(token)
+            ```
+            """
+        await preview.render(markdown)
+
+        let pageFits = try await count(
+            preview,
+            "document.documentElement.scrollWidth <= window.innerWidth ? 1 : 0")
+        XCTAssertEqual(pageFits, 1, "no horizontal page overflow from long tokens")
+
+        // A long token in a table cell wraps INSIDE the column (SRS scenario)
+        // instead of forcing the whole table into a horizontal scroller.
+        let cellWraps = try await count(
+            preview,
+            "(function () { var t = document.querySelector('#content table');"
+                + " return t && t.scrollWidth <= t.clientWidth + 1 ? 1 : 0; })()")
+        XCTAssertEqual(cellWraps, 1, "table cell content must wrap, not scroll the table")
+
+        let preScrolls = try await count(
+            preview,
+            "(function () { var pre = document.querySelector('#content .markio-codeblock pre.hljs');"
+                + " if (!pre) { pre = document.querySelector('#content pre.hljs'); }"
+                + " return pre && pre.scrollWidth > pre.clientWidth ? 1 : 0; })()")
+        XCTAssertEqual(preScrolls, 1, "fenced code must scroll, not wrap")
+    }
+
+    /// Find works over ANSI-rendered blocks (the two-phase text map crosses
+    /// ANSI spans) and the copy UI decorates them with an escape-free payload.
+    /// [REF:fr:ai-artifacts]
+    func testANSIBlocksKeepFindAndCopy() async throws {
+        let preview = try await makeLoadedPreview()
+        let esc = "\u{1B}"
+        await preview.render("```\n\(esc)[31mAB\(esc)[32mCD\(esc)[0m tail\n```")
+
+        let result = await preview.search("abcd")
+        XCTAssertEqual(result.count, 1, "a query crossing ANSI span boundaries must match")
+        await preview.clearSearch()
+
+        let copyButton = try await count(
+            preview,
+            "document.querySelectorAll('#content .markio-codeblock pre.markio-ansi ~ .markio-code-ui button.markio-copy, #content .markio-codeblock button.markio-copy').length"
+        )
+        XCTAssertGreaterThanOrEqual(copyButton, 1, "ANSI blocks keep the copy button")
+
+        let payload = try await count(
+            preview,
+            "(function () { var c = document.querySelector('#content pre.markio-ansi code');"
+                + " return (c.textContent.indexOf('\\u001b') === -1"
+                + " && c.textContent.indexOf('ABCD tail') === 0) ? 1 : 0; })()")
+        XCTAssertEqual(payload, 1, "copy payload (textContent) is the visible escape-free text")
+    }
+
     /// NFR Scale: a multi-MB document renders without hanging the pipeline.
     func testRendersLargeDocumentWithoutHanging() async throws {
         let preview = try await makeLoadedPreview()

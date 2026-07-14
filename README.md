@@ -28,6 +28,10 @@ surface. The one on-screen reading control is **line width**.
 - Adjustable reading width (toolbar slider), persisted across launches
 - Picks up where you left off: File ▸ Open Recent, windows reopen on relaunch,
   and every document returns at its last scroll position
+- Reads what AI agents emit: ANSI colors in pasted terminal logs render as
+  colors (SGR subset, hand-rolled, offline), `diff` blocks get full-width
+  green/red line backgrounds, and long paths wrap instead of breaking the
+  layout
 - Quick Look: press Space on a `.md` file in Finder and see it rendered by the
   same engine — Mermaid diagrams and math included, which the system preview
   can't do

@@ -140,6 +140,13 @@
 - **Acceptance:** `make app && test -x .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex/Contents/MacOS/MarkioQuickLook && test -d .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex/Contents/Resources/Markio_MarkioEngine.bundle && codesign --verify .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex` (structure + signature); `Tests/MarkioTests/QuickLookTests.swift::testLoadsUTF8MarkdownAndRejectsBinary` (input gate); `manual — maintainer — documents/checklists/quicklook.md` (real Finder/Quick Look rendering)
 - **Status:** [ ]
 
+### 3.20 FR-AI-ARTIFACTS: AI-artifact rendering [ANC:fr:ai-artifacts]
+- **Desc:** Artifacts AI agents emit into Markdown render cleanly: (a) ANSI SGR escape sequences inside fenced code blocks render as colored/styled text (no raw escape residue); (b) ```diff``` fenced blocks show full-width green/red line backgrounds for `+`/`-` lines in light and dark appearance; (c) long unbroken tokens (paths, hashes, URLs) in prose, inline code, and table cells wrap without widening the layout, while code blocks keep horizontal scrolling. Detection is content-based (ESC + `[` in any non-mermaid fence, regardless of language tag — an ANSI-bearing block trades language highlighting for color rendering). On ANSI blocks the Copy button ([REF:fr:code-copy | FR-CODE-COPY]) copies the visible text with escape codes stripped — a deliberate deviation from byte-exact fence content. Offline, no new dependencies; the supported SGR subset is documented in SDS §3.6.
+- **Tasks:** [REF:task:2026-07-ai-artifact-rendering | ai-artifact-rendering]
+- **Scenario:** A doc with a pasted agent log containing `\x1b[31mERROR\x1b[0m` shows "ERROR" in red, not `[31m` garbage; a ```diff``` block shows green/red full-width line backgrounds; a 300-char path in a table cell wraps inside the column.
+- **Acceptance:** `Tests/MarkioTests/RenderTests.swift::testANSIEscapesRenderAsColors`; `Tests/MarkioTests/RenderTests.swift::testDiffBlockLineBackgrounds`; `Tests/MarkioTests/RenderTests.swift::testLongTokensDoNotBreakLayout`; `Tests/MarkioTests/RenderTests.swift::testANSIBlocksKeepFindAndCopy`
+- **Status:** [x]
+
 ---
 
 ## 4. Non-Functional
