@@ -56,9 +56,11 @@ dev:
 ## re-register the Quick Look appex (a rebuild DROPS its pluginkit registration;
 ## see AGENTS.md "Quick Look dev loop"). Pass a file: make run ARGS="doc.md".
 run: app
-	# Quit is asynchronous — without the pause `open` races the dying process
-	# and fails with LaunchServices -600 (procNotFound).
-	-osascript -e 'quit app "$(APP_NAME)"' 2>/dev/null; sleep 1
+	# Quit is asynchronous — `open` racing the dying process fails with
+	# LaunchServices -600 (procNotFound). Wait for the process to actually
+	# exit (state restoration can take >1 s), bounded at ~6 s.
+	-osascript -e 'quit app "$(APP_NAME)"' 2>/dev/null
+	@i=0; while pgrep -qx "$(APP_NAME)" && [ $$i -lt 20 ]; do sleep 0.3; i=$$((i+1)); done
 	pluginkit -a "$(QL_APPEX)"
 	open -a "$(CURDIR)/$(APP_BUNDLE)" $(ARGS)
 
