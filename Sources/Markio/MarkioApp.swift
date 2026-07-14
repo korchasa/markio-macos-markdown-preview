@@ -20,6 +20,7 @@ struct MarkioApp: App {
             ReadOnlyMenuCommands()
             FindCommands()
             TOCCommands()
+            CompareCommands()
         }
     }
 }

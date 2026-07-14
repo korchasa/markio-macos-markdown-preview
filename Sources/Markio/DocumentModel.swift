@@ -12,6 +12,7 @@ final class DocumentModel: ObservableObject {
     private let tocStore: TOCStore
     private let scrollStore: ScrollPositionStore
     private let linkNavigator: LocalLinkNavigator
+    private let compareCoordinator: CompareCoordinator
     private var watcher: FileWatcher?
     private var started = false
     private var currentText = ""
@@ -29,11 +30,19 @@ final class DocumentModel: ObservableObject {
     @Published var outline: [TOCItem] = []
     @Published var currentHeadingID: String?
 
-    init(defaults: UserDefaults = .standard, linkNavigator: LocalLinkNavigator = .shared) {
+    // Compare state, mirrored to the Window menu. [REF:fr:compare]
+    @Published private(set) var isCompared = false
+
+    init(
+        defaults: UserDefaults = .standard,
+        linkNavigator: LocalLinkNavigator = .shared,
+        compareCoordinator: CompareCoordinator = .shared
+    ) {
         widthStore = ContentWidthStore(defaults: defaults)
         tocStore = TOCStore(defaults: defaults)
         scrollStore = ScrollPositionStore(defaults: defaults)
         self.linkNavigator = linkNavigator
+        self.compareCoordinator = compareCoordinator
         contentWidth = Double(widthStore.width)
         tocVisible = tocStore.visible
         preview.onCurrentSectionChange = { [weak self] id in
@@ -52,6 +61,12 @@ final class DocumentModel: ObservableObject {
         preview.onLinkActivated = { [weak self] href in
             guard let self, let url = self.url else { return }
             self.linkNavigator.follow(href: href, from: url)
+        }
+        // Live scroll fraction while this window is half of a compare pair:
+        // the coordinator mirrors it to the peer. [REF:fr:compare]
+        preview.onSyncScroll = { [weak self] fraction in
+            guard let self else { return }
+            self.compareCoordinator.scrollChanged(from: self, fraction: fraction)
         }
     }
 
@@ -91,6 +106,9 @@ final class DocumentModel: ObservableObject {
             if let anchor = linkNavigator.consumePendingAnchor(for: url) {
                 await preview.scrollToHeading(anchor)
             }
+            // Attach AFTER the first render so a pending compare pair links
+            // against a page that is already scrollable. [REF:fr:compare]
+            compareCoordinator.attach(self)
         }
         if let url { startWatching(url) }
     }
@@ -134,6 +152,19 @@ final class DocumentModel: ObservableObject {
     private func refreshOutline() async {
         outline = await preview.outline()
         currentHeadingID = await preview.currentSection()
+    }
+
+    // MARK: - Compare [REF:fr:compare]
+
+    /// Start a side-by-side compare from this window (Window menu): pick the
+    /// second document, pair, tile, mirror.
+    func startCompare() {
+        compareCoordinator.beginCompare(from: self)
+    }
+
+    /// Break this window's compare pair; both windows stay open, unlinked.
+    func stopCompare() {
+        compareCoordinator.unlink(for: self)
     }
 
     // MARK: - Find [REF:fr:find]
@@ -217,5 +248,26 @@ extension DocumentModel: LocalLinkTarget {
 
     func navigate(toAnchor anchor: String) {
         Task { await preview.scrollToHeading(anchor) }
+    }
+}
+
+/// This window as a compare peer: the coordinator toggles the page's live
+/// mirroring channel and pushes the peer's scroll fraction here. TOC, find,
+/// width, and scroll persistence stay untouched per-window state.
+/// [REF:fr:compare]
+extension DocumentModel: CompareTarget {
+    var hostWindow: NSWindow? { preview.webView.window }
+
+    func setCompareSyncEnabled(_ enabled: Bool) {
+        isCompared = enabled
+        Task { await preview.setCompareSync(enabled) }
+    }
+
+    func applyScrollFraction(_ fraction: Double) {
+        Task { await preview.setScrollFraction(fraction) }
+    }
+
+    func currentScrollFraction() async -> Double? {
+        await preview.scrollFraction()
     }
 }

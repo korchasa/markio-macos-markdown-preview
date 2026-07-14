@@ -861,6 +861,52 @@
     }
     function getScrollY() { return window.scrollY; }
 
+    // ---- Compare sync (live scroll mirroring) -------------------------------
+    // While a compare pair is active, the page reports the scroll position as
+    // a FRACTION of its own scrollable height on every scroll event (no
+    // debounce — this channel drives live mirroring; the debounced
+    // `markioScroll` persistence channel above is untouched). Applying a
+    // mirrored position sets a one-shot suppression flag so the resulting
+    // scroll event is consumed instead of echoed back — the peer never
+    // re-drives the source. [REF:fr:compare]
+    var __compare = { enabled: false, suppressOnce: false };
+    function setCompareSync(enabled) {
+      __compare.enabled = !!enabled;
+      if (!__compare.enabled) __compare.suppressOnce = false;
+      return __compare.enabled;
+    }
+    function scrollableHeight() {
+      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    }
+    function getScrollFraction() {
+      var max = scrollableHeight();
+      if (max <= 0) return 0;
+      return Math.min(1, Math.max(0, window.scrollY / max));
+    }
+    function setScrollFraction(f) {
+      var frac = Math.min(1, Math.max(0, Number(f) || 0));
+      var target = Math.round(frac * scrollableHeight());
+      // Only arm the suppression when a scroll event WILL fire — a no-move
+      // apply would leave the flag lingering and swallow the next genuine
+      // user scroll.
+      if (Math.abs(target - window.scrollY) > 1) {
+        __compare.suppressOnce = true;
+        window.scrollTo(window.scrollX, target);
+      }
+      return getScrollFraction();
+    }
+    function postCompareScroll() {
+      if (!__compare.enabled) return;
+      if (__compare.suppressOnce) { __compare.suppressOnce = false; return; }
+      if (window.webkit && window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.markioSyncScroll) {
+        window.webkit.messageHandlers.markioSyncScroll.postMessage(String(getScrollFraction()));
+      }
+    }
+    // Synchronous like the other scroll listeners: rAF does not fire in
+    // offscreen web views.
+    window.addEventListener('scroll', postCompareScroll);
+
     // Jump so the heading sits at the viewport top (TOC semantics; find keeps
     // its block:'center'). Returns whether the id existed.
     function scrollToHeading(id) {
@@ -1129,6 +1175,9 @@
     window.scrollToHeading = scrollToHeading;
     window.setScrollY = setScrollY;
     window.getScrollY = getScrollY;
+    window.setCompareSync = setCompareSync;
+    window.setScrollFraction = setScrollFraction;
+    window.getScrollFraction = getScrollFraction;
   </script>
 </body>
 </html>

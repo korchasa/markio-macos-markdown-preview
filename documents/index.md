@@ -6,6 +6,7 @@ Navigation aggregator across linkable artifacts (FR / SDS / NFR).
 
 - [REF:fr:ai-artifacts | FR-AI-ARTIFACTS] — AI-artifact rendering: ANSI SGR colors in code blocks, full-width diff line backgrounds, long-token wrap — [x]
 - [REF:fr:code-copy | FR-CODE-COPY] — Hover Copy button + language badge on fenced code blocks; raw code → clipboard — [x]
+- [REF:fr:compare | FR-COMPARE] — Side-by-side compare: two documents in tiled windows with live proportional scroll sync — [x]
 - [REF:fr:find | FR-FIND] — Native find HUD (⌘F): live case-insensitive search, all matches highlighted, minimap overview strip — [x]
 - [REF:fr:frontmatter | FR-FRONTMATTER] — Render leading YAML frontmatter as a highlighted metadata block — [x]
 - [REF:fr:inline-html | FR-INLINE-HTML] — Render raw inline HTML through a DOMPurify tag-allowlist sanitizer — [x]
