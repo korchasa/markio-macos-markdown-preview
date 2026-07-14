@@ -5,7 +5,7 @@ implements:
   - FR-QUICKLOOK
 tags: [quicklook, packaging, rendering]
 ---
-# Quick Look preview extension (.appex) built without Xcode
+# Quick Look preview extension (.appex) built without Xcode [ANC:task:2026-07-quicklook-extension]
 
 ## Goal
 
