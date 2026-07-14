@@ -7,7 +7,8 @@ surface. The one on-screen reading control is **line width**.
 ## Features
 
 - GitHub Flavored Markdown (tables, task lists, strikethrough, autolinks, code)
-- Mermaid diagrams
+- Mermaid diagrams — click one to zoom and pan in a lightbox (wide flowcharts
+  stay readable), hover for Copy PNG to paste the diagram into a chat or doc
 - LaTeX math formulas (inline `$…$` and block `$$…$$`, via KaTeX, offline)
 - YAML frontmatter rendered as a highlighted metadata block
 - Inline HTML (tables with `rowspan`/`colspan`, `<details>`, `<kbd>`, …) rendered

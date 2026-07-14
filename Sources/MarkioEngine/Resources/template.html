@@ -91,6 +91,71 @@
       cursor: pointer;
     }
     .markdown-body button.markio-copy:hover { border-color: rgba(128, 128, 128, 0.8); }
+    /* Mermaid interaction: hover "Copy PNG" + click-to-zoom lightbox. The
+       hover UI reuses .markio-code-ui (find-walker skip inherited); the
+       overlay lives OUTSIDE #content so find never walks it.
+       [REF:fr:mermaid-zoom] */
+    .markdown-body .markio-mermaid { position: relative; }
+    .markdown-body .markio-mermaid:hover .markio-code-ui,
+    .markdown-body .markio-mermaid:focus-within .markio-code-ui { opacity: 1; }
+    .markdown-body .markio-mermaid pre.mermaid { cursor: zoom-in; }
+    .markdown-body button.markio-mermaid-copy {
+      font: inherit;
+      font-size: 0.72em;
+      padding: 2px 8px;
+      border: 1px solid rgba(128, 128, 128, 0.4);
+      border-radius: 6px;
+      background-color: Canvas;
+      color: CanvasText;
+      cursor: pointer;
+    }
+    .markdown-body button.markio-mermaid-copy:hover {
+      border-color: rgba(128, 128, 128, 0.8);
+    }
+    #markio-zoom {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.55);
+    }
+    #markio-zoom[hidden] { display: none; }
+    #markio-zoom .markio-zoom-stage {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      cursor: grab;
+      touch-action: none;
+    }
+    #markio-zoom .markio-zoom-canvas {
+      transform-origin: 0 0;
+      width: max-content;
+      padding: 48px;
+      background-color: Canvas;
+      border-radius: 8px;
+      margin: 48px auto;
+    }
+    #markio-zoom .markio-zoom-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 6px;
+      z-index: 1;
+    }
+    #markio-zoom .markio-zoom-controls button {
+      font: inherit;
+      font-size: 0.85em;
+      min-width: 28px;
+      padding: 4px 10px;
+      border: 1px solid rgba(128, 128, 128, 0.5);
+      border-radius: 6px;
+      background-color: Canvas;
+      color: CanvasText;
+      cursor: pointer;
+    }
+    #markio-zoom .markio-zoom-controls button:hover {
+      border-color: rgba(128, 128, 128, 0.9);
+    }
     /* AI-artifact rendering. [REF:fr:ai-artifacts]
        (a) ANSI: style + 16-color palette classes for SGR-rendered spans,
        scoped under .markio-ansi so document-authored HTML cannot invoke them.
@@ -650,13 +715,22 @@
       el.innerHTML = sanitizeHtml(md.render(markdown != null ? String(markdown) : ''));
       rebuildTOC();
       decorateCodeBlocks();
+      // A re-render (live reload, appearance switch) invalidates the overlay's
+      // cloned diagram — close it. [REF:fr:mermaid-zoom]
+      closeZoom();
       if (window.mermaid) {
         var nodes = el.querySelectorAll('pre.mermaid');
         if (nodes.length) {
+          // Keep the fence source: mermaid.run replaces it with the SVG, and
+          // the PNG copy path re-renders from source. [REF:fr:mermaid-zoom]
+          for (var mi = 0; mi < nodes.length; mi++) {
+            nodes[mi].dataset.markioSrc = nodes[mi].textContent;
+          }
           // Malformed diagram: leave the source text in place, never throw, but
           // surface the cause for debugging in the Web Inspector.
           try { await window.mermaid.run({ nodes: nodes }); }
           catch (e) { console.warn('mermaid.run failed', e); }
+          decorateMermaid();
         }
       }
       window.scrollTo(scrollX, scrollY);
@@ -716,6 +790,273 @@
       }
       btn.textContent = 'Copied';
       setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+
+    // ---- Mermaid zoom & copy -------------------------------------------------
+    // Click a rendered diagram → in-page lightbox with pan/zoom (wide
+    // flowcharts are unreadable at column width). "Copy PNG" re-renders the
+    // diagram source off-screen with SVG-text labels (htmlLabels: false via a
+    // per-render init directive): WebKit does not paint foreignObject content
+    // when an SVG is drawn to a canvas, so rasterizing the displayed SVG would
+    // yield blank labels. The base64 PNG goes native over the one-way
+    // markioCopyImage handler (NSPasteboard write; in-page navigator.clipboard
+    // is unreliable in the sandboxed WKWebView), guarded so headless/Quick Look
+    // contexts no-op. The hover UI reuses .markio-code-ui so the find walker
+    // skips it; the overlay lives outside #content, invisible to find.
+    // [REF:fr:mermaid-zoom]
+    function decorateMermaid() {
+      var root = document.getElementById('content');
+      var pres = root.querySelectorAll('pre.mermaid');
+      for (var i = 0; i < pres.length; i++) {
+        var pre = pres[i];
+        if (!pre.querySelector('svg')) continue; // malformed: source left as text
+        var wrap = document.createElement('div');
+        wrap.className = 'markio-mermaid';
+        pre.parentNode.replaceChild(wrap, pre);
+        wrap.appendChild(pre);
+        var ui = document.createElement('div');
+        ui.className = 'markio-code-ui';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'markio-mermaid-copy';
+        btn.textContent = 'Copy PNG';
+        ui.appendChild(btn);
+        wrap.appendChild(ui);
+      }
+    }
+
+    function flashCopyPNGButton(btn, label) {
+      if (!btn) return;
+      btn.textContent = label;
+      setTimeout(function () { btn.textContent = 'Copy PNG'; }, 1500);
+    }
+
+    var __rasterSeq = 0;
+
+    // Off-screen re-render with SVG-text labels: swap the global config to
+    // htmlLabels:false for one render, then restore via initMermaid() (the
+    // same initialize path the theme switch uses), so the on-screen config
+    // (htmlLabels on → wrapping labels) is untouched. An `%%{init}%%`
+    // directive was tried first but did not disable htmlLabels in the
+    // vendored mermaid 11.6.
+    async function markioRasterSVG(src) {
+      window.mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: __dark ? 'dark' : 'default',
+        htmlLabels: false,
+        flowchart: { htmlLabels: false },
+        class: { htmlLabels: false },
+        state: { htmlLabels: false }
+      });
+      try {
+        var out = await window.mermaid.render(
+          'markio-raster-' + (++__rasterSeq), String(src || ''));
+        return out.svg;
+      } finally {
+        initMermaid();
+      }
+    }
+
+    // SVG string → PNG base64 (no data-URL prefix). 2× scale for Retina, the
+    // longest side clamped to 8192 px. The canvas is filled with the page
+    // background so pasted PNGs stay readable on any surface.
+    async function rasterizeMermaidPNG(svgText) {
+      var doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+      var svg = doc.documentElement;
+      if (svg.nodeName.toLowerCase() !== 'svg') throw new Error('not an SVG');
+      var vb = svg.viewBox && svg.viewBox.baseVal;
+      var w = (vb && vb.width) || parseFloat(svg.getAttribute('width')) || 800;
+      var h = (vb && vb.height) || parseFloat(svg.getAttribute('height')) || 600;
+      var scale = Math.min(2, 8192 / Math.max(w, h));
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.style.maxWidth = '';
+      var url = 'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(new XMLSerializer().serializeToString(svg));
+      var img = new Image();
+      await new Promise(function (resolve, reject) {
+        img.onload = resolve;
+        img.onerror = function () { reject(new Error('SVG image decode failed')); };
+        img.src = url;
+      });
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = getComputedStyle(document.body).backgroundColor || '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }
+
+    async function copyMermaidPNG(src, btn) {
+      try {
+        if (!window.mermaid) throw new Error('mermaid unavailable');
+        var png = await rasterizeMermaidPNG(await markioRasterSVG(src));
+        if (window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.markioCopyImage) {
+          window.webkit.messageHandlers.markioCopyImage.postMessage(png);
+        }
+        flashCopyPNGButton(btn, 'Copied');
+      } catch (e) {
+        console.warn('mermaid PNG copy failed', e);
+        flashCopyPNGButton(btn, 'Failed');
+      }
+    }
+
+    var __zoom = null;
+    var __zoomState = { scale: 1, tx: 0, ty: 0, src: '' };
+
+    function applyZoomTransform() {
+      var canvas = __zoom.querySelector('.markio-zoom-canvas');
+      canvas.style.transform = 'translate(' + __zoomState.tx + 'px, ' +
+        __zoomState.ty + 'px) scale(' + __zoomState.scale + ')';
+      canvas.dataset.scale = String(__zoomState.scale);
+      canvas.dataset.tx = String(__zoomState.tx);
+      canvas.dataset.ty = String(__zoomState.ty);
+    }
+
+    // Scale clamped to 0.1…16; when a focal point is given the point under the
+    // cursor stays fixed while scaling.
+    function setZoomScale(next, cx, cy) {
+      next = Math.min(16, Math.max(0.1, next));
+      if (cx != null) {
+        var k = next / __zoomState.scale;
+        __zoomState.tx = cx - (cx - __zoomState.tx) * k;
+        __zoomState.ty = cy - (cy - __zoomState.ty) * k;
+      }
+      __zoomState.scale = next;
+      applyZoomTransform();
+    }
+
+    function buildZoom() {
+      if (__zoom) return __zoom;
+      var overlay = document.createElement('div');
+      overlay.id = 'markio-zoom';
+      overlay.hidden = true;
+      var stage = document.createElement('div');
+      stage.className = 'markio-zoom-stage';
+      var canvas = document.createElement('div');
+      canvas.className = 'markio-zoom-canvas';
+      stage.appendChild(canvas);
+      overlay.appendChild(stage);
+      var controls = document.createElement('div');
+      controls.className = 'markio-zoom-controls';
+      function mk(cls, label, title) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        b.textContent = label;
+        b.title = title;
+        controls.appendChild(b);
+        return b;
+      }
+      var zoomOut = mk('markio-zoom-out', '−', 'Zoom out');
+      var zoomIn = mk('markio-zoom-in', '+', 'Zoom in');
+      var reset = mk('markio-zoom-reset', '⟲', 'Actual size');
+      var copy = mk('markio-mermaid-copy', 'Copy PNG', 'Copy diagram as PNG');
+      var close = mk('markio-zoom-close', '✕', 'Close');
+      overlay.appendChild(controls);
+      document.body.appendChild(overlay);
+
+      zoomIn.addEventListener('click', function () {
+        setZoomScale(__zoomState.scale * 1.25,
+          stage.clientWidth / 2, stage.clientHeight / 2);
+      });
+      zoomOut.addEventListener('click', function () {
+        setZoomScale(__zoomState.scale / 1.25,
+          stage.clientWidth / 2, stage.clientHeight / 2);
+      });
+      reset.addEventListener('click', function () {
+        __zoomState.scale = 1;
+        __zoomState.tx = 0;
+        __zoomState.ty = 0;
+        applyZoomTransform();
+      });
+      copy.addEventListener('click', function () {
+        copyMermaidPNG(__zoomState.src, copy);
+      });
+      close.addEventListener('click', closeZoom);
+
+      // Wheel zooms around the cursor (trackpad pinch arrives as wheel too).
+      stage.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        var factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        setZoomScale(__zoomState.scale * factor, e.clientX, e.clientY);
+      }, { passive: false });
+
+      // Drag pans. A click that never moved and missed the diagram is a
+      // backdrop click → close (drag suppresses the trailing click).
+      var drag = null;
+      var lastDragMoved = false;
+      stage.addEventListener('pointerdown', function (e) {
+        drag = { x: e.clientX, y: e.clientY, moved: false };
+        // Synthetic pointer ids (tests) have no capture entry.
+        try { stage.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      });
+      stage.addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        var dx = e.clientX - drag.x;
+        var dy = e.clientY - drag.y;
+        if (!dx && !dy) return;
+        drag.x = e.clientX;
+        drag.y = e.clientY;
+        drag.moved = true;
+        __zoomState.tx += dx;
+        __zoomState.ty += dy;
+        applyZoomTransform();
+      });
+      stage.addEventListener('pointerup', function () {
+        if (drag) { lastDragMoved = drag.moved; }
+        drag = null;
+      });
+      stage.addEventListener('pointercancel', function () { drag = null; });
+      stage.addEventListener('click', function (e) {
+        if (lastDragMoved) { lastDragMoved = false; return; }
+        if (e.target && e.target.closest && e.target.closest('svg')) return;
+        closeZoom();
+      });
+
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !overlay.hidden) closeZoom();
+      });
+      __zoom = overlay;
+      return overlay;
+    }
+
+    function openZoom(pre) {
+      var svg = pre.querySelector('svg');
+      if (!svg) return;
+      var overlay = buildZoom();
+      var canvas = overlay.querySelector('.markio-zoom-canvas');
+      canvas.innerHTML = '';
+      var clone = svg.cloneNode(true);
+      // The in-column render caps the SVG (max-width: 100%); show natural size.
+      clone.style.maxWidth = 'none';
+      canvas.appendChild(clone);
+      __zoomState = { scale: 1, tx: 0, ty: 0, src: pre.dataset.markioSrc || '' };
+      applyZoomTransform();
+      overlay.hidden = false;
+    }
+
+    function closeZoom() {
+      if (__zoom) { __zoom.hidden = true; }
+    }
+
+    // Hover "Copy PNG" click + diagram click-to-zoom, delegated (#content
+    // survives re-renders, decorations do not).
+    document.getElementById('content').addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ?
+        e.target.closest('button.markio-mermaid-copy') : null;
+      if (btn && btn.closest('.markio-mermaid')) {
+        var owner = btn.closest('.markio-mermaid').querySelector('pre.mermaid');
+        if (owner) copyMermaidPNG(owner.dataset.markioSrc || '', btn);
+        return;
+      }
+      var pre = e.target && e.target.closest ?
+        e.target.closest('.markio-mermaid pre.mermaid') : null;
+      if (pre) openZoom(pre);
     });
 
     // ---- Local link navigation ----------------------------------------------

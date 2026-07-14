@@ -34,6 +34,11 @@ final class PreviewController: NSObject {
     /// channel for side-by-side reading. [REF:fr:compare]
     var onSyncScroll: ((Double) -> Void)?
 
+    /// Fired on the main actor with the decoded PNG bytes after a diagram
+    /// "Copy PNG" click landed on the pasteboard (test/UI hook).
+    /// [REF:fr:mermaid-zoom]
+    var onImageCopied: ((Data) -> Void)?
+
     /// Retained separately because the user-content controller holds its
     /// handlers strongly — registering `self` directly would cycle
     /// webView → configuration → handler → controller. [REF:fr:toc]
@@ -42,15 +47,17 @@ final class PreviewController: NSObject {
     private let scrollMessageProxy = ScriptMessageProxy()
     private let linkMessageProxy = ScriptMessageProxy()
     private let syncScrollMessageProxy = ScriptMessageProxy()
+    private let copyImageMessageProxy = ScriptMessageProxy()
 
     /// Destination for copy-button writes. Injected so tests use a private,
     /// uniquely named pasteboard instead of the user's clipboard. [REF:fr:code-copy]
     private let pasteboard: NSPasteboard
 
-    /// Builds the confined `WKWebView`: two one-way page→native message
-    /// handlers — the read-only `markioTOC` scroll-spy channel (current heading
-    /// id) and the `markioCopy` copy channel (raw code text → pasteboard) —
-    /// wired to `self` as navigation delegate so every navigation is gated by
+    /// Builds the confined `WKWebView`: six one-way page→native message
+    /// handlers (`markioTOC` scroll-spy, `markioCopy` raw code text,
+    /// `markioScroll`, `markioLink`, `markioSyncScroll`, and `markioCopyImage`
+    /// diagram PNG → pasteboard) — wired to `self` as navigation delegate so
+    /// every navigation is gated by
     /// `decidePolicyFor` (only the initial `file:` load and in-page file links
     /// are allowed; web links open externally).
     init(pasteboard: NSPasteboard = .general) {
@@ -62,6 +69,7 @@ final class PreviewController: NSObject {
         config.userContentController.add(scrollMessageProxy, name: "markioScroll")
         config.userContentController.add(linkMessageProxy, name: "markioLink")
         config.userContentController.add(syncScrollMessageProxy, name: "markioSyncScroll")
+        config.userContentController.add(copyImageMessageProxy, name: "markioCopyImage")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
@@ -79,6 +87,9 @@ final class PreviewController: NSObject {
         }
         syncScrollMessageProxy.onMessage = { [weak self] message in
             self?.handleSyncScrollMessage(message)
+        }
+        copyImageMessageProxy.onMessage = { [weak self] message in
+            self?.handleCopyImageMessage(message)
         }
     }
 
@@ -327,6 +338,25 @@ final class PreviewController: NSObject {
             return
         }
         onCodeCopied?(code)
+    }
+
+    /// Validate a diagram-copy push (base64 PNG) and write the raster to the
+    /// pasteboard. Anything but a non-empty base64 string is dropped; a failed
+    /// write is logged, never thrown (best-effort per NFR Reliability).
+    /// [REF:fr:mermaid-zoom]
+    private func handleCopyImageMessage(_ message: WKScriptMessage) {
+        guard
+            message.name == "markioCopyImage",
+            let base64 = message.body as? String,
+            let data = Data(base64Encoded: base64),
+            !data.isEmpty
+        else { return }
+        pasteboard.clearContents()
+        if !pasteboard.setData(data, forType: .png) {
+            Log.preview.error("pasteboard write failed for copied diagram PNG")
+            return
+        }
+        onImageCopied?(data)
     }
 
     /// Validate a scroll-position push: a non-empty string parseable as a
