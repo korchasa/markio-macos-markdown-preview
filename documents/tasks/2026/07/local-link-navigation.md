@@ -8,7 +8,7 @@ related_tasks:
   - [daily-use-feature-backlog](daily-use-feature-backlog.md)
   - [toc-sidebar](toc-sidebar.md)
 ---
-# Local link navigation
+# Local link navigation [ANC:task:2026-07-local-link-navigation]
 
 ## Goal
 
