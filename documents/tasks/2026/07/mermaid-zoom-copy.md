@@ -7,7 +7,7 @@ tags: [mermaid, zoom, clipboard, webview]
 related_tasks:
   - [code-copy-button](code-copy-button.md)
 ---
-# Mermaid zoom & copy
+# Mermaid zoom & copy [ANC:task:2026-07-mermaid-zoom-copy]
 
 ## Goal
 
