@@ -1049,34 +1049,39 @@
       });
 
       // Overlay hotkeys (labeled on the buttons): + / = zoom in, − zoom out,
-      // 0 fit, C copy PNG, arrows pan, Esc close. Modified chords are left
-      // to the app so native menu shortcuts keep working.
+      // 0 fit, C copy PNG, arrows pan, Esc close. Matched by PHYSICAL key
+      // (e.code) with an e.key fallback, so letter keys work on any keyboard
+      // layout (on Cyrillic the C key yields e.key 'с', which would never
+      // match). Modified chords are left to the app so native menu shortcuts
+      // keep working.
       window.addEventListener('keydown', function (e) {
         if (overlay.hidden) return;
         if (e.key === 'Escape') { closeZoom(); return; }
         if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var code = e.code || '';
         var cx = stage.clientWidth / 2;
         var cy = stage.clientHeight / 2;
         var step = 60;
-        switch (e.key) {
-          case '+': case '=':
-            setZoomScale(__zoomState.scale * 1.25, cx, cy); break;
-          case '-': case '_':
-            setZoomScale(__zoomState.scale / 1.25, cx, cy); break;
-          case '0':
-            fitZoom(); break;
-          case 'c': case 'C':
-            copyMermaidPNG(__zoomState.src, copy); break;
-          case 'ArrowLeft':
-            __zoomState.tx += step; applyZoomTransform(); break;
-          case 'ArrowRight':
-            __zoomState.tx -= step; applyZoomTransform(); break;
-          case 'ArrowUp':
-            __zoomState.ty += step; applyZoomTransform(); break;
-          case 'ArrowDown':
-            __zoomState.ty -= step; applyZoomTransform(); break;
-          default:
-            return;
+        if (code === 'Equal' || code === 'NumpadAdd' ||
+            e.key === '+' || e.key === '=') {
+          setZoomScale(__zoomState.scale * 1.25, cx, cy);
+        } else if (code === 'Minus' || code === 'NumpadSubtract' ||
+            e.key === '-' || e.key === '_') {
+          setZoomScale(__zoomState.scale / 1.25, cx, cy);
+        } else if (code === 'Digit0' || code === 'Numpad0' || e.key === '0') {
+          fitZoom();
+        } else if (code === 'KeyC' || e.key === 'c' || e.key === 'C') {
+          copyMermaidPNG(__zoomState.src, copy);
+        } else if (e.key === 'ArrowLeft') {
+          __zoomState.tx += step; applyZoomTransform();
+        } else if (e.key === 'ArrowRight') {
+          __zoomState.tx -= step; applyZoomTransform();
+        } else if (e.key === 'ArrowUp') {
+          __zoomState.ty += step; applyZoomTransform();
+        } else if (e.key === 'ArrowDown') {
+          __zoomState.ty -= step; applyZoomTransform();
+        } else {
+          return;
         }
         e.preventDefault();
       });

@@ -176,6 +176,20 @@ final class MermaidZoomTests: XCTestCase {
             "Arrow keys must pan by a fixed step")
     }
 
+    func testCopyHotkeyIsLayoutIndependent() async throws {
+        // On a Cyrillic layout the C key yields e.key 'с'; the handler must
+        // match by physical key (e.code 'KeyC') for the hotkey to work.
+        let (preview, _) = try await makeZoomPreview()
+        try await openOverlay(preview)
+
+        let delivered = expectation(description: "copy fired from Cyrillic layout")
+        preview.onImageCopied = { _ in delivered.fulfill() }
+        _ = try await preview.evaluate(
+            "window.dispatchEvent(new KeyboardEvent('keydown', "
+                + "{key: 'с', code: 'KeyC'})); true")
+        await fulfillment(of: [delivered], timeout: 10)
+    }
+
     func testRerenderClosesOverlay() async throws {
         let (preview, _) = try await makeZoomPreview()
         try await openOverlay(preview)

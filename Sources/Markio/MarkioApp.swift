@@ -36,8 +36,22 @@ struct ReadOnlyMenuCommands: Commands {
         // New — a viewer creates nothing.
         CommandGroup(replacing: .newItem) {}
         // Save/Save As/Duplicate/Rename/Move To/Revert/Share — and, sharing the
-        // same group, Close/Close All.
-        CommandGroup(replacing: .saveItem) {}
+        // same group, Close/Close All. Close is NOT a write command: re-add it
+        // explicitly, or the app loses ⌘W entirely (menu key equivalents are
+        // implemented by menu items; AppKit matches them layout-independently,
+        // so ⌘W works on any keyboard layout for free).
+        CommandGroup(replacing: .saveItem) {
+            Button("Close") {
+                NSApp.keyWindow?.performClose(nil)
+            }
+            .keyboardShortcut("w", modifiers: .command)
+            Button("Close All") {
+                for window in NSApp.windows where window.isVisible {
+                    window.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: [.command, .option])
+        }
     }
 }
 
