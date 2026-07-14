@@ -19,6 +19,9 @@ surface. The one on-screen reading control is **line width**.
   section highlighted while you scroll
 - Copy button on code blocks: hover a fenced block to reveal Copy and a
   language badge; one click puts the raw code on the clipboard
+- Working local links: relative links to other `.md` files open them in a new
+  window (`other.md#section` lands on the section), `#anchor` links scroll in
+  place — read a repo's living documentation link by link
 - In-document find (⌘F): every match highlighted with an "N of M" counter, an
   overview strip at the right edge marks match positions, and matches are found
   even across syntax-highlighting inside code blocks and tables

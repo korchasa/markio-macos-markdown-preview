@@ -107,6 +107,7 @@ Maps source code paths to documentation sections that describe them. Used by com
 - `Sources/Markio/*Watcher*.swift`, file watching → SDS §3 (File loader + watcher) + SRS FR-LIVE-RELOAD
 - `Sources/Markio/*Width*.swift` + line-width control → SDS §5 (Line width) + SRS FR-LINE-WIDTH
 - `Sources/Markio/Resources/template.html`, `Resources/vendor/**` → SDS §3 (Render pipeline) + SRS FR-GFM, FR-MERMAID
+- `Sources/Markio/*Link*.swift`, local link navigation → SDS §3 (LocalLinkNavigator) + SRS FR-LOCAL-LINKS
 - `Makefile` → AGENTS.md Development Commands
 - `README.md` → only for user-facing changes
 

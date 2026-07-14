@@ -23,12 +23,18 @@ final class PreviewController: NSObject {
     /// the owner can persist the reading place. [REF:fr:session-restore]
     var onScrollPositionChange: ((Double) -> Void)?
 
+    /// Fired on the main actor with the raw href of a clicked relative
+    /// Markdown link; resolution and opening are the owner's (native) job.
+    /// [REF:fr:local-links]
+    var onLinkActivated: ((String) -> Void)?
+
     /// Retained separately because the user-content controller holds its
     /// handlers strongly — registering `self` directly would cycle
     /// webView → configuration → handler → controller. [REF:fr:toc]
     private let tocMessageProxy = ScriptMessageProxy()
     private let copyMessageProxy = ScriptMessageProxy()
     private let scrollMessageProxy = ScriptMessageProxy()
+    private let linkMessageProxy = ScriptMessageProxy()
 
     /// Destination for copy-button writes. Injected so tests use a private,
     /// uniquely named pasteboard instead of the user's clipboard. [REF:fr:code-copy]
@@ -47,6 +53,7 @@ final class PreviewController: NSObject {
         config.userContentController.add(tocMessageProxy, name: "markioTOC")
         config.userContentController.add(copyMessageProxy, name: "markioCopy")
         config.userContentController.add(scrollMessageProxy, name: "markioScroll")
+        config.userContentController.add(linkMessageProxy, name: "markioLink")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         webView.navigationDelegate = self
@@ -58,6 +65,9 @@ final class PreviewController: NSObject {
         }
         scrollMessageProxy.onMessage = { [weak self] message in
             self?.handleScrollMessage(message)
+        }
+        linkMessageProxy.onMessage = { [weak self] message in
+            self?.handleLinkMessage(message)
         }
     }
 
@@ -270,6 +280,16 @@ final class PreviewController: NSObject {
             y.isFinite, y >= 0
         else { return }
         onScrollPositionChange?(y)
+    }
+
+    /// Validate a link-click push: the raw href as a non-empty string;
+    /// anything else is dropped. The href is untrusted page data — the owner
+    /// runs it through `LocalLinkResolver` (default-deny) before acting.
+    /// [REF:fr:local-links]
+    private func handleLinkMessage(_ message: WKScriptMessage) {
+        guard message.name == "markioLink", let href = message.body as? String, !href.isEmpty
+        else { return }
+        onLinkActivated?(href)
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.

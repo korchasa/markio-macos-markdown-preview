@@ -11,6 +11,7 @@ final class DocumentModel: ObservableObject {
     private let widthStore: ContentWidthStore
     private let tocStore: TOCStore
     private let scrollStore: ScrollPositionStore
+    private let linkNavigator: LocalLinkNavigator
     private var watcher: FileWatcher?
     private var started = false
     private var currentText = ""
@@ -28,10 +29,11 @@ final class DocumentModel: ObservableObject {
     @Published var outline: [TOCItem] = []
     @Published var currentHeadingID: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, linkNavigator: LocalLinkNavigator = .shared) {
         widthStore = ContentWidthStore(defaults: defaults)
         tocStore = TOCStore(defaults: defaults)
         scrollStore = ScrollPositionStore(defaults: defaults)
+        self.linkNavigator = linkNavigator
         contentWidth = Double(widthStore.width)
         tocVisible = tocStore.visible
         preview.onCurrentSectionChange = { [weak self] id in
@@ -43,6 +45,13 @@ final class DocumentModel: ObservableObject {
         preview.onScrollPositionChange = { [weak self] y in
             guard let self, let url = self.url else { return }
             self.scrollStore.setPosition(y, for: url)
+        }
+        // A clicked relative Markdown link: resolve + open natively (new
+        // window per document, powerbox grant when the sandbox denies).
+        // [REF:fr:local-links]
+        preview.onLinkActivated = { [weak self] href in
+            guard let self, let url = self.url else { return }
+            self.linkNavigator.follow(href: href, from: url)
         }
     }
 
@@ -73,6 +82,15 @@ final class DocumentModel: ObservableObject {
         // [REF:fr:session-restore]
         if let url, let savedY = scrollStore.position(for: url) {
             await preview.setScrollY(savedY)
+        }
+        // A link-driven open lands on its section: the pending anchor wins
+        // over the saved reading position — the user explicitly asked for it.
+        // [REF:fr:local-links]
+        if let url {
+            linkNavigator.attach(self)
+            if let anchor = linkNavigator.consumePendingAnchor(for: url) {
+                await preview.scrollToHeading(anchor)
+            }
         }
         if let url { startWatching(url) }
     }
@@ -187,5 +205,17 @@ final class DocumentModel: ObservableObject {
     /// `NSApp` so it is safe to read before the app object exists (early launch).
     static var systemIsDark: Bool {
         NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+}
+
+/// This window as a cross-file anchor target: when a link in another window
+/// points at this document (`other.md#section`) and it is already open, the
+/// navigator scrolls it here directly — the window never re-renders.
+/// [REF:fr:local-links]
+extension DocumentModel: LocalLinkTarget {
+    var documentURL: URL? { url }
+
+    func navigate(toAnchor anchor: String) {
+        Task { await preview.scrollToHeading(anchor) }
     }
 }

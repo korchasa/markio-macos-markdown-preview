@@ -480,6 +480,35 @@
       setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
     });
 
+    // ---- Local link navigation ----------------------------------------------
+    // The page owns click interception only; resolution and opening are
+    // native. `#anchor` scrolls in place (TOC slug ids, `scrollToHeading` is
+    // hoisted). A scheme'd or protocol-relative href is left to the
+    // navigation delegate (http/https → default browser, the rest blocked).
+    // Any other relative href is prevented; if it targets a Markdown file its
+    // RAW value is posted to the one-way `markioLink` handler (guarded for
+    // headless), otherwise the click stays dead — default-deny.
+    // [REF:fr:local-links]
+    document.getElementById('content').addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      if (href.charAt(0) === '#') {
+        e.preventDefault();
+        var id = href.slice(1);
+        try { id = decodeURIComponent(id); } catch (err) { /* keep raw */ }
+        scrollToHeading(id);
+        return;
+      }
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href) || href.slice(0, 2) === '//') return;
+      e.preventDefault();
+      if (!/\.(md|markdown)$/i.test(href.split('#')[0])) return;
+      if (window.webkit && window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.markioLink) {
+        window.webkit.messageHandlers.markioLink.postMessage(href);
+      }
+    });
+
     // ---- Table of contents --------------------------------------------------
     // The native sidebar owns the chrome; the page owns the content mechanics:
     // heading ids, outline extraction, jump scrolling, and the current-section
