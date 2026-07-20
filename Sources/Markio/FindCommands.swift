@@ -1,21 +1,8 @@
 import SwiftUI
 
-/// Exposes the focused window's `DocumentModel` to app-level menu commands, so a
-/// single Find menu drives whichever document window is key. [REF:fr:find]
-struct FocusedDocumentModelKey: FocusedValueKey {
-    typealias Value = DocumentModel
-}
-
-extension FocusedValues {
-    var documentModel: DocumentModel? {
-        get { self[FocusedDocumentModelKey.self] }
-        set { self[FocusedDocumentModelKey.self] = newValue }
-    }
-}
-
-/// Standard macOS Find menu items (Find… / Find Next / Find Previous) wired to
-/// the focused document window's find bar via `@FocusedValue`. Next/Previous are
-/// disabled until a search has matches. [REF:fr:find] [REF:sds:find-bar]
+/// Edit-menu Find actions routed to the focused document window. File actions
+/// stay in `FileCommands`; the standard Edit clipboard surface is untouched.
+/// [REF:fr:find] [REF:sds:find-bar] [REF:sds:menu-commands]
 struct FindCommands: Commands {
     @FocusedValue(\.documentModel) private var model
 

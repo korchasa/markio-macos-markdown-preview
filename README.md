@@ -27,6 +27,8 @@ The one on-screen reading control is **line width**.
   section highlighted while you scroll
 - Copy button on code blocks: hover a fenced block to reveal Copy and a
   language badge; one click puts the raw code on the clipboard
+- File ▸ Copy File Path copies the focused document's absolute filesystem path
+  as plain text
 - Working local links: relative links to other `.md` files open them in a new
   window (`other.md#section` lands on the section), `#anchor` links scroll in
   place — read a repo's living documentation link by link

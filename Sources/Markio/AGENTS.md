@@ -7,8 +7,10 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
 ## Responsibility
 
 - **App shell / OS integration** — `MarkioApp` (`DocumentGroup`, command-line
-  open, window-tabbing opt-out), `MenuArtifactCleaner` (trims the read-only menu),
-  `WindowTitleSetter` (full-path title bar).
+  open, window-tabbing opt-out), `MenuArtifactCleaner` (idempotently removes
+  native New after SwiftUI updates File),
+  `FileCommands` (ordered read-only File actions), `FindCommands` (Edit find
+  actions), `WindowTitleSetter` (full-path title bar).
 - **Document** — `MarkdownDocument` (read-only `FileDocument`, UTF-8 decode,
   canonical Markdown `extensions` + `URL.isMarkdown`).
 - **Per-window state** — `DocumentModel` (owns preview/watcher/reading width,
@@ -24,6 +26,9 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
   (`FindCommands` routed by the `documentModel` `FocusedValue`); the search/
   highlight engine lives in `template.html` (`search`/`findNext`/`findPrev`/
   `clearSearch`), bridged by `PreviewController` and driven by `DocumentModel`.
+- **File path copy** — `ContentView` publishes its synchronous file URL through
+  `FocusedValues.documentFileURL`; `FileCommands` adds File ▸ Copy File Path and
+  `FilePathClipboard` writes the absolute path to native `NSPasteboard`.
 - **Diagnostics** — `Log` (`os.Logger`, subsystem `dev.markio`): best-effort
   paths (JS bridge, file opens) log failures instead of swallowing them.
 
@@ -33,6 +38,13 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
   blocked by `LinkPolicy` at the navigation delegate; assets are vendored offline
   under `Resources/vendor`.
 - One `DocumentModel` per window — no shared singleton.
+- One `FileCommands` owner defines File ordering; Edit keeps standard Copy and
+  contains only the app's Find additions.
+- SwiftUI owns commands, focused routing, Open, and Open Recent; AppKit only
+  removes public `NSDocumentController.newDocument(_:)` after forwarding the
+  original menu update. `AppDelegate` repairs SwiftUI delegate replacement
+  before tracking through public launch/activation/update callbacks. Never use
+  timers, input monitors, menu titles, indices, or private selectors.
 - Layering: Foundation-only file/locator code never imports AppKit/WebKit/SwiftUI.
 
 ## UI verification (real app)
@@ -48,7 +60,8 @@ Menu/toolbar/window/HUD changes must be checked in a real `.app` (`make app` →
 - Screenshots via `screencapture` are blocked here (`could not create image from
   display` — no Screen Recording permission). Inspect the live UI via System
   Events AX instead.
-- Menu names are **localized** — query `menu bar item "Правка"`, not `"Edit"`.
+- The bundle is English-only — query File/Edit by title after resolving the
+  exact process ID and verifying its executable path.
 - System Events `keystroke` is **corrupted by a non-US input source** (a
   Cyrillic layout turns `mermaid` into `mффmффd`). To set text reliably, `set
   value of <AXTextField>` directly — it also drives the SwiftUI binding, so live

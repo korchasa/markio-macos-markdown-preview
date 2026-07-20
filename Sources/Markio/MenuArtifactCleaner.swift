@@ -1,44 +1,51 @@
 import AppKit
 
-/// Removes the cosmetic artifacts SwiftUI leaves when `CommandGroup(replacing:)`
-/// empties a command group: a disabled, title-less placeholder item (AppKit
-/// draws it literally as "NSMenuItem") and the orphaned separators that bounded
-/// the removed group. This is purely structural — it matches no selector,
-/// identifier, or title, so it is locale- and version-robust. The semantic
-/// removal stays in `ReadOnlyMenuCommands` (contractual SwiftUI). [REF:fr:menu]
+/// Removes the native New item that the tested SwiftUI runtime supplies despite
+/// `DocumentGroup(viewing:)`. Commands and Open Recent remain SwiftUI-owned;
+/// this adapter matches only AppKit's public document action. [REF:fr:menu]
 enum MenuArtifactCleaner {
-    /// Interpose a cleaner delegate on every top-level submenu. Returns the
-    /// cleaners; the caller must retain them (`NSMenu.delegate` is weak).
-    static func install(on mainMenu: NSMenu?) -> [MenuArtifactCleaner.Delegate] {
-        guard let mainMenu else { return [] }
-        return mainMenu.items.compactMap { top in
-            guard let submenu = top.submenu else { return nil }
-            let cleaner = Delegate(forwardingTo: submenu.delegate)
-            submenu.delegate = cleaner
-            clean(submenu)
-            return cleaner
+    /// Keeps one forwarding delegate per current top-level submenu. SwiftUI
+    /// may restore its delegate as scenes change, so each install repairs that
+    /// replacement without wrapping an already-installed proxy.
+    final class Installer {
+        private var delegates: [ObjectIdentifier: Delegate] = [:]
+
+        func install(on mainMenu: NSMenu?) {
+            guard let mainMenu else { return }
+            var activeMenus = Set<ObjectIdentifier>()
+
+            for topItem in mainMenu.items {
+                guard let submenu = topItem.submenu else { continue }
+                let menuID = ObjectIdentifier(submenu)
+                activeMenus.insert(menuID)
+
+                if let existing = delegates[menuID], submenu.delegate === existing {
+                    MenuArtifactCleaner.clean(submenu)
+                    continue
+                }
+
+                let cleaner = Delegate(forwardingTo: submenu.delegate)
+                delegates[menuID] = cleaner
+                submenu.delegate = cleaner
+                MenuArtifactCleaner.clean(submenu)
+            }
+
+            delegates = delegates.filter { activeMenus.contains($0.key) }
         }
     }
 
-    /// Drop placeholder items, then collapse leading/trailing/duplicate
-    /// separators left behind.
+    /// Drop native New, then collapse only separators orphaned by that removal.
+    /// Menus without the exact public action remain byte-for-byte untouched.
     static func clean(_ menu: NSMenu) {
-        for item in menu.items where isPlaceholder(item) {
+        let nativeNewItems = menu.items.filter {
+            $0.action == #selector(NSDocumentController.newDocument(_:))
+        }
+        guard !nativeNewItems.isEmpty else { return }
+
+        for item in nativeNewItems {
             menu.removeItem(item)
         }
         collapseSeparators(menu)
-    }
-
-    /// A SwiftUI placeholder: no title, not a separator, and carrying nothing
-    /// that could render (no custom view, no submenu, no action). Real empty
-    /// items — the Help search field (a view item), Open Recent (a submenu) —
-    /// are preserved.
-    private static func isPlaceholder(_ item: NSMenuItem) -> Bool {
-        !item.isSeparatorItem
-            && item.title.isEmpty
-            && item.view == nil
-            && item.submenu == nil
-            && item.action == nil
     }
 
     private static func collapseSeparators(_ menu: NSMenu) {
@@ -61,9 +68,8 @@ enum MenuArtifactCleaner {
         }
     }
 
-    /// Wraps SwiftUI's own menu delegate: forwards every call to it, then cleans
-    /// once it has rebuilt the menu (SwiftUI re-adds the placeholder on each
-    /// open). Forwarding preserves key equivalents and dynamic submenus.
+    /// Wraps SwiftUI's delegate: forwards its rebuild first, then removes New.
+    /// Forwarding preserves key equivalents and dynamic Open Recent contents.
     final class Delegate: NSObject, NSMenuDelegate {
         private weak var original: NSMenuDelegate?
 

@@ -31,9 +31,11 @@ struct ContentView: View {
         // The width control lives in a bottom bar (not the toolbar), pinned
         // below the preview and spanning the whole window. [REF:fr:line-width]
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-        // Route the app-level Find/TOC menus to this (focused) window's model.
-        // [REF:fr:find] [REF:fr:toc]
+        // Route app-level commands to this focused window. Publish the file URL
+        // synchronously so Copy File Path is ready before model startup.
+        // [REF:fr:find] [REF:fr:toc] [REF:fr:menu]
         .focusedSceneValue(\.documentModel, model)
+        .focusedSceneValue(\.documentFileURL, fileURL)
         // Show the document's full filesystem path in the title bar instead
         // of the bare file name (DocumentGroup's default). The proxy icon
         // (represented URL) is kept. [REF:fr:multidoc]

@@ -17,40 +17,9 @@ struct MarkioApp: App {
         // fits a comfortable reading area on a 13" display.
         .defaultSize(width: 900, height: 820)
         .commands {
-            ReadOnlyMenuCommands()
+            FileCommands()
             FindCommands()
             TOCCommands()
-            CompareCommands()
-        }
-    }
-}
-
-/// Trims the auto-generated `DocumentGroup` menu to a read-only-viewer surface
-/// using only the two contractual SwiftUI command groups that hold document-
-/// write commands. Everything else (notably the whole Edit menu) is left
-/// standard, so macOS auto-disables the inapplicable items on non-editable
-/// content and localizes every item for free. Emptying a group leaves a SwiftUI
-/// placeholder item — `MenuArtifactCleaner` removes that. [REF:fr:menu]
-struct ReadOnlyMenuCommands: Commands {
-    var body: some Commands {
-        // New — a viewer creates nothing.
-        CommandGroup(replacing: .newItem) {}
-        // Save/Save As/Duplicate/Rename/Move To/Revert/Share — and, sharing the
-        // same group, Close/Close All. Close is NOT a write command: re-add it
-        // explicitly, or the app loses ⌘W entirely (menu key equivalents are
-        // implemented by menu items; AppKit matches them layout-independently,
-        // so ⌘W works on any keyboard layout for free).
-        CommandGroup(replacing: .saveItem) {
-            Button("Close") {
-                NSApp.keyWindow?.performClose(nil)
-            }
-            .keyboardShortcut("w", modifiers: .command)
-            Button("Close All") {
-                for window in NSApp.windows where window.isVisible {
-                    window.performClose(nil)
-                }
-            }
-            .keyboardShortcut("w", modifiers: [.command, .option])
         }
     }
 }
@@ -60,8 +29,8 @@ struct ReadOnlyMenuCommands: Commands {
 /// path passed on the command line, so we cover `swift run Markio <file>` /
 /// `make dev ARGS="<path>"` here. [REF:fr:open]
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Retains the menu cleaner delegates — `NSMenu.delegate` is weak. [REF:fr:menu]
-    private var menuCleaners: [MenuArtifactCleaner.Delegate] = []
+    /// Retains and repairs menu proxies — `NSMenu.delegate` is weak. [REF:fr:menu]
+    private let menuCleaner = MenuArtifactCleaner.Installer()
 
     /// One document = one window: opt out of window tabbing app-wide before any
     /// window exists, so documents never merge into tabs regardless of the
@@ -89,7 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Snapshot.runIfRequested() { return }
         NSApp.setActivationPolicy(.regular)
         DispatchQueue.main.async {
-            self.menuCleaners = MenuArtifactCleaner.install(on: NSApp.mainMenu)
+            self.menuCleaner.install(on: NSApp.mainMenu)
         }
         guard
             let url = CommandLine.arguments
@@ -109,5 +78,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    /// SwiftUI can restore its own menu delegates while scenes update or the
+    /// app activates. Repair before the next menu-tracking cycle. [REF:fr:menu]
+    func applicationDidBecomeActive(_ notification: Notification) {
+        menuCleaner.install(on: NSApp.mainMenu)
+    }
+
+    func applicationDidUpdate(_ notification: Notification) {
+        menuCleaner.install(on: NSApp.mainMenu)
     }
 }
