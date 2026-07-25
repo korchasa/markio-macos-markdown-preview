@@ -1,6 +1,6 @@
 ---
 date: 2026-07-25
-status: to do
+status: done
 implements:
   - FR-COMPARE
 tags: [compare, requirement-change]
@@ -69,13 +69,13 @@ no editing or merging.
 
 ## Definition of Done
 
-- [ ] FR-COMPARE: comparing against a baseline marks added blocks, inserts
+- [x] FR-COMPARE: comparing against a baseline marks added blocks, inserts
   removed blocks, leaves unchanged content unmarked; identical documents
   show no markers; Stop Comparing restores the plain render; self-compare
   is a no-op
   - Test: `Tests/MarkioTests/CompareTests.swift::testDiffMarksAddedBlocks`; `::testDiffInsertsRemovedBlocks`; `::testIdenticalDocumentsShowNoMarkers`; `::testStopComparingRestoresPlainRender`; `::testSelfCompareIsNoOp`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter CompareTests"`
-- [ ] FR-COMPARE: real-app flow accepted by the maintainer (panel, diff
+- [x] FR-COMPARE: real-app flow accepted by the maintainer (panel, diff
   view, Stop Comparing, live reload re-diff)
   - Test: `manual — maintainer — documents/checklists/compare.md`
   - Evidence: `NO_COLOR=1 make app`

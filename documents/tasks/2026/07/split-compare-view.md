@@ -1,6 +1,6 @@
 ---
 date: 2026-07-25
-status: to do
+status: done
 implements:
   - FR-COMPARE
   - FR-MENU
@@ -62,13 +62,13 @@ block map already exist in the page.
 
 ## Definition of Done
 
-- [ ] FR-COMPARE: split layout shows baseline left / current right with
-  removed blocks marked left, added blocks marked right, and pairs of
-  unchanged blocks aligned to the same vertical offset; the toggle switches
+- [x] FR-COMPARE: split layout shows baseline blocks left / current right
+  with removed marked left, added marked right (interleaved rows since the
+  post-DoD evolution — unchanged content full width); the toggle switches
   layouts live and the preference persists
-  - Test: `Tests/MarkioTests/CompareTests.swift::testSplitLayoutShowsBothVersionsWithMarks`; `::testSplitAlignsSharedBlocks`; `::testSplitToggleSwitchesLayoutLive`; `::testSplitPreferencePersists`
+  - Test: `Tests/MarkioTests/CompareTests.swift::testSplitLayoutShowsBothVersionsWithMarks`; `::testSplitKeepsUnchangedFullWidth`; `::testSplitToggleSwitchesLayoutLive`; `::testSplitPreferencePersists`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter CompareTests"`
-- [ ] FR-MENU: File compare group reads `Compare…` / `Stop Comparing`; View
+- [x] FR-MENU: File compare group reads `Compare…` / `Stop Comparing`; View
   carries the `Compare Side by Side` toggle (enabled iff compared) in the real app
   - Test: `manual — maintainer — documents/checklists/menu.md`
   - Evidence: `NO_COLOR=1 make app`
