@@ -4,10 +4,10 @@ import XCTest
 @testable import Markio
 
 /// FR-COMPARE: side-by-side compare — two document windows linked by the
-/// `CompareCoordinator` mirror each other's scrolling at the same fraction of
-/// their OWN scrollable height (`scrollY / (scrollHeight − viewport)` equal on
-/// both sides), with no feedback loop; unlinking or losing either side stops
-/// the mirroring.
+/// `CompareCoordinator` mirror each other's scrolling by the same absolute
+/// pixel distance (delta mirroring), each clamped within its own bounds, with
+/// no feedback loop; a clamped peer re-engages the moment scrolling reverses;
+/// unlinking or losing either side stops the mirroring.
 final class CompareTests: XCTestCase {
     private var suiteName = ""
     private var defaults: UserDefaults!
@@ -81,10 +81,10 @@ final class CompareTests: XCTestCase {
         return last
     }
 
-    /// Scrolling one linked preview moves the other to the same fraction of
-    /// its own scrollable height, in both directions.
+    /// Scrolling one linked preview moves the other by the same absolute pixel
+    /// distance, in both directions (positions coincide while nothing clamps).
     @MainActor
-    func testScrollMirrorsToLinkedPeerProportionally() async throws {
+    func testScrollMirrorsSameAbsoluteDistanceToLinkedPeer() async throws {
         let coordinator = CompareCoordinator(open: Self.unusedOpen)
         let a = try await makeModel(coordinator: coordinator, file: "a.md", paragraphs: 300)
         let b = try await makeModel(coordinator: coordinator, file: "b.md", paragraphs: 120)
@@ -96,17 +96,64 @@ final class CompareTests: XCTestCase {
         XCTAssertGreaterThan(bMax, 0, "B must be scrollable")
         XCTAssertNotEqual(
             aMax, bMax, accuracy: 10,
-            "documents must differ in length for proportionality to be observable")
+            "documents must differ in length so absolute ≠ proportional")
 
-        // A to its midpoint → B lands at the midpoint of ITS scrollable height.
-        _ = try await a.preview.evaluate("window.scrollTo(0, \(aMax / 2))")
-        let bLanded = try await waitForScrollY(b, toReach: bMax / 2)
-        XCTAssertEqual(bLanded, bMax / 2, accuracy: 2, "B follows A at the same fraction")
+        // A down 300 px → B lands 300 px down (NOT at 300/aMax of its height).
+        let step = min(300, bMax / 2).rounded()
+        _ = try await a.preview.evaluate("window.scrollTo(0, \(step))")
+        let bLanded = try await waitForScrollY(b, toReach: step)
+        XCTAssertEqual(bLanded, step, accuracy: 2, "B follows A by the same distance")
 
-        // And back: B to its quarter → A follows. The link is symmetric.
-        _ = try await b.preview.evaluate("window.scrollTo(0, \(bMax / 4))")
-        let aLanded = try await waitForScrollY(a, toReach: aMax / 4)
-        XCTAssertEqual(aLanded, aMax / 4, accuracy: 2, "A follows B")
+        // And back: B up 100 px → A follows by 100 px. The link is symmetric.
+        let back = step - 100
+        _ = try await b.preview.evaluate("window.scrollTo(0, \(back))")
+        let aLanded = try await waitForScrollY(a, toReach: back)
+        XCTAssertEqual(aLanded, back, accuracy: 2, "A follows B by the same distance")
+    }
+
+    /// A peer stopped at its own end stays put while the longer document
+    /// continues, and re-engages IMMEDIATELY on the first reverse scroll —
+    /// position mapping would keep it pinned until the source came back below
+    /// the peer's maximum.
+    @MainActor
+    func testClampedPeerPicksUpImmediatelyOnReverseScroll() async throws {
+        let coordinator = CompareCoordinator(open: Self.unusedOpen)
+        let a = try await makeModel(coordinator: coordinator, file: "a.md", paragraphs: 300)
+        let b = try await makeModel(coordinator: coordinator, file: "b.md", paragraphs: 120)
+        coordinator.link(a, b)
+
+        let aMax = try await scrollableMax(a)
+        let bMax = try await scrollableMax(b)
+        XCTAssertGreaterThan(aMax, bMax + 200, "A must overshoot B by a clear margin")
+
+        // Drive A to its bottom: B clamps at ITS bottom and stays.
+        _ = try await a.preview.evaluate("window.scrollTo(0, \(aMax))")
+        let bClamped = try await waitForScrollY(b, toReach: bMax)
+        XCTAssertEqual(bClamped, bMax, accuracy: 2, "B clamps at its own end")
+
+        // Reverse A by 150 px — far above B's max. B must move up 150 px NOW.
+        _ = try await a.preview.evaluate("window.scrollTo(0, \(aMax - 150))")
+        let bPicked = try await waitForScrollY(b, toReach: bMax - 150)
+        XCTAssertEqual(
+            bPicked, bMax - 150, accuracy: 2,
+            "clamped peer must pick up on the first reverse scroll")
+    }
+
+    /// Linking seeds the peer to the initiator's absolute offset (clamped).
+    @MainActor
+    func testLinkSeedsPeerToInitiatorsAbsoluteOffset() async throws {
+        let coordinator = CompareCoordinator(open: Self.unusedOpen)
+        let a = try await makeModel(coordinator: coordinator, file: "a.md", paragraphs: 300)
+        let b = try await makeModel(coordinator: coordinator, file: "b.md", paragraphs: 120)
+
+        let bMax = try await scrollableMax(b)
+        let seed = (bMax / 2).rounded()
+        _ = try await a.preview.evaluate("window.scrollTo(0, \(seed))")
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        coordinator.link(a, b)
+        let bLanded = try await waitForScrollY(b, toReach: seed)
+        XCTAssertEqual(bLanded, seed, accuracy: 2, "link seeds B to A's absolute offset")
     }
 
     /// Applying a synced position must not re-emit a sync event that moves the
@@ -119,18 +166,17 @@ final class CompareTests: XCTestCase {
         let b = try await makeModel(coordinator: coordinator, file: "b.md", paragraphs: 120)
         coordinator.link(a, b)
 
-        let aMax = try await scrollableMax(a)
         let bMax = try await scrollableMax(b)
-        let target = (aMax / 3).rounded()
+        let target = (bMax / 3).rounded()
         _ = try await a.preview.evaluate("window.scrollTo(0, \(target))")
-        _ = try await waitForScrollY(b, toReach: target / aMax * bMax)
+        _ = try await waitForScrollY(b, toReach: target)
 
         // Let any echo settle, then verify neither side drifted.
         try await Task.sleep(nanoseconds: 500_000_000)
         let aY = try await scrollY(a)
         XCTAssertEqual(aY, target, accuracy: 1, "mirroring must not bounce back to the source")
         let bY = try await scrollY(b)
-        XCTAssertEqual(bY, target / aMax * bMax, accuracy: 2, "peer stays at the mirrored position")
+        XCTAssertEqual(bY, target, accuracy: 2, "peer stays at the mirrored position")
     }
 
     /// Unlinking stops the mirroring and clears the compared flag.
@@ -143,10 +189,10 @@ final class CompareTests: XCTestCase {
         XCTAssertTrue(coordinator.isCompared(a))
         XCTAssertTrue(coordinator.isCompared(b))
 
-        let aMax = try await scrollableMax(a)
         let bMax = try await scrollableMax(b)
-        _ = try await a.preview.evaluate("window.scrollTo(0, \(aMax / 2))")
-        _ = try await waitForScrollY(b, toReach: bMax / 2)
+        let step = (bMax / 2).rounded()
+        _ = try await a.preview.evaluate("window.scrollTo(0, \(step))")
+        _ = try await waitForScrollY(b, toReach: step)
 
         coordinator.unlink(for: a)
         XCTAssertFalse(coordinator.isCompared(a))

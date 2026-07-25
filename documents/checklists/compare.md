@@ -11,9 +11,11 @@ paragraphs, `b.md` ~120).
 3. Pick it again and choose `b.md` → `b.md` opens in its own window; the two
    windows tile left/right filling the screen's visible frame. Without
    switching windows, File shows `Stop Comparing` enabled right away.
-4. Scroll `a.md` with the trackpad — `b.md` follows live, landing at the same
-   fraction of its own length (middle ↔ middle, end ↔ end). Scroll `b.md` —
-   `a.md` follows back. No jitter, no runaway feedback.
+4. Scroll `a.md` with the trackpad — `b.md` follows live by the SAME distance
+   (both move the same number of pixels). When the shorter document hits its
+   end it stays put while the longer one continues; the first reverse scroll
+   pulls it back immediately. Scroll `b.md` — `a.md` follows back. No jitter,
+   no runaway feedback.
 5. Click a TOC entry / use ⌘F navigation in one window — the other follows
    (paired reading follows any navigation).
 6. TOC sidebar, find bar, and the width slider still work independently in

@@ -2,20 +2,20 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// A window that can take part in a side-by-side compare pair: the document it
-/// shows, its host window (for tiling), and the scroll-mirroring operations.
+/// shows, its host window (for tiling), and the delta-mirroring operations.
 /// [REF:fr:compare]
 @MainActor
 protocol CompareTarget: AnyObject {
     var documentURL: URL? { get }
     var hostWindow: NSWindow? { get }
     func setCompareSyncEnabled(_ enabled: Bool)
-    func applyScrollFraction(_ fraction: Double)
-    func currentScrollFraction() async -> Double?
+    func applyScrollDelta(_ delta: Double)
+    func currentScrollY() async -> Double?
 }
 
 /// App-wide coordinator for side-by-side compare: pairs two document windows,
-/// mirrors scrolling between them at the same fraction of each document's own
-/// scrollable height, and tiles the pair left/right. Windows stay symmetric,
+/// mirrors scrolling between them by the same absolute pixel distance (each
+/// side clamped within its own bounds), and tiles the pair left/right. Windows stay symmetric,
 /// independent peers — pairs are held weakly, so closing (deallocating) either
 /// side just drops the pair and never touches the other window. Pairs are
 /// session-only; nothing is persisted. [REF:fr:compare]
@@ -88,9 +88,10 @@ final class CompareCoordinator {
         }
     }
 
-    /// Pair two windows: enable live mirroring on both, seed the peer from the
-    /// initiator's current position, and tile the pair left/right. A window is
-    /// in at most one pair — linking replaces any pair either side was in.
+    /// Pair two windows: enable live mirroring on both, seed the peer to the
+    /// initiator's absolute offset (one clamped delta), and tile the pair
+    /// left/right. A window is in at most one pair — linking replaces any pair
+    /// either side was in.
     func link(_ a: CompareTarget, _ b: CompareTarget) {
         guard a !== b else { return }
         unlink(for: a)
@@ -99,8 +100,12 @@ final class CompareCoordinator {
         a.setCompareSyncEnabled(true)
         b.setCompareSyncEnabled(true)
         Task { [weak a, weak b] in
-            guard let a, let b, let fraction = await a.currentScrollFraction() else { return }
-            b.applyScrollFraction(fraction)
+            guard
+                let a, let b,
+                let sourceY = await a.currentScrollY(),
+                let peerY = await b.currentScrollY()
+            else { return }
+            b.applyScrollDelta(sourceY - peerY)
         }
         tile(a, b)
     }
@@ -118,11 +123,13 @@ final class CompareCoordinator {
         y.value?.setCompareSyncEnabled(false)
     }
 
-    /// Live scroll fraction from one side of a pair → apply to the other.
-    func scrollChanged(from source: CompareTarget, fraction: Double) {
+    /// Live scroll delta from one side of a pair → apply to the other, which
+    /// clamps within its own bounds (a stopped shorter document re-engages the
+    /// moment the incoming deltas reverse).
+    func scrollChanged(from source: CompareTarget, delta: Double) {
         guard !applying, let peer = peer(of: source) else { return }
         applying = true
-        peer.applyScrollFraction(fraction)
+        peer.applyScrollDelta(delta)
         applying = false
     }
 

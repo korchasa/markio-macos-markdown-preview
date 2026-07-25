@@ -62,11 +62,11 @@ final class DocumentModel: ObservableObject {
             guard let self, let url = self.url else { return }
             self.linkNavigator.follow(href: href, from: url)
         }
-        // Live scroll fraction while this window is half of a compare pair:
+        // Live scroll delta while this window is half of a compare pair:
         // the coordinator mirrors it to the peer. [REF:fr:compare]
-        preview.onSyncScroll = { [weak self] fraction in
+        preview.onSyncScroll = { [weak self] delta in
             guard let self else { return }
-            self.compareCoordinator.scrollChanged(from: self, fraction: fraction)
+            self.compareCoordinator.scrollChanged(from: self, delta: delta)
         }
     }
 
@@ -252,7 +252,7 @@ extension DocumentModel: LocalLinkTarget {
 }
 
 /// This window as a compare peer: the coordinator toggles the page's live
-/// mirroring channel and pushes the peer's scroll fraction here. TOC, find,
+/// mirroring channel and pushes the peer's scroll delta here. TOC, find,
 /// width, and scroll persistence stay untouched per-window state.
 /// [REF:fr:compare]
 extension DocumentModel: CompareTarget {
@@ -263,11 +263,11 @@ extension DocumentModel: CompareTarget {
         Task { await preview.setCompareSync(enabled) }
     }
 
-    func applyScrollFraction(_ fraction: Double) {
-        Task { await preview.setScrollFraction(fraction) }
+    func applyScrollDelta(_ delta: Double) {
+        Task { await preview.compareScrollBy(delta) }
     }
 
-    func currentScrollFraction() async -> Double? {
-        await preview.scrollFraction()
+    func currentScrollY() async -> Double? {
+        await preview.compareScrollY()
     }
 }

@@ -178,8 +178,8 @@ final class PreviewController: NSObject {
 
     // MARK: - Compare sync [REF:fr:compare]
 
-    /// Toggle the page's live scroll-fraction reporting (the compare
-    /// mirroring channel). Best-effort; failure is logged, not swallowed.
+    /// Toggle the page's live scroll-delta reporting (the compare mirroring
+    /// channel). Best-effort; failure is logged, not swallowed.
     func setCompareSync(_ enabled: Bool) async {
         do {
             _ = try await webView.callAsyncJavaScript(
@@ -192,34 +192,34 @@ final class PreviewController: NSObject {
         }
     }
 
-    /// Scroll the page to a fraction (0…1) of its own scrollable height;
-    /// returns the applied fraction, or `nil` if the bridge call failed
+    /// Scroll the page by a pixel delta, clamped within its own bounds;
+    /// returns the resulting `scrollY`, or `nil` if the bridge call failed
     /// (logged) — the same best-effort contract as `setScrollY`.
     @discardableResult
-    func setScrollFraction(_ fraction: Double) async -> Double? {
+    func compareScrollBy(_ delta: Double) async -> Double? {
         do {
             let raw = try await webView.callAsyncJavaScript(
-                "return setScrollFraction(f);",
-                arguments: ["f": fraction],
+                "return compareScrollBy(d);",
+                arguments: ["d": delta],
                 contentWorld: .page
             )
             return (raw as? NSNumber)?.doubleValue
         } catch {
             Log.preview.error(
-                "setScrollFraction(\(fraction)) failed: \(error.localizedDescription)")
+                "compareScrollBy(\(delta)) failed: \(error.localizedDescription)")
             return nil
         }
     }
 
-    /// The page's current scroll fraction (0…1), or `nil` on bridge failure
-    /// (logged) — used to seed a freshly linked compare peer.
-    func scrollFraction() async -> Double? {
+    /// The page's current absolute scroll offset in pixels, or `nil` on
+    /// bridge failure (logged) — used to seed a freshly linked compare peer.
+    func compareScrollY() async -> Double? {
         do {
             let raw = try await webView.callAsyncJavaScript(
-                "return getScrollFraction();", arguments: [:], contentWorld: .page)
+                "return getScrollY();", arguments: [:], contentWorld: .page)
             return (raw as? NSNumber)?.doubleValue
         } catch {
-            Log.preview.error("scrollFraction failed: \(error.localizedDescription)")
+            Log.preview.error("compareScrollY failed: \(error.localizedDescription)")
             return nil
         }
     }
@@ -382,15 +382,15 @@ final class PreviewController: NSObject {
     }
 
     /// Validate a live sync-scroll push: a non-empty string parseable as a
-    /// finite fraction in 0…1; anything else is dropped. [REF:fr:compare]
+    /// finite pixel delta; anything else is dropped. [REF:fr:compare]
     private func handleSyncScrollMessage(_ message: WKScriptMessage) {
         guard
             message.name == "markioSyncScroll",
             let text = message.body as? String,
-            let fraction = Double(text),
-            fraction.isFinite, fraction >= 0, fraction <= 1
+            let delta = Double(text),
+            delta.isFinite
         else { return }
-        onSyncScroll?(fraction)
+        onSyncScroll?(delta)
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.
