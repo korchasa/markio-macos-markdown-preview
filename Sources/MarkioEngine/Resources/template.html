@@ -287,10 +287,10 @@
       opacity: 0.72;
       margin-bottom: 16px;
     }
-    /* Split layout: two full renders side by side in the SAME scroll
-       container; the divider is a hairline, columns share the width. Marked
-       blocks reuse the inline accents; the removed-wrapper margin does not
-       apply to marks on existing blocks. */
+    /* Split layout: unchanged content full width; each changed region is
+       a self-contained two-column grid row (baseline left, current right)
+       with a hairline divider. Marked blocks reuse the inline accents; the
+       removed-wrapper margin does not apply to marks on existing blocks. */
     .markio-split {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -915,34 +915,78 @@
       return runs;
     }
 
-    // Split-layout state: alignment must re-run on resize / width changes
-    // while the columns are on screen. [REF:fr:compare]
-    var __split = { active: false, ops: null };
-
     // Render the compare view. `split` picks the layout: inline annotations
-    // (default) or side-by-side columns. Returns true once the DOM settled.
+    // (default) or interleaved two-column rows. Returns true once the DOM
+    // settled.
     async function renderDiff(oldText, newText, split) {
-      __split.active = false;
       if (split) return renderDiffSplit(oldText, newText);
       return renderDiffInline(oldText, newText);
     }
 
-    // Baseline left, current right — both whole-text full-fidelity renders
-    // in ONE scroll container; alignment is a static spacer pass, never
-    // scroll machinery. [REF:fr:compare]
+    // Interleaved split layout: unchanged content renders ONCE, full width,
+    // straight from the current document's whole-text render; each changed
+    // region becomes a two-column grid row — baseline blocks left (removed),
+    // current blocks right (added). Both versions are rendered whole (never
+    // chunk-wise) and their finished top-level blocks are MOVED into rows,
+    // so links, list numbering, and diagrams keep their document context.
+    // No vertical alignment machinery is needed: a row is its own layout
+    // unit. [REF:fr:compare]
     async function renderDiffSplit(oldText, newText) {
-      var a = String(oldText != null ? oldText : '').split('\n');
-      var b = String(newText != null ? newText : '').split('\n');
-      var ops = lineDiff(a, b);
+      var aStr = String(oldText != null ? oldText : '');
+      var bStr = String(newText != null ? newText : '');
+      var ops = lineDiff(aStr.split('\n'), bStr.split('\n'));
       var scrollX = window.scrollX, scrollY = window.scrollY;
       var el = document.getElementById('content');
-      el.innerHTML = '<div class="markio-split">'
-        + '<div class="markio-split-col markio-split-old"></div>'
-        + '<div class="markio-split-col markio-split-new"></div></div>';
-      var oldCol = el.querySelector('.markio-split-old');
-      var newCol = el.querySelector('.markio-split-new');
-      oldCol.innerHTML = sanitizeHtml(md.render(String(oldText != null ? oldText : '')));
-      newCol.innerHTML = sanitizeHtml(md.render(String(newText != null ? newText : '')));
+      el.innerHTML = sanitizeHtml(md.render(bStr));
+      var oldRoot = document.createElement('div');
+      oldRoot.innerHTML = sanitizeHtml(md.render(aStr));
+      // Changed regions: consecutive non-same runs merged into one region
+      // with a line range on each side. [aStart,aEnd) / [bStart,bEnd).
+      var regions = [];
+      for (var oi = 0; oi < ops.length; oi++) {
+        var op = ops[oi];
+        if (op.t === 'same') continue;
+        var last = regions[regions.length - 1];
+        if (last && last.next === oi) {
+          last.aEnd = Math.max(last.aEnd, op.aStart + op.aLen);
+          last.bEnd = Math.max(last.bEnd, op.bStart + op.bLen);
+          last.next = oi + 1;
+        } else {
+          regions.push({
+            aStart: op.aStart, aEnd: op.aStart + op.aLen,
+            bStart: op.bStart, bEnd: op.bStart + op.bLen,
+            next: oi + 1
+          });
+        }
+      }
+      var oldBlocks = topBlocks(oldRoot);
+      for (var gi = 0; gi < regions.length; gi++) {
+        var g = regions[gi];
+        var rowOld = blocksIntersecting(oldBlocks, g.aStart, g.aEnd);
+        var rowNew = blocksIntersecting(topBlocks(el), g.bStart, g.bEnd);
+        if (!rowOld.length && !rowNew.length) continue;
+        var row = document.createElement('div');
+        row.className = 'markio-split';
+        var colOld = document.createElement('div');
+        colOld.className = 'markio-split-col markio-split-old';
+        var colNew = document.createElement('div');
+        colNew.className = 'markio-split-col markio-split-new';
+        row.appendChild(colOld);
+        row.appendChild(colNew);
+        // A row with current-side blocks replaces them in place; a pure
+        // deletion anchors before the first block at/after its position in
+        // the new text (append when past the end).
+        var anchor = rowNew.length ? rowNew[0] : firstBlockAtOrAfter(el, g.bStart);
+        el.insertBefore(row, anchor);
+        rowOld.forEach(function (b) {
+          b.classList.add('markio-diff-removed');
+          colOld.appendChild(b);
+        });
+        rowNew.forEach(function (b) {
+          b.classList.add('markio-diff-added');
+          colNew.appendChild(b);
+        });
+      }
       rebuildTOC();
       decorateCodeBlocks();
       closeZoom();
@@ -957,90 +1001,36 @@
           decorateMermaid();
         }
       }
-      markRunBlocks(oldCol, ops, 'del', 'aStart', 'aLen', 'markio-diff-removed');
-      markRunBlocks(newCol, ops, 'add', 'bStart', 'bLen', 'markio-diff-added');
-      __split.active = true;
-      __split.ops = ops;
-      alignSplit();
       window.scrollTo(scrollX, scrollY);
       postCurrentSection();
       return true;
     }
 
-    function topBlocks(col) {
-      return Array.prototype.filter.call(col.children, function (el) {
+    function topBlocks(root) {
+      return Array.prototype.filter.call(root.children, function (el) {
         return el.hasAttribute && el.hasAttribute('data-line-start');
       });
     }
 
-    // Add `cls` to a column's top-level blocks whose source-line range
-    // intersects any run of type `t`.
-    function markRunBlocks(col, ops, t, startKey, lenKey, cls) {
-      var runs = ops.filter(function (o) { return o.t === t; });
-      topBlocks(col).forEach(function (el) {
+    // Blocks whose source-line range intersects [startLine, endLine).
+    function blocksIntersecting(blocks, startLine, endLine) {
+      return blocks.filter(function (el) {
         var s0 = Number(el.getAttribute('data-line-start'));
         var e0 = Number(el.getAttribute('data-line-end'));
-        for (var i = 0; i < runs.length; i++) {
-          var r = runs[i];
-          if (s0 < r[startKey] + r[lenKey] && r[startKey] < e0) {
-            el.classList.add(cls);
-            break;
-          }
-        }
+        return s0 < endLine && startLine < e0;
       });
     }
 
-    // Pad each unchanged-run boundary pair to the same vertical offset by
-    // inserting real spacer elements (margin-top would collapse with the
-    // sibling's bottom margin and vanish). One correction pass per pair
-    // absorbs the margins that stop collapsing around the inserted spacer.
-    // Sequential: each spacer shifts what follows, so tops are re-measured
-    // pair by pair.
-    function alignSplit() {
-      if (!__split.active) return;
-      var el = document.getElementById('content');
-      var oldCol = el.querySelector('.markio-split-old');
-      var newCol = el.querySelector('.markio-split-new');
-      if (!oldCol || !newCol) return;
-      el.querySelectorAll('.markio-split-spacer').forEach(function (sp) {
-        sp.parentNode.removeChild(sp);
-      });
-      var blocksOld = topBlocks(oldCol);
-      var blocksNew = topBlocks(newCol);
-      var sameRuns = __split.ops.filter(function (o) { return o.t === 'same'; });
-      for (var i = 0; i < sameRuns.length; i++) {
-        var run = sameRuns[i];
-        var oldBlock = firstBlockAt(blocksOld, run.aStart, run.aStart + run.aLen);
-        var newBlock = firstBlockAt(blocksNew, run.bStart, run.bStart + run.bLen);
-        if (!oldBlock || !newBlock) continue;
-        var delta = newBlock.getBoundingClientRect().top
-          - oldBlock.getBoundingClientRect().top;
-        if (Math.abs(delta) <= 1) continue;
-        var onOldSide = delta > 0;
-        var lagging = onOldSide ? oldBlock : newBlock;
-        var height = Math.abs(delta);
-        var spacer = document.createElement('div');
-        spacer.className = 'markio-split-spacer';
-        spacer.style.height = height + 'px';
-        lagging.parentNode.insertBefore(spacer, lagging);
-        var residual = newBlock.getBoundingClientRect().top
-          - oldBlock.getBoundingClientRect().top;
-        var corrected = height + (onOldSide ? residual : -residual);
-        if (Math.abs(residual) > 1 && corrected > 0) {
-          spacer.style.height = corrected + 'px';
-        }
-      }
-    }
-
-    function firstBlockAt(blocks, startLine, endLine) {
+    // First remaining top-level block at or after `startLine`; null → append.
+    function firstBlockAtOrAfter(root, startLine) {
+      var blocks = topBlocks(root);
       for (var i = 0; i < blocks.length; i++) {
-        var s0 = Number(blocks[i].getAttribute('data-line-start'));
-        if (s0 >= startLine && s0 < endLine) return blocks[i];
+        if (Number(blocks[i].getAttribute('data-line-start')) >= startLine) {
+          return blocks[i];
+        }
       }
       return null;
     }
-
-    window.addEventListener('resize', function () { alignSplit(); });
 
     // Render the current document normally, then decorate it with the diff
     // against the baseline text (INLINE layout).
@@ -1676,7 +1666,6 @@
     function setContentWidth(chars) {
       document.documentElement.style.setProperty('--content-width', String(chars) + 'ch');
       // Column heights change with the width — keep split pairs aligned.
-      alignSplit();
       return getContentWidth();
     }
 

@@ -176,8 +176,9 @@ final class CompareTests: XCTestCase {
         XCTAssertTrue(((body as? String) ?? "").contains("Fresh."))
     }
 
-    /// Split layout: baseline left with removed blocks marked, current right
-    /// with added blocks marked, both full renders.
+    /// Split layout: only changed regions form two-column rows — removed
+    /// blocks marked in the left (baseline) column, added blocks in the
+    /// right (current) column; unchanged content renders ONCE, full width.
     @MainActor
     func testSplitLayoutShowsBothVersionsWithMarks() async throws {
         let old = "# Title\n\nDoomed paragraph.\n\nShared paragraph.\n"
@@ -190,7 +191,7 @@ final class CompareTests: XCTestCase {
         let split = try await waitFor {
             try await self.count(model, selector: ".markio-split") > 0
         }
-        XCTAssertTrue(split, "split container must appear")
+        XCTAssertTrue(split, "split rows must appear")
 
         let removedInOld = try await count(
             model, selector: ".markio-split-old .markio-diff-removed")
@@ -198,20 +199,27 @@ final class CompareTests: XCTestCase {
         let addedInNew = try await count(
             model, selector: ".markio-split-new .markio-diff-added")
         XCTAssertEqual(addedInNew, 1, "added block marked in the current column")
-        // Full-fidelity renders: both columns carry the shared paragraph.
-        let sharedCount = try await model.preview.evaluate(
+        // Unchanged content appears exactly once and outside the columns.
+        let sharedInCols = try await model.preview.evaluate(
             """
             Array.prototype.filter.call(
               document.querySelectorAll('.markio-split-col p'),
               function (p) { return p.textContent === 'Shared paragraph.'; }).length
             """)
-        XCTAssertEqual((sharedCount as? NSNumber)?.intValue, 2)
+        XCTAssertEqual((sharedInCols as? NSNumber)?.intValue, 0)
+        let sharedTotal = try await model.preview.evaluate(
+            """
+            Array.prototype.filter.call(
+              document.querySelectorAll('#content p'),
+              function (p) { return p.textContent === 'Shared paragraph.'; }).length
+            """)
+        XCTAssertEqual((sharedTotal as? NSNumber)?.intValue, 1)
     }
 
-    /// Unchanged blocks after a change sit at the same vertical offset in
-    /// both columns — the spacer alignment compensates differing heights.
+    /// Unchanged blocks stay direct full-width children of the content root;
+    /// a changed region becomes a row sitting at its document position.
     @MainActor
-    func testSplitAlignsSharedBlocks() async throws {
+    func testSplitKeepsUnchangedFullWidth() async throws {
         let longDeleted = (1...8).map { "Deleted line \($0) of a long removed paragraph." }
             .joined(separator: " ")
         let old = "# Title\n\n\(longDeleted)\n\nShared tail paragraph.\n"
@@ -224,28 +232,29 @@ final class CompareTests: XCTestCase {
         _ = try await waitFor {
             try await self.count(model, selector: ".markio-split") > 0
         }
-        try await Task.sleep(nanoseconds: 300_000_000)
-        let offsets = try await model.preview.evaluate(
+        let layout = try await model.preview.evaluate(
             """
             (function () {
-              function top(sel) {
-                var els = document.querySelectorAll(sel + ' p');
-                for (var i = 0; i < els.length; i++) {
-                  if (els[i].textContent === 'Shared tail paragraph.') {
-                    return els[i].getBoundingClientRect().top;
-                  }
-                }
-                return -1;
-              }
-              return [top('.markio-split-old'), top('.markio-split-new')];
+              var content = document.getElementById('content');
+              var shared = Array.prototype.filter.call(
+                content.querySelectorAll('p'),
+                function (p) {
+                  return p.textContent === 'Shared tail paragraph.';
+                })[0];
+              var row = content.querySelector('.markio-split');
+              var kids = Array.prototype.slice.call(content.children);
+              return [
+                shared ? shared.parentNode === content : false,
+                row ? kids.indexOf(row) < kids.indexOf(shared) : false,
+                row ? row.textContent.indexOf('Deleted line 1') !== -1 : false
+              ];
             })()
             """)
-        let pair = (offsets as? [NSNumber])?.map(\.doubleValue) ?? []
-        XCTAssertEqual(pair.count, 2)
-        XCTAssertGreaterThan(pair[0], 0)
-        XCTAssertEqual(
-            pair[0], pair[1], accuracy: 3,
-            "shared blocks must sit at the same vertical offset")
+        let flags = (layout as? [NSNumber])?.map(\.boolValue) ?? []
+        XCTAssertEqual(flags.count, 3)
+        XCTAssertEqual(flags[0], true, "unchanged block is a full-width direct child")
+        XCTAssertEqual(flags[1], true, "the changed row precedes the shared block")
+        XCTAssertEqual(flags[2], true, "the row carries the removed content")
     }
 
     /// The layout toggle re-renders the active compare live, both ways.

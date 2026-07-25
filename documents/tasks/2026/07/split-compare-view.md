@@ -10,6 +10,15 @@ related_tasks:
 ---
 # Split compare view [ANC:task:2026-07-split-compare-view]
 
+> **Post-DoD evolution (same session):** after user review the split layout
+> became INTERLEAVED — unchanged content renders once at full width and only
+> changed regions fork into two-column rows (baseline left, current right).
+> Whole-text rendering is preserved (finished blocks are regrouped, never
+> re-rendered chunk-wise); the spacer alignment pass below is deleted — a row
+> is its own layout unit. Sections below describe the original design and are
+> kept as the historical record; current behavior lives in SRS FR-COMPARE and
+> SDS §3.12.
+
 ## Goal
 
 A GitHub/GitLab-style side-by-side diff INSIDE the compare window — baseline
