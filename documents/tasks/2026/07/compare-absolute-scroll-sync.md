@@ -52,7 +52,7 @@ behavior.
 - [ ] FR-COMPARE: scrolling a linked window moves the peer the same pixel
   distance; a clamped peer re-engages immediately on reverse; linking seeds
   the peer to the initiator's absolute offset
-  - Test: `Tests/MarkioTests/CompareTests.swift::testScrollMirrorsSameAbsoluteDistanceToLinkedPeer`; `::testClampedPeerPicksUpImmediatelyOnReverseScroll`; `::testLinkSeedsPeerToInitiatorsAbsoluteOffset`; `::testNoFeedbackLoopBetweenLinkedPeers`
+  - Test: `Tests/MarkioTests/CompareTests.swift::testScrollMirrorsSameAbsoluteDistanceToLinkedPeer`; `::testClampedPeerPicksUpImmediatelyOnReverseScroll`; `::testOnePixelStepScrollingMovesPeer`; `::testLinkSeedsPeerToInitiatorsAbsoluteOffset`; `::testNoFeedbackLoopBetweenLinkedPeers`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter CompareTests"`
 - [ ] FR-COMPARE: real-app reading feel accepted by the maintainer
   - Test: `manual — maintainer — documents/checklists/compare.md` (step 4)

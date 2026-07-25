@@ -1312,10 +1312,11 @@
     // scroll event is consumed instead of echoed back (the peer never
     // re-drives the source); the suppressed event still advances the delta
     // baseline. [REF:fr:compare]
-    var __compare = { enabled: false, suppressOnce: false, lastY: 0 };
+    var __compare = { enabled: false, suppressOnce: false, lastY: 0, pending: 0 };
     function setCompareSync(enabled) {
       __compare.enabled = !!enabled;
       __compare.lastY = window.scrollY;
+      __compare.pending = 0;
       if (!__compare.enabled) __compare.suppressOnce = false;
       return __compare.enabled;
     }
@@ -1325,13 +1326,24 @@
     function compareScrollBy(dy) {
       var delta = Number(dy);
       if (!isFinite(delta)) return window.scrollY;
-      var target = Math.min(scrollableHeight(), Math.max(0, window.scrollY + delta));
-      // Only arm the suppression when a scroll event WILL fire — a clamped
-      // no-move apply would leave the flag lingering and swallow the next
-      // genuine user scroll.
-      if (Math.abs(target - window.scrollY) > 1) {
-        __compare.suppressOnce = true;
-        window.scrollTo(window.scrollX, target);
+      // Slow scrolling arrives as a stream of 1 px (or smaller) deltas —
+      // accumulate them and apply whole pixels, so no motion is ever lost.
+      __compare.pending += delta;
+      if (Math.abs(__compare.pending) >= 1) {
+        var max = scrollableHeight();
+        var target = Math.min(max, Math.max(0, window.scrollY + __compare.pending));
+        var move = target - window.scrollY;
+        // Only arm the suppression when a scroll event WILL fire — a clamped
+        // no-move apply would leave the flag lingering and swallow the next
+        // genuine user scroll.
+        if (Math.abs(move) >= 1) {
+          __compare.pending -= move;
+          __compare.suppressOnce = true;
+          window.scrollTo(window.scrollX, target);
+        }
+        // Parked at an edge: discard unconsumed motion so the first reverse
+        // delta re-engages immediately (the pick-up rule).
+        if (target <= 0 || target >= max) __compare.pending = 0;
       }
       return window.scrollY;
     }

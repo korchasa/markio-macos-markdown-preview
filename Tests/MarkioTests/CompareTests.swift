@@ -139,6 +139,29 @@ final class CompareTests: XCTestCase {
             "clamped peer must pick up on the first reverse scroll")
     }
 
+    /// Slow trackpad scrolling arrives as a stream of 1 px deltas (WebKit
+    /// quantizes scroll positions to whole pixels); the peer must apply every
+    /// one instead of discarding them under the echo-suppression movement
+    /// threshold — otherwise smooth scrolling moves the source and leaves the
+    /// peer parked.
+    @MainActor
+    func testOnePixelStepScrollingMovesPeer() async throws {
+        let coordinator = CompareCoordinator(open: Self.unusedOpen)
+        let a = try await makeModel(coordinator: coordinator, file: "a.md", paragraphs: 300)
+        let b = try await makeModel(coordinator: coordinator, file: "b.md", paragraphs: 120)
+        coordinator.link(a, b)
+
+        // 30 × 1 px — the slow-scroll event stream.
+        for _ in 0..<30 {
+            _ = try await a.preview.evaluate("window.scrollBy(0, 1)")
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+        let aY = try await scrollY(a)
+        XCTAssertEqual(aY, 30, accuracy: 1, "source must have moved by the summed steps")
+        let bLanded = try await waitForScrollY(b, toReach: aY, accuracy: 2)
+        XCTAssertEqual(bLanded, aY, accuracy: 2, "peer follows 1 px deltas")
+    }
+
     /// Linking seeds the peer to the initiator's absolute offset (clamped).
     @MainActor
     func testLinkSeedsPeerToInitiatorsAbsoluteOffset() async throws {
