@@ -6,7 +6,7 @@ import SwiftUI
 /// [REF:fr:menu] [REF:fr:compare] [REF:sds:menu-commands]
 struct FileCommands: Commands {
     @FocusedValue(\.documentFileURL) private var documentFileURL
-    @FocusedValue(\.documentModel) private var model
+    @FocusedObject private var model: DocumentModel?
 
     var body: some Commands {
         // Keep DocumentGroup's native Open/Open Recent intact. Replacing the

@@ -9,7 +9,8 @@ paragraphs, `b.md` ~120).
 2. Pick `Compare Side by Side…` → an open panel appears, pre-pointed at the
    document's folder, prompt button "Compare". Cancel → nothing happens.
 3. Pick it again and choose `b.md` → `b.md` opens in its own window; the two
-   windows tile left/right filling the screen's visible frame.
+   windows tile left/right filling the screen's visible frame. Without
+   switching windows, File shows `Stop Comparing` enabled right away.
 4. Scroll `a.md` with the trackpad — `b.md` follows live, landing at the same
    fraction of its own length (middle ↔ middle, end ↔ end). Scroll `b.md` —
    `a.md` follows back. No jitter, no runaway feedback.
@@ -18,7 +19,8 @@ paragraphs, `b.md` ~120).
 6. TOC sidebar, find bar, and the width slider still work independently in
    each window.
 7. `File ▸ Stop Comparing` → scrolling no longer mirrors; both windows stay
-   open and fully functional.
+   open and fully functional. Without switching windows, `Stop Comparing` is
+   disabled again right away.
 8. Re-compare, then close `b.md`'s window → `a.md` stays open, mirroring is
    off, `Stop Comparing` is disabled again.
 9. Compare with an ALREADY-OPEN document → no duplicate window: the existing

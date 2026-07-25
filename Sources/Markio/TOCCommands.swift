@@ -2,12 +2,12 @@ import SwiftUI
 
 /// View-menu toggle for the TOC sidebar (⌥⌘S — the macOS sidebar-toggle
 /// convention, cf. Finder/Mail), routed to the focused document window's model
-/// via the shared `FocusedValue`. A checkmark `Toggle` with a STATIC title, not
+/// via `FocusedObject`. A checkmark `Toggle` with a STATIC title, not
 /// a Show/Hide button pair: a state-dependent title makes SwiftUI rebuild the
 /// menu item, which drops its displayed key equivalent. [REF:fr:toc]
 /// [REF:sds:toc-sidebar]
 struct TOCCommands: Commands {
-    @FocusedValue(\.documentModel) private var model
+    @FocusedObject private var model: DocumentModel?
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {

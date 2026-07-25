@@ -4,7 +4,7 @@ import SwiftUI
 /// stay in `FileCommands`; the standard Edit clipboard surface is untouched.
 /// [REF:fr:find] [REF:sds:find-bar] [REF:sds:menu-commands]
 struct FindCommands: Commands {
-    @FocusedValue(\.documentModel) private var model
+    @FocusedObject private var model: DocumentModel?
 
     var body: some Commands {
         CommandGroup(after: .textEditing) {

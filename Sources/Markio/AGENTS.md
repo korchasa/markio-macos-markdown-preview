@@ -23,7 +23,7 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
 - **Reading width** — `ContentWidthStore` (persisted absolute char width),
   driven by the bottom-bar slider in `ContentView`.
 - **Find** — native find bar (`ContentView.findBar`) + app-level Find menu
-  (`FindCommands` routed by the `documentModel` `FocusedValue`); the search/
+  (`FindCommands` routed by the focused-object `DocumentModel`); the search/
   highlight engine lives in `template.html` (`search`/`findNext`/`findPrev`/
   `clearSearch`), bridged by `PreviewController` and driven by `DocumentModel`.
 - **File path copy** — `ContentView` publishes its synchronous file URL through
