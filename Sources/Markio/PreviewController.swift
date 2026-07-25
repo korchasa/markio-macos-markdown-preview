@@ -29,11 +29,6 @@ final class PreviewController: NSObject {
     /// [REF:fr:local-links]
     var onLinkActivated: ((String) -> Void)?
 
-    /// Fired on the main actor with the page's live scroll FRACTION (0…1 of
-    /// its scrollable height) while compare sync is enabled — the mirroring
-    /// channel for side-by-side reading. [REF:fr:compare]
-    var onSyncScroll: ((Double) -> Void)?
-
     /// Fired on the main actor with the decoded PNG bytes after a diagram
     /// "Copy PNG" click landed on the pasteboard (test/UI hook).
     /// [REF:fr:mermaid-zoom]
@@ -46,16 +41,15 @@ final class PreviewController: NSObject {
     private let copyMessageProxy = ScriptMessageProxy()
     private let scrollMessageProxy = ScriptMessageProxy()
     private let linkMessageProxy = ScriptMessageProxy()
-    private let syncScrollMessageProxy = ScriptMessageProxy()
     private let copyImageMessageProxy = ScriptMessageProxy()
 
     /// Destination for copy-button writes. Injected so tests use a private,
     /// uniquely named pasteboard instead of the user's clipboard. [REF:fr:code-copy]
     private let pasteboard: NSPasteboard
 
-    /// Builds the confined `WKWebView`: six one-way page→native message
+    /// Builds the confined `WKWebView`: five one-way page→native message
     /// handlers (`markioTOC` scroll-spy, `markioCopy` raw code text,
-    /// `markioScroll`, `markioLink`, `markioSyncScroll`, and `markioCopyImage`
+    /// `markioScroll`, `markioLink`, and `markioCopyImage`
     /// diagram PNG → pasteboard) — wired to `self` as navigation delegate so
     /// every navigation is gated by
     /// `decidePolicyFor` (only the initial `file:` load and in-page file links
@@ -68,7 +62,6 @@ final class PreviewController: NSObject {
         config.userContentController.add(copyMessageProxy, name: "markioCopy")
         config.userContentController.add(scrollMessageProxy, name: "markioScroll")
         config.userContentController.add(linkMessageProxy, name: "markioLink")
-        config.userContentController.add(syncScrollMessageProxy, name: "markioSyncScroll")
         config.userContentController.add(copyImageMessageProxy, name: "markioCopyImage")
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
@@ -84,9 +77,6 @@ final class PreviewController: NSObject {
         }
         linkMessageProxy.onMessage = { [weak self] message in
             self?.handleLinkMessage(message)
-        }
-        syncScrollMessageProxy.onMessage = { [weak self] message in
-            self?.handleSyncScrollMessage(message)
         }
         copyImageMessageProxy.onMessage = { [weak self] message in
             self?.handleCopyImageMessage(message)
@@ -178,49 +168,21 @@ final class PreviewController: NSObject {
 
     // MARK: - Compare sync [REF:fr:compare]
 
-    /// Toggle the page's live scroll-delta reporting (the compare mirroring
-    /// channel). Best-effort; failure is logged, not swallowed.
-    func setCompareSync(_ enabled: Bool) async {
+    /// Render the document as an inline diff against a baseline text —
+    /// normal pipeline plus added/removed decoration, done in the page.
+    /// Best-effort; failure is logged, not swallowed. [REF:fr:compare]
+    @discardableResult
+    func renderDiff(old oldText: String, new newText: String) async -> Bool {
         do {
             _ = try await webView.callAsyncJavaScript(
-                "return setCompareSync(e);",
-                arguments: ["e": enabled],
+                "return await renderDiff(o, n);",
+                arguments: ["o": oldText, "n": newText],
                 contentWorld: .page
             )
+            return true
         } catch {
-            Log.preview.error("setCompareSync(\(enabled)) failed: \(error.localizedDescription)")
-        }
-    }
-
-    /// Scroll the page by a pixel delta, clamped within its own bounds;
-    /// returns the resulting `scrollY`, or `nil` if the bridge call failed
-    /// (logged) — the same best-effort contract as `setScrollY`.
-    @discardableResult
-    func compareScrollBy(_ delta: Double) async -> Double? {
-        do {
-            let raw = try await webView.callAsyncJavaScript(
-                "return compareScrollBy(d);",
-                arguments: ["d": delta],
-                contentWorld: .page
-            )
-            return (raw as? NSNumber)?.doubleValue
-        } catch {
-            Log.preview.error(
-                "compareScrollBy(\(delta)) failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    /// The page's current absolute scroll offset in pixels, or `nil` on
-    /// bridge failure (logged) — used to seed a freshly linked compare peer.
-    func compareScrollY() async -> Double? {
-        do {
-            let raw = try await webView.callAsyncJavaScript(
-                "return getScrollY();", arguments: [:], contentWorld: .page)
-            return (raw as? NSNumber)?.doubleValue
-        } catch {
-            Log.preview.error("compareScrollY failed: \(error.localizedDescription)")
-            return nil
+            Log.preview.error("renderDiff failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -379,18 +341,6 @@ final class PreviewController: NSObject {
         guard message.name == "markioLink", let href = message.body as? String, !href.isEmpty
         else { return }
         onLinkActivated?(href)
-    }
-
-    /// Validate a live sync-scroll push: a non-empty string parseable as a
-    /// finite pixel delta; anything else is dropped. [REF:fr:compare]
-    private func handleSyncScrollMessage(_ message: WKScriptMessage) {
-        guard
-            message.name == "markioSyncScroll",
-            let text = message.body as? String,
-            let delta = Double(text),
-            delta.isFinite
-        else { return }
-        onSyncScroll?(delta)
     }
 
     /// Test/diagnostic hook: evaluate JS in the page world.

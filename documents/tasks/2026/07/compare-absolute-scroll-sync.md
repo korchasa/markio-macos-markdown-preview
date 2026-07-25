@@ -1,6 +1,7 @@
 ---
 date: 2026-07-25
-status: to do
+status: superseded
+superseded_by: "[Inline-diff compare](inline-diff-compare.md)"
 implements:
   - FR-COMPARE
 tags: [compare, requirement-change]

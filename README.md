@@ -32,10 +32,10 @@ The one on-screen reading control is **line width**.
 - Working local links: relative links to other `.md` files open them in a new
   window (`other.md#section` lands on the section), `#anchor` links scroll in
   place — read a repo's living documentation link by link
-- Side-by-side compare: File ▸ Compare Side by Side… opens a second document,
-  tiles the two windows, and scrolls them together (each at the same fraction
-  of its own length) — read spec v1 next to v2, or an agent report before and
-  after, without a diff editor
+- Inline-diff compare: File ▸ Compare… picks an earlier version of the
+  document and shows what changed right in the rendered view — new blocks
+  tinted green, deleted blocks inlined dimmed red — read spec v2 with v1's
+  changes visible, no diff editor involved
 - In-document find (⌘F): every match highlighted with an "N of M" counter, an
   overview strip at the right edge marks match positions, and matches are found
   even across syntax-highlighting inside code blocks and tables

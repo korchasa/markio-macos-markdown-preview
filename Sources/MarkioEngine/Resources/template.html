@@ -269,6 +269,24 @@
       min-width: 100%;
       box-sizing: border-box;
     }
+    /* Inline-diff compare accents [REF:fr:compare]: rgba tints read on both
+       light and dark backgrounds; the inset bar marks the changed block
+       without shifting layout. Removed runs are dimmed — they are context,
+       not current content. */
+    .markdown-body .markio-diff-added {
+      background: rgba(46, 160, 67, 0.10);
+      box-shadow: inset 3px 0 0 #2ea043;
+      padding-left: 10px;
+      border-radius: 2px;
+    }
+    .markdown-body .markio-diff-removed {
+      background: rgba(248, 81, 73, 0.08);
+      box-shadow: inset 3px 0 0 #f85149;
+      padding-left: 10px;
+      border-radius: 2px;
+      opacity: 0.72;
+      margin-bottom: 16px;
+    }
     /* (c) A long unbroken token in a table cell wraps inside the column
        instead of forcing the whole table into a horizontal scroller (the
        github stylesheet's break-word does not shrink a cell's intrinsic
@@ -729,6 +747,23 @@
     }
     initMermaid();
 
+    // Stamp source-line ranges on top-level block tokens so the inline-diff
+    // pass can map changed source lines back to rendered blocks. Runs on
+    // every render; DOMPurify keeps data-* attributes. [REF:fr:compare]
+    md.core.ruler.push('markio_line_map', function (state) {
+      for (var i = 0; i < state.tokens.length; i++) {
+        var t = state.tokens[i];
+        if (t.level !== 0 || !t.map) continue;
+        if (t.nesting === 1 || t.type === 'fence' || t.type === 'hr') {
+          try {
+            t.attrSet('data-line-start', String(t.map[0]));
+            t.attrSet('data-line-end', String(t.map[1]));
+          } catch (e) { /* tokens without attr support (html_block) */ }
+        }
+      }
+    });
+
+
     // Render Markdown into the page. Returns true when DOM + diagrams are ready.
     // Mermaid is async; awaiting it lets native/tests observe a settled DOM.
     async function render(markdown) {
@@ -763,6 +798,166 @@
       }
       window.scrollTo(scrollX, scrollY);
       postCurrentSection();
+      return true;
+    }
+
+    // ---- Inline-diff compare ------------------------------------------------
+    // Line diff of the Markdown SOURCE (vendored Myers O(ND), offline — no
+    // dependency), then annotation of the NORMAL render: added blocks get a
+    // class, removed runs render standalone into inserted dimmed wrappers.
+    // The render pipeline itself is never rewritten. [REF:fr:compare]
+
+    // Myers diff on line arrays → runs: {t: 'same'|'add'|'del', aStart, aLen,
+    // bStart, bLen}. A middle whose edit distance exceeds the cap degrades to
+    // one del+add pair (correct, just coarse) — never quadratic memory.
+    function lineDiff(a, b) {
+      var start = 0;
+      while (start < a.length && start < b.length && a[start] === b[start]) start++;
+      var endA = a.length, endB = b.length;
+      while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+      var midA = a.slice(start, endA), midB = b.slice(start, endB);
+      var ops = [];
+      if (start > 0) ops.push({ t: 'same', aStart: 0, aLen: start, bStart: 0, bLen: start });
+      ops = ops.concat(myersRuns(midA, midB, start, start));
+      if (endA < a.length) {
+        ops.push({ t: 'same', aStart: endA, aLen: a.length - endA, bStart: endB, bLen: b.length - endB });
+      }
+      return ops;
+    }
+
+    function myersRuns(a, b, aOffset, bOffset) {
+      var n = a.length, m = b.length;
+      if (!n && !m) return [];
+      if (!n) return [{ t: 'add', aStart: aOffset, aLen: 0, bStart: bOffset, bLen: m }];
+      if (!m) return [{ t: 'del', aStart: aOffset, aLen: n, bStart: bOffset, bLen: 0 }];
+      var cap = 2000;
+      var max = Math.min(n + m, cap);
+      var v = { 1: 0 };
+      var trace = [];
+      var found = false;
+      for (var d = 0; d <= max && !found; d++) {
+        var current = {};
+        for (var k = -d; k <= d; k += 2) {
+          var x;
+          if (k === -d || (k !== d && (v[k - 1] || 0) < (v[k + 1] || 0))) {
+            x = v[k + 1] || 0;
+          } else {
+            x = (v[k - 1] || 0) + 1;
+          }
+          var y = x - k;
+          while (x < n && y < m && a[x] === b[y]) { x++; y++; }
+          current[k] = x;
+          if (x >= n && y >= m) { found = true; }
+        }
+        trace.push(current);
+        v = current;
+      }
+      if (!found) {
+        // Over budget: coarse fallback for the uncommon middle.
+        return [
+          { t: 'del', aStart: aOffset, aLen: n, bStart: bOffset, bLen: 0 },
+          { t: 'add', aStart: aOffset + n, aLen: 0, bStart: bOffset, bLen: m }
+        ];
+      }
+      // Backtrack into per-line steps, then merge into runs.
+      var steps = [];
+      var x2 = n, y2 = m;
+      for (var d2 = trace.length - 1; d2 > 0; d2--) {
+        var vPrev = trace[d2 - 1];
+        var k2 = x2 - y2;
+        var prevK;
+        if (k2 === -d2 || (k2 !== d2 && (vPrev[k2 - 1] || 0) < (vPrev[k2 + 1] || 0))) {
+          prevK = k2 + 1;
+        } else {
+          prevK = k2 - 1;
+        }
+        var prevX = vPrev[prevK] || 0;
+        var prevY = prevX - prevK;
+        while (x2 > prevX && y2 > prevY) { steps.push('same'); x2--; y2--; }
+        if (d2 > 0) {
+          if (x2 === prevX) { steps.push('add'); y2--; }
+          else { steps.push('del'); x2--; }
+        }
+      }
+      while (x2 > 0 && y2 > 0) { steps.push('same'); x2--; y2--; }
+      while (x2 > 0) { steps.push('del'); x2--; }
+      while (y2 > 0) { steps.push('add'); y2--; }
+      steps.reverse();
+      var runs = [];
+      var ai = 0, bi = 0;
+      for (var si = 0; si < steps.length; si++) {
+        var t = steps[si];
+        var last = runs[runs.length - 1];
+        if (!last || last.t !== t) {
+          runs.push({ t: t, aStart: aOffset + ai, aLen: 0, bStart: bOffset + bi, bLen: 0 });
+          last = runs[runs.length - 1];
+        }
+        if (t === 'same') { last.aLen++; last.bLen++; ai++; bi++; }
+        else if (t === 'del') { last.aLen++; ai++; }
+        else { last.bLen++; bi++; }
+      }
+      return runs;
+    }
+
+    // Render the current document normally, then decorate it with the diff
+    // against the baseline text. Returns true once the DOM has settled.
+    async function renderDiff(oldText, newText) {
+      var a = String(oldText != null ? oldText : '').split('\n');
+      var b = String(newText != null ? newText : '').split('\n');
+      var ops = lineDiff(a, b);
+      await render(newText);
+      var content = document.getElementById('content');
+      var blocks = Array.prototype.filter.call(content.children, function (el) {
+        return el.hasAttribute && el.hasAttribute('data-line-start');
+      });
+      // Added blocks: any top-level block whose line range intersects an
+      // added run. Ranges are [start, end) in the NEW text's line numbers.
+      var addedRuns = ops.filter(function (o) { return o.t === 'add'; });
+      blocks.forEach(function (el) {
+        var s0 = Number(el.getAttribute('data-line-start'));
+        var e0 = Number(el.getAttribute('data-line-end'));
+        for (var i = 0; i < addedRuns.length; i++) {
+          var r = addedRuns[i];
+          if (s0 < r.bStart + r.bLen && r.bStart < e0) {
+            el.classList.add('markio-diff-added');
+            break;
+          }
+        }
+      });
+      // Removed runs: render each standalone (best-effort for constructs that
+      // depended on removed context) and insert before the first block at or
+      // after the run's position in the new text; append when past the end.
+      var removedRuns = ops.filter(function (o) { return o.t === 'del'; });
+      for (var ri = 0; ri < removedRuns.length; ri++) {
+        var run = removedRuns[ri];
+        var text = a.slice(run.aStart, run.aStart + run.aLen).join('\n');
+        if (!text.trim()) continue;
+        var wrap = document.createElement('div');
+        wrap.className = 'markio-diff-removed';
+        wrap.innerHTML = sanitizeHtml(md.render(text));
+        var anchorEl = null;
+        for (var biI = 0; biI < blocks.length; biI++) {
+          if (Number(blocks[biI].getAttribute('data-line-start')) >= run.bStart) {
+            anchorEl = blocks[biI];
+            break;
+          }
+        }
+        content.insertBefore(wrap, anchorEl);
+        // Diagrams inside a removed run: best-effort render, never throw.
+        if (window.mermaid) {
+          var nodes = wrap.querySelectorAll('pre.mermaid');
+          if (nodes.length) {
+            for (var mi = 0; mi < nodes.length; mi++) {
+              nodes[mi].dataset.markioSrc = nodes[mi].textContent;
+            }
+            try { await window.mermaid.run({ nodes: nodes }); } catch (e) {
+              console.warn('mermaid.run failed in removed run', e);
+            }
+          }
+        }
+      }
+      // The TOC reflects the diff view, removed headings included.
+      rebuildTOC();
       return true;
     }
 
@@ -883,6 +1078,23 @@
         return out.svg;
       } finally {
         initMermaid();
+
+    // Stamp source-line ranges on top-level block tokens so the inline-diff
+    // pass can map changed source lines back to rendered blocks. Runs on
+    // every render; DOMPurify keeps data-* attributes. [REF:fr:compare]
+    md.core.ruler.push('markio_line_map', function (state) {
+      for (var i = 0; i < state.tokens.length; i++) {
+        var t = state.tokens[i];
+        if (t.level !== 0 || !t.map) continue;
+        if (t.nesting === 1 || t.type === 'fence' || t.type === 'hr') {
+          try {
+            t.attrSet('data-line-start', String(t.map[0]));
+            t.attrSet('data-line-end', String(t.map[1]));
+          } catch (e) { /* tokens without attr support (html_block) */ }
+        }
+      }
+    });
+
       }
     }
 
@@ -1301,66 +1513,6 @@
     }
     function getScrollY() { return window.scrollY; }
 
-    // ---- Compare sync (live scroll mirroring) -------------------------------
-    // While a compare pair is active, the page reports each scroll as an
-    // ABSOLUTE PIXEL DELTA from the previous position on every scroll event
-    // (no debounce — this channel drives live mirroring; the debounced
-    // `markioScroll` persistence channel above is untouched). Applying a
-    // mirrored delta clamps within this page's own bounds — a shorter
-    // document stops at its edge and re-engages the moment the incoming
-    // deltas reverse — and sets a one-shot suppression flag so the resulting
-    // scroll event is consumed instead of echoed back (the peer never
-    // re-drives the source); the suppressed event still advances the delta
-    // baseline. [REF:fr:compare]
-    var __compare = { enabled: false, suppressOnce: false, lastY: 0, pending: 0 };
-    function setCompareSync(enabled) {
-      __compare.enabled = !!enabled;
-      __compare.lastY = window.scrollY;
-      __compare.pending = 0;
-      if (!__compare.enabled) __compare.suppressOnce = false;
-      return __compare.enabled;
-    }
-    function scrollableHeight() {
-      return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    }
-    function compareScrollBy(dy) {
-      var delta = Number(dy);
-      if (!isFinite(delta)) return window.scrollY;
-      // Slow scrolling arrives as a stream of 1 px (or smaller) deltas —
-      // accumulate them and apply whole pixels, so no motion is ever lost.
-      __compare.pending += delta;
-      if (Math.abs(__compare.pending) >= 1) {
-        var max = scrollableHeight();
-        var target = Math.min(max, Math.max(0, window.scrollY + __compare.pending));
-        var move = target - window.scrollY;
-        // Only arm the suppression when a scroll event WILL fire — a clamped
-        // no-move apply would leave the flag lingering and swallow the next
-        // genuine user scroll.
-        if (Math.abs(move) >= 1) {
-          __compare.pending -= move;
-          __compare.suppressOnce = true;
-          window.scrollTo(window.scrollX, target);
-        }
-        // Parked at an edge: discard unconsumed motion so the first reverse
-        // delta re-engages immediately (the pick-up rule).
-        if (target <= 0 || target >= max) __compare.pending = 0;
-      }
-      return window.scrollY;
-    }
-    function postCompareScroll() {
-      if (!__compare.enabled) return;
-      var y = window.scrollY;
-      var delta = y - __compare.lastY;
-      __compare.lastY = y;
-      if (__compare.suppressOnce) { __compare.suppressOnce = false; return; }
-      if (delta !== 0 && window.webkit && window.webkit.messageHandlers &&
-          window.webkit.messageHandlers.markioSyncScroll) {
-        window.webkit.messageHandlers.markioSyncScroll.postMessage(String(delta));
-      }
-    }
-    // Synchronous like the other scroll listeners: rAF does not fire in
-    // offscreen web views.
-    window.addEventListener('scroll', postCompareScroll);
 
     // Jump so the heading sits at the viewport top (TOC semantics; find keeps
     // its block:'center'). Returns whether the id existed.
@@ -1388,6 +1540,23 @@
     async function setDark(dark) {
       __dark = !!dark;
       initMermaid();
+
+    // Stamp source-line ranges on top-level block tokens so the inline-diff
+    // pass can map changed source lines back to rendered blocks. Runs on
+    // every render; DOMPurify keeps data-* attributes. [REF:fr:compare]
+    md.core.ruler.push('markio_line_map', function (state) {
+      for (var i = 0; i < state.tokens.length; i++) {
+        var t = state.tokens[i];
+        if (t.level !== 0 || !t.map) continue;
+        if (t.nesting === 1 || t.type === 'fence' || t.type === 'hr') {
+          try {
+            t.attrSet('data-line-start', String(t.map[0]));
+            t.attrSet('data-line-end', String(t.map[1]));
+          } catch (e) { /* tokens without attr support (html_block) */ }
+        }
+      }
+    });
+
       var current = document.getElementById('content').innerHTML;
       // Re-render only matters for Mermaid; cheap no-op otherwise handled by caller.
       return current.length;
@@ -1630,8 +1799,7 @@
     window.scrollToHeading = scrollToHeading;
     window.setScrollY = setScrollY;
     window.getScrollY = getScrollY;
-    window.setCompareSync = setCompareSync;
-    window.compareScrollBy = compareScrollBy;
+    window.renderDiff = renderDiff;
   </script>
 </body>
 </html>

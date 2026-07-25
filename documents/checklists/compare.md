@@ -1,29 +1,25 @@
-# Manual checklist — FR-COMPARE (side-by-side compare)
+# Manual checklist — FR-COMPARE (inline-diff compare)
 
 Run against a real bundle: `make app && open .build/Markio.app`.
-Prepare two Markdown files of clearly different lengths (e.g. `a.md` ~300
-paragraphs, `b.md` ~120).
+Prepare two versions of one document: `v2.md` (open it) and `v1.md` — v2
+should add a section, delete a paragraph, and keep most content unchanged.
 
-1. Open `a.md`. The File menu shows `Compare Side by Side…` (enabled) and
+1. Open `v2.md`. The File menu shows `Compare…` (enabled, ⇧⌘C) and
    `Stop Comparing` (disabled).
-2. Pick `Compare Side by Side…` → an open panel appears, pre-pointed at the
-   document's folder, prompt button "Compare". Cancel → nothing happens.
-3. Pick it again and choose `b.md` → `b.md` opens in its own window; the two
-   windows tile left/right filling the screen's visible frame. Without
-   switching windows, File shows `Stop Comparing` enabled right away.
-4. Scroll `a.md` with the trackpad — `b.md` follows live by the SAME distance
-   (both move the same number of pixels). When the shorter document hits its
-   end it stays put while the longer one continues; the first reverse scroll
-   pulls it back immediately. Scroll `b.md` — `a.md` follows back. No jitter,
-   no runaway feedback.
-5. Click a TOC entry / use ⌘F navigation in one window — the other follows
-   (paired reading follows any navigation).
-6. TOC sidebar, find bar, and the width slider still work independently in
-   each window.
-7. `File ▸ Stop Comparing` → scrolling no longer mirrors; both windows stay
-   open and fully functional. Without switching windows, `Stop Comparing` is
-   disabled again right away.
-8. Re-compare, then close `b.md`'s window → `a.md` stays open, mirroring is
-   off, `Stop Comparing` is disabled again.
-9. Compare with an ALREADY-OPEN document → no duplicate window: the existing
-   window is used and tiled (one window per document).
+2. Pick `Compare…` → an open panel appears, pre-pointed at the document's
+   folder, prompt button "Compare". Cancel → nothing happens.
+3. Pick it again and choose `v1.md` → the SAME window now shows the diff:
+   content added since v1 carries a green accent, paragraphs deleted since
+   v1 appear at their original position as dimmed red blocks, unchanged
+   content has no markers. No second window opens. Without switching
+   windows, `Stop Comparing` is enabled right away.
+4. TOC sidebar, ⌘F find, and the width slider work over the diff view
+   (find matches text inside removed blocks too).
+5. Edit `v2.md` externally (add a paragraph) → the diff view refreshes and
+   the new paragraph is marked added.
+6. `File ▸ Stop Comparing` → the plain document view returns, no markers
+   remain; `Stop Comparing` is disabled again right away.
+7. Pick `Compare…` and choose `v2.md` itself → nothing happens (self-compare
+   is a no-op).
+8. Compare again, close the window, reopen `v2.md` → plain view (the
+   baseline choice is session-only).

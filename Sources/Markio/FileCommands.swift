@@ -18,7 +18,7 @@ struct FileCommands: Commands {
             }
             .disabled(documentFileURL == nil)
 
-            Button("Compare Side by Side…") {
+            Button("Compare…") {
                 model?.startCompare()
             }
             .keyboardShortcut("c", modifiers: [.command, .shift])

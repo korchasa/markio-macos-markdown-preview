@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Per-window document state: owns this window's preview controller, file
 /// watcher, and reading width. One instance per `DocumentGroup` window — there
@@ -12,8 +13,10 @@ final class DocumentModel: ObservableObject {
     private let tocStore: TOCStore
     private let scrollStore: ScrollPositionStore
     private let linkNavigator: LocalLinkNavigator
-    private let compareCoordinator: CompareCoordinator
+    private let comparePick: ComparePick
     private var watcher: FileWatcher?
+    /// Baseline of the active inline-diff compare; session-only. [REF:fr:compare]
+    private var compareBaselineURL: URL?
     private var started = false
     private var currentText = ""
     private var url: URL?
@@ -30,19 +33,24 @@ final class DocumentModel: ObservableObject {
     @Published var outline: [TOCItem] = []
     @Published var currentHeadingID: String?
 
-    // Compare state, mirrored to the Window menu. [REF:fr:compare]
+    // Compare state, mirrored to the File menu. [REF:fr:compare]
     @Published private(set) var isCompared = false
+
+    /// Baseline picker: hand the document's URL to the user, call back with
+    /// the picked baseline (`nil` = cancelled). Injected so tests drive the
+    /// compare flow without AppKit UI. [REF:fr:compare]
+    typealias ComparePick = @MainActor (URL, @escaping @MainActor (URL?) -> Void) -> Void
 
     init(
         defaults: UserDefaults = .standard,
         linkNavigator: LocalLinkNavigator = .shared,
-        compareCoordinator: CompareCoordinator = .shared
+        comparePick: @escaping ComparePick = DocumentModel.systemComparePick
     ) {
         widthStore = ContentWidthStore(defaults: defaults)
         tocStore = TOCStore(defaults: defaults)
         scrollStore = ScrollPositionStore(defaults: defaults)
         self.linkNavigator = linkNavigator
-        self.compareCoordinator = compareCoordinator
+        self.comparePick = comparePick
         contentWidth = Double(widthStore.width)
         tocVisible = tocStore.visible
         preview.onCurrentSectionChange = { [weak self] id in
@@ -61,12 +69,6 @@ final class DocumentModel: ObservableObject {
         preview.onLinkActivated = { [weak self] href in
             guard let self, let url = self.url else { return }
             self.linkNavigator.follow(href: href, from: url)
-        }
-        // Live scroll delta while this window is half of a compare pair:
-        // the coordinator mirrors it to the peer. [REF:fr:compare]
-        preview.onSyncScroll = { [weak self] delta in
-            guard let self else { return }
-            self.compareCoordinator.scrollChanged(from: self, delta: delta)
         }
     }
 
@@ -106,9 +108,6 @@ final class DocumentModel: ObservableObject {
             if let anchor = linkNavigator.consumePendingAnchor(for: url) {
                 await preview.scrollToHeading(anchor)
             }
-            // Attach AFTER the first render so a pending compare pair links
-            // against a page that is already scrollable. [REF:fr:compare]
-            compareCoordinator.attach(self)
         }
         if let url { startWatching(url) }
     }
@@ -156,15 +155,65 @@ final class DocumentModel: ObservableObject {
 
     // MARK: - Compare [REF:fr:compare]
 
-    /// Start a side-by-side compare from this window (Window menu): pick the
-    /// second document, pair, tile, mirror.
+    /// Pick a baseline version and render this window as an inline diff
+    /// against it. Picking the document's own file is a no-op.
     func startCompare() {
-        compareCoordinator.beginCompare(from: self)
+        guard let url else { return }
+        comparePick(url) { [weak self] picked in
+            guard let self, let picked else { return }
+            guard picked.standardizedFileURL.path != url.standardizedFileURL.path
+            else { return }
+            Task { await self.renderCompare(baseline: picked) }
+        }
     }
 
-    /// Break this window's compare pair; both windows stay open, unlinked.
+    /// Return to the plain render; the baseline choice is dropped.
     func stopCompare() {
-        compareCoordinator.unlink(for: self)
+        guard isCompared else { return }
+        compareBaselineURL = nil
+        isCompared = false
+        Task {
+            await preview.render(currentText)
+            await reapplyFindIfActive()
+            await refreshOutline()
+        }
+    }
+
+    /// Read the baseline and render the diff. An unreadable baseline logs and
+    /// leaves (or returns to) the plain view — never a broken diff.
+    private func renderCompare(baseline: URL) async {
+        let text = await Task.detached { try? FileLoader.load(baseline) }.value
+        guard let text else {
+            Log.app.error("compare baseline unreadable: \(baseline.path)")
+            stopCompare()
+            return
+        }
+        compareBaselineURL = baseline
+        isCompared = true
+        await preview.renderDiff(old: text, new: currentText)
+        await reapplyFindIfActive()
+        await refreshOutline()
+    }
+
+    /// Powerbox panel pre-pointed at the document's folder: the user's one
+    /// "Compare" click grants sandbox read access to the picked baseline.
+    /// Cancel is a no-op. [REF:fr:compare]
+    private static func systemComparePick(
+        _ sourceURL: URL, completion: @escaping @MainActor (URL?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.message = "Choose the version to compare against."
+        panel.prompt = "Compare"
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "md"), .plainText]
+            .compactMap { $0 }
+        panel.begin { response in
+            MainActor.assumeIsolated {
+                completion(response == .OK ? panel.url : nil)
+            }
+        }
     }
 
     // MARK: - Find [REF:fr:find]
@@ -224,6 +273,12 @@ final class DocumentModel: ObservableObject {
         let text = await Task.detached { try? FileLoader.load(url) }.value
         if let text {
             currentText = text
+            // While compared, an external edit refreshes the DIFF view —
+            // the baseline is re-read alongside. [REF:fr:compare]
+            if isCompared, let baseline = compareBaselineURL {
+                await renderCompare(baseline: baseline)
+                return
+            }
             await preview.render(text)
         } else {
             await preview.render("# Unable to read file\n\n`\(url.path)`")
@@ -248,26 +303,5 @@ extension DocumentModel: LocalLinkTarget {
 
     func navigate(toAnchor anchor: String) {
         Task { await preview.scrollToHeading(anchor) }
-    }
-}
-
-/// This window as a compare peer: the coordinator toggles the page's live
-/// mirroring channel and pushes the peer's scroll delta here. TOC, find,
-/// width, and scroll persistence stay untouched per-window state.
-/// [REF:fr:compare]
-extension DocumentModel: CompareTarget {
-    var hostWindow: NSWindow? { preview.webView.window }
-
-    func setCompareSyncEnabled(_ enabled: Bool) {
-        isCompared = enabled
-        Task { await preview.setCompareSync(enabled) }
-    }
-
-    func applyScrollDelta(_ delta: Double) {
-        Task { await preview.compareScrollBy(delta) }
-    }
-
-    func currentScrollY() async -> Double? {
-        await preview.compareScrollY()
     }
 }
