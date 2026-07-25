@@ -1,6 +1,6 @@
 ---
 date: 2026-07-17
-status: to do
+status: done
 implements:
   - FR-MENU
   - FR-COMPARE
@@ -56,16 +56,16 @@ The user selected a narrow SwiftUI/AppKit hybrid after comparing alternatives.
 
 ## Definition of Done
 
-- [ ] FR-MENU: File contains Copy File Path once, Edit contains none, and focused-window path copy stays exact
+- [x] FR-MENU: File contains Copy File Path once, Edit contains none, and focused-window path copy stays exact
   - Test: `Tests/MarkioTests/FilePathCopyTests.swift::testCopiesAbsoluteFilePathAsPlainText`; `manual — maintainer — documents/checklists/menu.md`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter FilePathCopyTests"`; `NO_COLOR=1 make app`
-- [ ] FR-MENU: File order is Open/Open Recent → Copy/Compare/Stop → Close/Close All with no visible placeholder or stray separator
+- [x] FR-MENU: File order is Open/Open Recent → Copy/Compare/Stop → Close/Close All with no visible placeholder or stray separator
   - Test: `manual — maintainer — documents/checklists/menu.md`
   - Evidence: `NO_COLOR=1 make app`
-- [ ] FR-MENU: Copy File Path, Close, and Close All are disabled without a document; Close All closes document windows only
+- [x] FR-MENU: Copy File Path, Close, and Close All are disabled without a document; Close All closes document windows only
   - Test: `manual — maintainer — documents/checklists/menu.md`
   - Evidence: `NO_COLOR=1 make app`
-- [ ] FR-COMPARE: Compare/Stop remain focused-window commands and compare behavior is unchanged
+- [x] FR-COMPARE: Compare/Stop remain focused-window commands and compare behavior is unchanged
   - Test: `Tests/MarkioTests/CompareTests.swift`; `manual — maintainer — documents/checklists/compare.md`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter CompareTests"`; `NO_COLOR=1 make app`
 

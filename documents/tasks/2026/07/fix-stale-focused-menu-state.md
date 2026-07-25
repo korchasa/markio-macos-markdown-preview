@@ -1,6 +1,6 @@
 ---
 date: 2026-07-25
-status: in progress
+status: done
 implements:
   - FR-MENU
   - FR-COMPARE
@@ -57,7 +57,7 @@ flips are invisible until the next focus change.
 
 ## Definition of Done
 
-- [ ] FR-COMPARE: `Stop Comparing` enables immediately after linking and
+- [x] FR-COMPARE: `Stop Comparing` enables immediately after linking and
   disables immediately after unlinking, with no window-focus change
   - Test: `manual — maintainer — documents/checklists/compare.md` (steps 3, 7)
   - Evidence: `NO_COLOR=1 make app` + accessibility menu-state dump before/after
