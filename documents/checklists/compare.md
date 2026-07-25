@@ -17,7 +17,7 @@ should add a section, delete a paragraph, and keep most content unchanged.
    (find matches text inside removed blocks too).
 5. Edit `v2.md` externally (add a paragraph) → the diff view refreshes and
    the new paragraph is marked added.
-6. While compared, check `File ▸ Compare Side by Side` → the same window
+6. While compared, check `View ▸ Compare Side by Side` → the same window
    splits into two aligned columns: v1 left with deleted blocks marked red,
    v2 right with added blocks marked green; unchanged sections sit at the
    same height opposite each other; one scroll moves both. Resize the

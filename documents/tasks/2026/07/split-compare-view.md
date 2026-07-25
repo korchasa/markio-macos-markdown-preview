@@ -47,7 +47,8 @@ block map already exist in the page.
 - Alignment re-runs after Mermaid settles, on window resize, and on width
   change; asynchronous late height changes are best-effort (realign on
   resize covers most).
-- Menu: one checkmark toggle `Compare Side by Side` in the File compare
+- Menu: one checkmark toggle `Compare Side by Side` in the View menu
+  (moved from File after user feedback — layout is a view concern), in the compare
   group, enabled only while compared.
 
 ## Definition of Done
@@ -58,8 +59,8 @@ block map already exist in the page.
   layouts live and the preference persists
   - Test: `Tests/MarkioTests/CompareTests.swift::testSplitLayoutShowsBothVersionsWithMarks`; `::testSplitAlignsSharedBlocks`; `::testSplitToggleSwitchesLayoutLive`; `::testSplitPreferencePersists`
   - Evidence: `NO_COLOR=1 make test ARGS="--filter CompareTests"`
-- [ ] FR-MENU: the File compare group reads `Compare…` / `Stop Comparing` /
-  `Compare Side by Side` (toggle, enabled iff compared) in the real app
+- [ ] FR-MENU: File compare group reads `Compare…` / `Stop Comparing`; View
+  carries the `Compare Side by Side` toggle (enabled iff compared) in the real app
   - Test: `manual — maintainer — documents/checklists/menu.md`
   - Evidence: `NO_COLOR=1 make app`
 
@@ -78,6 +79,6 @@ block map already exist in the page.
 4. `CompareLayoutStore` (TOCStore twin, key `compareSplitLayout`);
    `DocumentModel.compareSplit` published + `setCompareSplit` re-rendering
    the active diff.
-5. `FileCommands`: checkmark `Toggle("Compare Side by Side")`.
+5. `TOCCommands` (View menu): checkmark `Toggle("Compare Side by Side")`.
 6. Tests per DoD (WebView-backed + store roundtrip); `make check`; real-app
    pass.

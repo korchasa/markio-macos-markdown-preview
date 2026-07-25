@@ -35,7 +35,7 @@ The one on-screen reading control is **line width**.
 - Diff compare: File ▸ Compare… picks an earlier version of the document
   and shows what changed right in the rendered view — new blocks tinted
   green, deleted blocks dimmed red — inline or as GitHub-style side-by-side
-  columns (File ▸ Compare Side by Side), no diff editor involved
+  columns (View ▸ Compare Side by Side), no diff editor involved
 - In-document find (⌘F): every match highlighted with an "N of M" counter, an
   overview strip at the right edge marks match positions, and matches are found
   even across syntax-highlighting inside code blocks and tables

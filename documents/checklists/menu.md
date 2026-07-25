@@ -17,8 +17,7 @@ Run a real app bundle; the bare `make dev` binary has a degraded menu.
 ## File menu
 
 - [ ] Visible groups appear exactly in this order: `Open…` / `Open Recent`;
-      `Copy File Path` / `Compare…` / `Stop Comparing` / `Compare Side by
-      Side` (checkmark toggle); `Close` / `Close All`.
+      `Copy File Path` / `Compare…` / `Stop Comparing`; `Close` / `Close All`.
 - [ ] `Open Recent` opens after File updates and contains recent documents plus
       native `Clear Menu`; opening it never produces a disabled `NSMenuItem`.
 - [ ] Exactly one separator lies between groups; no blank `NSMenuItem`, leading,
@@ -49,7 +48,8 @@ Run a real app bundle; the bare `make dev` binary has a degraded menu.
 
 ## Unchanged
 
-- [ ] FR-MENU does not change App (`Markio`), View, Window, or Help.
+- [ ] FR-MENU does not change App (`Markio`), Window, or Help. View carries
+      only its own toggles (`Table of Contents`, `Compare Side by Side`).
 
 ## Optional automated snapshot
 
@@ -57,5 +57,5 @@ Use `AXShowMenu` before reading items so SwiftUI updates the menu and runs
 `MenuArtifactCleaner`. Resolve the application process by the verified PID,
 never by `process "Markio"` or a `whose` filter. Assert relative indices instead
 of comparing the whole platform-dependent menu: `Open… < Open Recent < Copy
-File Path < Compare Side by Side… < Stop Comparing < Close < Close All`; assert
+File Path < Compare… < Stop Comparing < Close < Close All`; assert
 each named item occurs once and Edit contains no `Copy File Path`.
