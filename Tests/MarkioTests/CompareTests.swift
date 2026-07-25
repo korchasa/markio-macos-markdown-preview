@@ -176,6 +176,115 @@ final class CompareTests: XCTestCase {
         XCTAssertTrue(((body as? String) ?? "").contains("Fresh."))
     }
 
+    /// Split layout: baseline left with removed blocks marked, current right
+    /// with added blocks marked, both full renders.
+    @MainActor
+    func testSplitLayoutShowsBothVersionsWithMarks() async throws {
+        let old = "# Title\n\nDoomed paragraph.\n\nShared paragraph.\n"
+        let new = "# Title\n\nShared paragraph.\n\nBrand new paragraph.\n"
+        let baseline = try writeBaseline("v1.md", old)
+        let model = try await makeModel(file: "v2.md", text: new, pick: baseline)
+        model.setCompareSplit(true)
+
+        model.startCompare()
+        let split = try await waitFor {
+            try await self.count(model, selector: ".markio-split") > 0
+        }
+        XCTAssertTrue(split, "split container must appear")
+
+        let removedInOld = try await count(
+            model, selector: ".markio-split-old .markio-diff-removed")
+        XCTAssertEqual(removedInOld, 1, "removed block marked in the baseline column")
+        let addedInNew = try await count(
+            model, selector: ".markio-split-new .markio-diff-added")
+        XCTAssertEqual(addedInNew, 1, "added block marked in the current column")
+        // Full-fidelity renders: both columns carry the shared paragraph.
+        let sharedCount = try await model.preview.evaluate(
+            """
+            Array.prototype.filter.call(
+              document.querySelectorAll('.markio-split-col p'),
+              function (p) { return p.textContent === 'Shared paragraph.'; }).length
+            """)
+        XCTAssertEqual((sharedCount as? NSNumber)?.intValue, 2)
+    }
+
+    /// Unchanged blocks after a change sit at the same vertical offset in
+    /// both columns — the spacer alignment compensates differing heights.
+    @MainActor
+    func testSplitAlignsSharedBlocks() async throws {
+        let longDeleted = (1...8).map { "Deleted line \($0) of a long removed paragraph." }
+            .joined(separator: " ")
+        let old = "# Title\n\n\(longDeleted)\n\nShared tail paragraph.\n"
+        let new = "# Title\n\nShared tail paragraph.\n"
+        let baseline = try writeBaseline("v1.md", old)
+        let model = try await makeModel(file: "v2.md", text: new, pick: baseline)
+        model.setCompareSplit(true)
+
+        model.startCompare()
+        _ = try await waitFor {
+            try await self.count(model, selector: ".markio-split") > 0
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let offsets = try await model.preview.evaluate(
+            """
+            (function () {
+              function top(sel) {
+                var els = document.querySelectorAll(sel + ' p');
+                for (var i = 0; i < els.length; i++) {
+                  if (els[i].textContent === 'Shared tail paragraph.') {
+                    return els[i].getBoundingClientRect().top;
+                  }
+                }
+                return -1;
+              }
+              return [top('.markio-split-old'), top('.markio-split-new')];
+            })()
+            """)
+        let pair = (offsets as? [NSNumber])?.map(\.doubleValue) ?? []
+        XCTAssertEqual(pair.count, 2)
+        XCTAssertGreaterThan(pair[0], 0)
+        XCTAssertEqual(
+            pair[0], pair[1], accuracy: 3,
+            "shared blocks must sit at the same vertical offset")
+    }
+
+    /// The layout toggle re-renders the active compare live, both ways.
+    @MainActor
+    func testSplitToggleSwitchesLayoutLive() async throws {
+        let old = "# Title\n\nGone.\n\nShared.\n"
+        let new = "# Title\n\nShared.\n"
+        let baseline = try writeBaseline("v1.md", old)
+        let model = try await makeModel(file: "v2.md", text: new, pick: baseline)
+
+        model.startCompare()
+        _ = try await waitFor {
+            try await self.count(model, selector: ".markio-diff-removed") > 0
+        }
+
+        model.setCompareSplit(true)
+        let toSplit = try await waitFor {
+            try await self.count(model, selector: ".markio-split") > 0
+        }
+        XCTAssertTrue(toSplit, "checking the toggle switches to columns")
+
+        model.setCompareSplit(false)
+        let backInline = try await waitFor {
+            let split = try await self.count(model, selector: ".markio-split")
+            let removed = try await self.count(model, selector: ".markio-diff-removed")
+            return split == 0 && removed > 0
+        }
+        XCTAssertTrue(backInline, "unchecking returns the inline view")
+    }
+
+    /// The layout choice is a persisted global reading preference.
+    @MainActor
+    func testSplitPreferencePersists() {
+        let store = CompareLayoutStore(defaults: defaults)
+        XCTAssertFalse(store.split, "inline is the default")
+        store.split = true
+        XCTAssertTrue(CompareLayoutStore(defaults: defaults).split)
+    }
+
     /// Picking the document's own file is a no-op.
     @MainActor
     func testSelfCompareIsNoOp() async throws {

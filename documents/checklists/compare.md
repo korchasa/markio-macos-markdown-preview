@@ -17,9 +17,16 @@ should add a section, delete a paragraph, and keep most content unchanged.
    (find matches text inside removed blocks too).
 5. Edit `v2.md` externally (add a paragraph) → the diff view refreshes and
    the new paragraph is marked added.
-6. `File ▸ Stop Comparing` → the plain document view returns, no markers
+6. While compared, check `File ▸ Compare Side by Side` → the same window
+   splits into two aligned columns: v1 left with deleted blocks marked red,
+   v2 right with added blocks marked green; unchanged sections sit at the
+   same height opposite each other; one scroll moves both. Resize the
+   window and move the width slider — alignment holds. Uncheck → the inline
+   view returns. Quit and relaunch while the toggle is on → a new compare
+   opens in split layout (persisted preference).
+7. `File ▸ Stop Comparing` → the plain document view returns, no markers
    remain; `Stop Comparing` is disabled again right away.
-7. Pick `Compare…` and choose `v2.md` itself → nothing happens (self-compare
+8. Pick `Compare…` and choose `v2.md` itself → nothing happens (self-compare
    is a no-op).
-8. Compare again, close the window, reopen `v2.md` → plain view (the
+9. Compare again, close the window, reopen `v2.md` → plain view (the
    baseline choice is session-only).

@@ -172,11 +172,11 @@ final class PreviewController: NSObject {
     /// normal pipeline plus added/removed decoration, done in the page.
     /// Best-effort; failure is logged, not swallowed. [REF:fr:compare]
     @discardableResult
-    func renderDiff(old oldText: String, new newText: String) async -> Bool {
+    func renderDiff(old oldText: String, new newText: String, split: Bool) async -> Bool {
         do {
             _ = try await webView.callAsyncJavaScript(
-                "return await renderDiff(o, n);",
-                arguments: ["o": oldText, "n": newText],
+                "return await renderDiff(o, n, s);",
+                arguments: ["o": oldText, "n": newText, "s": split],
                 contentWorld: .page
             )
             return true

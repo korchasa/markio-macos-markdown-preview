@@ -12,6 +12,7 @@ final class DocumentModel: ObservableObject {
     private let widthStore: ContentWidthStore
     private let tocStore: TOCStore
     private let scrollStore: ScrollPositionStore
+    private let compareLayoutStore: CompareLayoutStore
     private let linkNavigator: LocalLinkNavigator
     private let comparePick: ComparePick
     private var watcher: FileWatcher?
@@ -35,6 +36,9 @@ final class DocumentModel: ObservableObject {
 
     // Compare state, mirrored to the File menu. [REF:fr:compare]
     @Published private(set) var isCompared = false
+    /// Layout of the compare view: side-by-side columns when true, inline
+    /// annotations when false. Persisted global reading preference.
+    @Published private(set) var compareSplit: Bool
 
     /// Baseline picker: hand the document's URL to the user, call back with
     /// the picked baseline (`nil` = cancelled). Injected so tests drive the
@@ -49,6 +53,8 @@ final class DocumentModel: ObservableObject {
         widthStore = ContentWidthStore(defaults: defaults)
         tocStore = TOCStore(defaults: defaults)
         scrollStore = ScrollPositionStore(defaults: defaults)
+        compareLayoutStore = CompareLayoutStore(defaults: defaults)
+        compareSplit = CompareLayoutStore(defaults: defaults).split
         self.linkNavigator = linkNavigator
         self.comparePick = comparePick
         contentWidth = Double(widthStore.width)
@@ -167,6 +173,16 @@ final class DocumentModel: ObservableObject {
         }
     }
 
+    /// Switch the compare layout (inline ↔ split columns); re-renders the
+    /// active diff live and persists the preference.
+    func setCompareSplit(_ split: Bool) {
+        guard split != compareSplit else { return }
+        compareSplit = split
+        compareLayoutStore.split = split
+        guard isCompared, let baseline = compareBaselineURL else { return }
+        Task { await renderCompare(baseline: baseline) }
+    }
+
     /// Return to the plain render; the baseline choice is dropped.
     func stopCompare() {
         guard isCompared else { return }
@@ -190,7 +206,7 @@ final class DocumentModel: ObservableObject {
         }
         compareBaselineURL = baseline
         isCompared = true
-        await preview.renderDiff(old: text, new: currentText)
+        await preview.renderDiff(old: text, new: currentText, split: compareSplit)
         await reapplyFindIfActive()
         await refreshOutline()
     }

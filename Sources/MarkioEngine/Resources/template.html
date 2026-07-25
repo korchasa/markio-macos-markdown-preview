@@ -287,6 +287,22 @@
       opacity: 0.72;
       margin-bottom: 16px;
     }
+    /* Split layout: two full renders side by side in the SAME scroll
+       container; the divider is a hairline, columns share the width. Marked
+       blocks reuse the inline accents; the removed-wrapper margin does not
+       apply to marks on existing blocks. */
+    .markio-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 28px;
+    }
+    .markio-split-col { min-width: 0; }
+    .markio-split-old {
+      border-right: 1px solid rgba(128, 128, 128, 0.25);
+      padding-right: 28px;
+      margin-right: -14px;
+    }
+    .markio-split .markio-diff-removed { margin-bottom: revert; }
     /* (c) A long unbroken token in a table cell wraps inside the column
        instead of forcing the whole table into a horizontal scroller (the
        github stylesheet's break-word does not shrink a cell's intrinsic
@@ -899,9 +915,136 @@
       return runs;
     }
 
+    // Split-layout state: alignment must re-run on resize / width changes
+    // while the columns are on screen. [REF:fr:compare]
+    var __split = { active: false, ops: null };
+
+    // Render the compare view. `split` picks the layout: inline annotations
+    // (default) or side-by-side columns. Returns true once the DOM settled.
+    async function renderDiff(oldText, newText, split) {
+      __split.active = false;
+      if (split) return renderDiffSplit(oldText, newText);
+      return renderDiffInline(oldText, newText);
+    }
+
+    // Baseline left, current right — both whole-text full-fidelity renders
+    // in ONE scroll container; alignment is a static spacer pass, never
+    // scroll machinery. [REF:fr:compare]
+    async function renderDiffSplit(oldText, newText) {
+      var a = String(oldText != null ? oldText : '').split('\n');
+      var b = String(newText != null ? newText : '').split('\n');
+      var ops = lineDiff(a, b);
+      var scrollX = window.scrollX, scrollY = window.scrollY;
+      var el = document.getElementById('content');
+      el.innerHTML = '<div class="markio-split">'
+        + '<div class="markio-split-col markio-split-old"></div>'
+        + '<div class="markio-split-col markio-split-new"></div></div>';
+      var oldCol = el.querySelector('.markio-split-old');
+      var newCol = el.querySelector('.markio-split-new');
+      oldCol.innerHTML = sanitizeHtml(md.render(String(oldText != null ? oldText : '')));
+      newCol.innerHTML = sanitizeHtml(md.render(String(newText != null ? newText : '')));
+      rebuildTOC();
+      decorateCodeBlocks();
+      closeZoom();
+      if (window.mermaid) {
+        var nodes = el.querySelectorAll('pre.mermaid');
+        if (nodes.length) {
+          for (var mi = 0; mi < nodes.length; mi++) {
+            nodes[mi].dataset.markioSrc = nodes[mi].textContent;
+          }
+          try { await window.mermaid.run({ nodes: nodes }); }
+          catch (e) { console.warn('mermaid.run failed', e); }
+          decorateMermaid();
+        }
+      }
+      markRunBlocks(oldCol, ops, 'del', 'aStart', 'aLen', 'markio-diff-removed');
+      markRunBlocks(newCol, ops, 'add', 'bStart', 'bLen', 'markio-diff-added');
+      __split.active = true;
+      __split.ops = ops;
+      alignSplit();
+      window.scrollTo(scrollX, scrollY);
+      postCurrentSection();
+      return true;
+    }
+
+    function topBlocks(col) {
+      return Array.prototype.filter.call(col.children, function (el) {
+        return el.hasAttribute && el.hasAttribute('data-line-start');
+      });
+    }
+
+    // Add `cls` to a column's top-level blocks whose source-line range
+    // intersects any run of type `t`.
+    function markRunBlocks(col, ops, t, startKey, lenKey, cls) {
+      var runs = ops.filter(function (o) { return o.t === t; });
+      topBlocks(col).forEach(function (el) {
+        var s0 = Number(el.getAttribute('data-line-start'));
+        var e0 = Number(el.getAttribute('data-line-end'));
+        for (var i = 0; i < runs.length; i++) {
+          var r = runs[i];
+          if (s0 < r[startKey] + r[lenKey] && r[startKey] < e0) {
+            el.classList.add(cls);
+            break;
+          }
+        }
+      });
+    }
+
+    // Pad each unchanged-run boundary pair to the same vertical offset by
+    // inserting real spacer elements (margin-top would collapse with the
+    // sibling's bottom margin and vanish). One correction pass per pair
+    // absorbs the margins that stop collapsing around the inserted spacer.
+    // Sequential: each spacer shifts what follows, so tops are re-measured
+    // pair by pair.
+    function alignSplit() {
+      if (!__split.active) return;
+      var el = document.getElementById('content');
+      var oldCol = el.querySelector('.markio-split-old');
+      var newCol = el.querySelector('.markio-split-new');
+      if (!oldCol || !newCol) return;
+      el.querySelectorAll('.markio-split-spacer').forEach(function (sp) {
+        sp.parentNode.removeChild(sp);
+      });
+      var blocksOld = topBlocks(oldCol);
+      var blocksNew = topBlocks(newCol);
+      var sameRuns = __split.ops.filter(function (o) { return o.t === 'same'; });
+      for (var i = 0; i < sameRuns.length; i++) {
+        var run = sameRuns[i];
+        var oldBlock = firstBlockAt(blocksOld, run.aStart, run.aStart + run.aLen);
+        var newBlock = firstBlockAt(blocksNew, run.bStart, run.bStart + run.bLen);
+        if (!oldBlock || !newBlock) continue;
+        var delta = newBlock.getBoundingClientRect().top
+          - oldBlock.getBoundingClientRect().top;
+        if (Math.abs(delta) <= 1) continue;
+        var onOldSide = delta > 0;
+        var lagging = onOldSide ? oldBlock : newBlock;
+        var height = Math.abs(delta);
+        var spacer = document.createElement('div');
+        spacer.className = 'markio-split-spacer';
+        spacer.style.height = height + 'px';
+        lagging.parentNode.insertBefore(spacer, lagging);
+        var residual = newBlock.getBoundingClientRect().top
+          - oldBlock.getBoundingClientRect().top;
+        var corrected = height + (onOldSide ? residual : -residual);
+        if (Math.abs(residual) > 1 && corrected > 0) {
+          spacer.style.height = corrected + 'px';
+        }
+      }
+    }
+
+    function firstBlockAt(blocks, startLine, endLine) {
+      for (var i = 0; i < blocks.length; i++) {
+        var s0 = Number(blocks[i].getAttribute('data-line-start'));
+        if (s0 >= startLine && s0 < endLine) return blocks[i];
+      }
+      return null;
+    }
+
+    window.addEventListener('resize', function () { alignSplit(); });
+
     // Render the current document normally, then decorate it with the diff
-    // against the baseline text. Returns true once the DOM has settled.
-    async function renderDiff(oldText, newText) {
+    // against the baseline text (INLINE layout).
+    async function renderDiffInline(oldText, newText) {
       var a = String(oldText != null ? oldText : '').split('\n');
       var b = String(newText != null ? newText : '').split('\n');
       var ops = lineDiff(a, b);
@@ -1426,6 +1569,9 @@
       var items = [];
       for (var i = 0; i < els.length; i++) {
         var heading = els[i];
+        // Split compare: TOC and heading ids come from the CURRENT column
+        // only — baseline headings get neither. [REF:fr:compare]
+        if (heading.closest && heading.closest('.markio-split-old')) continue;
         var text = (heading.textContent || '').trim();
         var base = slugify(text) || 'section';
         var id = base;
@@ -1529,6 +1675,8 @@
     // window size. [REF:fr:line-width]
     function setContentWidth(chars) {
       document.documentElement.style.setProperty('--content-width', String(chars) + 'ch');
+      // Column heights change with the width — keep split pairs aligned.
+      alignSplit();
       return getContentWidth();
     }
 

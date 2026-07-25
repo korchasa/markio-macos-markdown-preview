@@ -29,6 +29,15 @@ struct FileCommands: Commands {
             }
             .disabled(model?.isCompared != true)
 
+            Toggle(
+                "Compare Side by Side",
+                isOn: Binding(
+                    get: { model?.compareSplit == true },
+                    set: { model?.setCompareSplit($0) }
+                )
+            )
+            .disabled(model?.isCompared != true)
+
             Divider()
 
             Button("Close") {

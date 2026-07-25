@@ -17,8 +17,8 @@ Run a real app bundle; the bare `make dev` binary has a degraded menu.
 ## File menu
 
 - [ ] Visible groups appear exactly in this order: `Open…` / `Open Recent`;
-      `Copy File Path` / `Compare Side by Side…` / `Stop Comparing`;
-      `Close` / `Close All`.
+      `Copy File Path` / `Compare…` / `Stop Comparing` / `Compare Side by
+      Side` (checkmark toggle); `Close` / `Close All`.
 - [ ] `Open Recent` opens after File updates and contains recent documents plus
       native `Clear Menu`; opening it never produces a disabled `NSMenuItem`.
 - [ ] Exactly one separator lies between groups; no blank `NSMenuItem`, leading,
