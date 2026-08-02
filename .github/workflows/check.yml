@@ -1,0 +1,31 @@
+name: check
+
+# Checks only — this workflow builds, lints and tests. It never signs,
+# packages or uploads anything: that happens outside this repo.
+on:
+  push:
+  workflow_dispatch:
+
+# A re-push to the same ref makes the previous run obsolete.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Pinned, not macos-latest: Xcode 26 carries the Swift 6.3 toolchain the
+    # project is developed against.
+    runs-on: macos-26
+    # The suite includes a large-document hang guard; bound the job so a hang
+    # fails instead of idling.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      # Record the toolchain in the log — a green run should say what built it.
+      - name: Toolchain
+        run: swift --version
+
+      # The repo's own gate: build + comment scan + swift-format lint + tests.
+      - name: make check
+        run: make check

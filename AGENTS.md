@@ -332,6 +332,8 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 - `dev` → `make dev` → `swift run Markio` (debug build; optional file argument)
 - `prod` → `make prod` → `swift build -c release && swift run -c release Markio`
 
+> **CI:** `.github/workflows/check.yml` runs `make check` on every push and on manual dispatch (`macos-26`, 30-minute ceiling, older runs on the same ref are cancelled). It is checks-only — no signing, packaging, upload or secrets; that work happens outside this repository. A red run means the same thing a red local `make check` means.
+
 > **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`make app` → `open .build/Markio.app`). The bare `make dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markio" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
 
 ### Command Scripts

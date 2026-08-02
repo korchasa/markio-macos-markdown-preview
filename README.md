@@ -86,6 +86,9 @@ make test     # tests only (filter: make test ARGS="--filter RenderTests")
 make fmt      # apply formatting
 ```
 
+CI runs the same `make check` on every push (`.github/workflows/check.yml`, macOS
+runner). It only checks — nothing is signed, packaged or published from here.
+
 ## Architecture
 
 Native AppKit/SwiftUI document app (`DocumentGroup`): one window per file, each
