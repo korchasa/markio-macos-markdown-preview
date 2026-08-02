@@ -101,17 +101,17 @@ app:
 	cp packaging/$(QL_NAME)-Info.plist "$(QL_APPEX)/Contents/Info.plist"
 	# Ad-hoc sign the .appex ONLY (extensions must be signed + sandboxed for
 	# pluginkit to load them, even locally). The host .app stays unsigned in
-	# this repo; app-store-factory re-signs everything (nested extension
+	# this repo; everything is re-signed outside this repo (nested extension
 	# first) with real identities for distribution.
 	codesign --force --sign - \
 		--entitlements packaging/$(QL_NAME).entitlements "$(QL_APPEX)"
 	@echo "app: built $(APP_BUNDLE)"
 
-## dist — produce the UNSIGNED .app bundle for the App Store. Signing and .pkg
-## packaging are done by app-store-factory (the App Sandbox is declared in
-## packaging/Markio.entitlements, applied by the factory at signing time).
+## dist — produce the UNSIGNED .app bundle for the App Store. Signing, .pkg
+## packaging and upload happen outside this repo (the App Sandbox is
+## declared in packaging/Markio.entitlements, applied at signing time).
 dist: app
-	@echo "dist: unsigned bundle ready at $(APP_BUNDLE) — sign via app-store-factory"
+	@echo "dist: unsigned bundle ready at $(APP_BUNDLE) — sign outside this repo"
 
 ## prod — build the .app and launch it (single instance). Pass a file:
 ## make prod ARGS="path/to/file.md".

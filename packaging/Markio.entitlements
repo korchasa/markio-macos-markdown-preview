@@ -16,8 +16,8 @@
       The rendering stays fully offline — the navigation delegate blocks every
       web load; this entitlement only lets WebKit bring up its content process.
 
-      Signing with these entitlements is performed by app-store-factory, not by
-      this repo.
+      This repo only declares these entitlements; signing with them happens
+      outside this repo.
     -->
     <key>com.apple.security.app-sandbox</key>
     <true/>

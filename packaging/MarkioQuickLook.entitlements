@@ -15,7 +15,7 @@
       cancels every post-load navigation, so no network is ever used.
 
       Ad-hoc signing with this file is done by `make app` so the extension is
-      locally runnable; distribution signing is app-store-factory's job.
+      locally runnable; distribution signing happens outside this repo.
     -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
