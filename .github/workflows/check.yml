@@ -6,6 +6,10 @@ on:
   push:
   workflow_dispatch:
 
+# The gate only reads the checkout; nothing here writes to the repository.
+permissions:
+  contents: read
+
 # A re-push to the same ref makes the previous run obsolete.
 concurrency:
   group: check-${{ github.ref }}
