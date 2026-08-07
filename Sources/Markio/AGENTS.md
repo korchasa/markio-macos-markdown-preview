@@ -49,8 +49,8 @@ shell owns all OS integration; the web view owns only content rendering. See SDS
 
 ## UI verification (real app)
 
-Menu/toolbar/window/HUD changes must be checked in a real `.app` (`make app` →
-`open .build/Markio.app`), not `make dev` (degraded menu).
+Menu/toolbar/window/HUD changes must be checked in a real `.app` (`deno task app` →
+`open .build/Markio.app`), not `deno task dev` (degraded menu).
 
 - **Do not drive the app via System Events / AX while the user is interacting
   with it.** `activate` + `AXRaise` + `keystroke`/clicks steal window focus and

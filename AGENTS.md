@@ -21,7 +21,7 @@
 ---
 ## Project Rules
 - **Native first.** Prefer AppKit/SwiftUI and platform APIs over third-party frameworks. The web engine is an implementation detail of content rendering, never of the app shell (window, toolbar, menus, file handling).
-- **Verify UI in the real run target before declaring done.** For menu/toolbar/window changes, build the `.app` bundle and observe the actual UI (menu dump / screenshot). A green `make check` proves it compiles, not that the UI changed.
+- **Verify UI in the real run target before declaring done.** For menu/toolbar/window changes, build the `.app` bundle and observe the actual UI (menu dump / screenshot). A green `deno task check` proves it compiles, not that the UI changed.
 - **Minimalism is a feature, not a constraint.** This is a read-only Markdown previewer — nothing else. Reject scope creep: no editing, no export pipelines, no plugins, no settings sprawl. Every added control must justify itself against the three priorities below.
 - **Priority order (use to break ties):** 1) nativeness, 2) minimalism, 3) UX.
 - **Offline & private.** All rendering assets (JS/CSS) are vendored under `Sources/MarkioEngine/Resources/vendor` and loaded from disk. No network calls, no CDNs, no telemetry. The `WKWebView` must not reach the network.
@@ -36,12 +36,12 @@ A native macOS application for **viewing** Markdown files — nothing more. It r
 
 ## Project tooling Stack
 - **Language:** Swift 6 (strict concurrency).
-- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`, shared library target `MarkioEngine` (rendering assets + locator), executable target `MarkioQuickLook` (Quick Look preview extension binary; `.appex` assembled by `make app`).
-- **Quick Look dev loop:** `make app` re-assembles the bundle and DROPS the appex's pluginkit registration — run `pluginkit -a .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex` after every rebuild (or use `make run`). `qlmanage -p` does NOT host modern `QLPreviewingController` extensions (zero invocations, no `dev.markio` log entries) — verify previews only via Finder + Space. Hang diagnosis: `/usr/bin/log show --predicate 'subsystem == "dev.markio"'` prints the extension's step breadcrumbs; the last logged step locates the hang.
+- **Build/Packaging:** Swift Package Manager (SPM) — executable target `Markio`, shared library target `MarkioEngine` (rendering assets + locator), executable target `MarkioQuickLook` (Quick Look preview extension binary; `.appex` assembled by `deno task app`).
+- **Quick Look dev loop:** `deno task app` re-assembles the bundle and DROPS the appex's pluginkit registration — run `pluginkit -a .build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex` after every rebuild (or use `deno task run`). `qlmanage -p` does NOT host modern `QLPreviewingController` extensions (zero invocations, no `dev.markio` log entries) — verify previews only via Finder + Space. Hang diagnosis: `/usr/bin/log show --predicate 'subsystem == "dev.markio"'` prints the extension's step breadcrumbs; the last logged step locates the hang.
 - **App shell UI:** AppKit + SwiftUI (native window, toolbar, menus, file open / drag-and-drop / recent files).
 - **Content rendering:** WebKit `WKWebView` (hybrid). Markdown→HTML and Mermaid diagrams render inside the web view.
 - **Vendored web assets (offline, no CDN):** a Markdown-it–class parser with GFM support, `mermaid.js`, a syntax-highlight library, and CSS theme — all under `Sources/MarkioEngine/Resources/vendor` (shared `MarkioEngine` library target), with an HTML shell `template.html`.
-- **Task runner:** `Makefile` wrapping `swift build` / `swift test` / `swift run`.
+- **Task runner:** Deno 2 — `deno.json` declares the verbs, `scripts/*.ts` wrap `swift build` / `swift test` / `swift run` and the bundle assembly.
 - **Platform:** macOS (Apple Silicon + Intel). No cross-platform target.
 
 ## Architecture
@@ -66,8 +66,8 @@ flowchart LR
 ## Key Decisions
 - **Hybrid WKWebView rendering** chosen over pure-native text rendering: Mermaid is a JavaScript library and effectively requires a JS engine; GFM consistency is far easier to guarantee with a mature JS Markdown stack than re-implementing it natively. The native priority is preserved by keeping the *app shell* fully native and the web view confined to content.
 - **Vendored offline assets, no CDN:** guarantees offline use, privacy, and reproducibility; aligns with "native/minimal/private".
-- **SPM targets over an Xcode project file** (`Sources/Markio` app, `Sources/MarkioEngine` shared engine with the resource bundle `Resources/vendor` + `template.html`, `Sources/MarkioQuickLook` Quick Look extension): keeps the repo text-based, scriptable, and reviewable; even the `.appex` is hand-assembled by `make app`.
-- **Makefile standard interface** over raw `swift` invocations: gives the agent-standard `check`/`test`/`dev`/`prod` verbs without adding a non-Swift toolchain (Deno was considered and rejected to avoid a foreign dependency in a native macOS project).
+- **SPM targets over an Xcode project file** (`Sources/Markio` app, `Sources/MarkioEngine` shared engine with the resource bundle `Resources/vendor` + `template.html`, `Sources/MarkioQuickLook` Quick Look extension): keeps the repo text-based, scriptable, and reviewable; even the `.appex` is hand-assembled by `deno task app`.
+- **Deno task scripts as the standard interface** over raw `swift` invocations: `check`/`test`/`dev`/`prod`/`dist` are declared in `deno.json` and implemented in typed, dependency-free TypeScript under `scripts/`. Supersedes the original `Makefile`, which was chosen to avoid a foreign toolchain; the bundle assembly and the Quick Look dev loop had outgrown Make's tab-indented recipes, and TypeScript that type-checks and lints in the same gate it belongs to is worth the extra dependency. The scripts import nothing from JSR or npm, so a bare checkout with no network still runs every task.
 - **Line width as a live CSS variable** driven by a native control: the one reading setting that lives on the preview screen itself, per the product brief.
 - **Read-only previewer scope:** no editing/export/plugins — deliberately out of scope.
 
@@ -110,7 +110,7 @@ Maps source code paths to documentation sections that describe them. Used by com
 - `Sources/MarkioEngine/**` (template.html, `Resources/vendor/**`, ResourceLocator, MarkdownFileReader) → SDS §3 (Vendored web bundle) + SRS FR-GFM, FR-MERMAID, FR-QUICKLOOK
 - `Sources/Markio/*Link*.swift`, local link navigation → SDS §3 (LocalLinkNavigator) + SRS FR-LOCAL-LINKS
 - `Sources/MarkioQuickLook/**`, `packaging/MarkioQuickLook*` → SDS §3 (Quick Look extension) + SRS FR-QUICKLOOK
-- `Makefile` → AGENTS.md Development Commands
+- `deno.json`, `scripts/*.ts` → AGENTS.md Development Commands
 - `README.md` → only for user-facing changes
 
 If this section is empty or absent, commit workflows use a default mapping:
@@ -201,7 +201,7 @@ Your memory resets between sessions. Documentation is the only link to past deci
 - Use GODS format (see below). Architectural decisions are recorded as regular tasks with weighed alternatives in the body — there is no separate ADR primitive.
 - Frontmatter: `date` (YYYY-MM-DD; required), `status: to do | in progress | done | superseded` (required), `implements: [FR-...]` (optional — present for FR-driven tasks, omitted for internal/maintenance), optional `tags`, optional `related_tasks` (markdown links to other task files), optional `migrated_from` for provenance, optional `superseded_by` (required when `status: superseded`).
 - Status auto-derives from `## Definition of Done` checkbox count on every commit for non-superseded tasks (commit workflows handle this — never edit `status` manually mid-flight). `status: superseded` preserves provenance and is excluded from DoD derivation.
-- Directory is **NOT gitignored** — tasks are persistent records. Validated by `scripts/check-task-format.ts` (path regex, status enum, status↔DoD consistency) where the project ships such a script. This Swift/Makefile project ships no `scripts/` (see Command Scripts below); the format is maintained by convention until a `make`-based validator is added.
+- Directory is **NOT gitignored** — tasks are persistent records. Validated by `scripts/check-task-format.ts` (path regex, status enum, status↔DoD consistency) where the project ships such a script. This project ships no such validator yet — `scripts/` holds the task runner only (see Command Scripts below); the format is maintained by convention until a validator is added and wired into `deno task check`.
 
 ### GODS Format
 
@@ -294,7 +294,7 @@ Scope discipline prevents over-formalization: (1) pure bug fixes reuse an existi
 - Run all tests before finishing, not just the ones you changed.
 - When a test fails, fix the source code — not the test. Do not modify a failing test to make it pass, do not add error swallowing or skip logic.
 - Do not create source files with guessed or fabricated data to satisfy imports — if the data source is missing, that is a blocker (see Diagnosing Failures).
-- Run `make fmt` before `make check` when a test adds long inline strings: WebView DOM-query assertions in `RenderTests` routinely exceed swift-format's line-length limit, so `check` fails on formatting first; formatting up front auto-wraps them and avoids the check→fmt→check retry.
+- Run `deno task fmt` before `deno task check` when a test adds long inline strings: WebView DOM-query assertions in `RenderTests` routinely exceed swift-format's line-length limit, so `check` fails on formatting first; formatting up front auto-wraps them and avoids the check→fmt→check retry.
 
 ## Diagnosing Failures
 
@@ -325,19 +325,23 @@ When the root cause is outside your control (missing API keys/URLs, missing gene
 - `prod` — runs the application in production mode.
 
 ### Detected Commands
-> **Status:** Created and verified (`make check` green on macOS 14, Swift 6.3). Native SwiftPM via `Makefile`:
+> **Status:** Created and verified (`deno task check` green on macOS 14, Swift 6.3). Native SwiftPM driven by Deno tasks:
 
-- `check` → `make check` → `swift build` + comment-scan + `swift format lint` + `swift test`
-- `test <path>` → `make test ARGS="--filter <suite>"` → `swift test --filter <suite>`
-- `dev` → `make dev` → `swift run Markio` (debug build; optional file argument)
-- `prod` → `make prod` → `swift build -c release && swift run -c release Markio`
+- `check` → `deno task check` → task-script tooling (`deno fmt --check`, `deno lint`, `deno check`) + `swift build` + comment-scan + `swift format lint` + `swift test`
+- `test <path>` → `deno task test --filter <suite>` → `swift test --filter <suite>`
+- `dev` → `deno task dev` → `swift run Markio` (debug build; optional file argument)
+- `prod` → `deno task prod` → build the `.app` bundle and launch it (optional file argument)
+- `dist` → `deno task dist` → the same bundle, left unsigned for signing outside this repo
+- also `app` (bundle only), `run` (manual-QA loop), `fmt`, `clean`
 
-> **CI:** `.github/workflows/check.yml` runs `make check` on every push and on manual dispatch (`macos-26`, 30-minute ceiling, older runs on the same ref are cancelled). It is checks-only — no signing, packaging, upload or secrets; that work happens outside this repository. A red run means the same thing a red local `make check` means.
+> **CI:** `.github/workflows/check.yml` runs `deno task check` on every push and on manual dispatch (`macos-26`, 30-minute ceiling, older runs on the same ref are cancelled). It is checks-only — no signing, packaging, upload or secrets; that work happens outside this repository. A red run means the same thing a red local `deno task check` means.
 
-> **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`make app` → `open .build/Markio.app`). The bare `make dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markio" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
+> **Menu / `.commands` / toolbar testing:** verify in a real `.app` bundle (`deno task app` → `open .build/Markio.app`). The bare `deno task dev` binary builds a **degraded** main menu — SwiftUI `.commands`, `DocumentGroup` menu edits, and AppKit menu changes do NOT apply there. Inspect the live menu with: `osascript -e 'tell application "System Events" to tell process "Markio" to get name of menu items of menu 1 of menu bar item 3 of menu bar 1'`.
 
 ### Command Scripts
-> None yet. The standard interface will live in a root `Makefile` wrapping SPM. No `scripts/` wrappers are needed — SPM handles build/test/run directly.
+- `deno.json` — the task table; it is the only place a verb is declared. Every task is `deno run -A scripts/<verb>.ts`.
+- `scripts/lib.ts` — process runner, file walker and the source scanner the gate uses instead of `grep -RInE` (the platform grep is not always GNU grep, and dialect differences change what the gate catches). `scripts/app.ts` — the `.app` + `.appex` assembly shared by `app`, `prod`, `run` and `dist`.
+- The scripts import nothing from JSR or npm, so a bare checkout with no network runs every task; `check` type-checks and lints them before it does anything else.
 
 ## Code Documentation
 

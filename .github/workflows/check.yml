@@ -26,10 +26,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Deno is the repository's command runner: every verb is `deno task <verb>`.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       # Record the toolchain in the log — a green run should say what built it.
       - name: Toolchain
-        run: swift --version
+        run: |
+          swift --version
+          deno --version
 
       # The repo's own gate: build + comment scan + swift-format lint + tests.
-      - name: make check
-        run: make check
+      - name: deno task check
+        run: deno task check

@@ -57,21 +57,22 @@ The one on-screen reading control is **line width**.
 
 - macOS 14+
 - Swift 6.3 toolchain (Xcode 16+)
+- [Deno 2](https://deno.com) — the command runner for this repo (`brew install deno`)
 
 ## Run
 
 ```sh
-make dev                       # launch raw debug binary (fast; each run = new process)
-make dev ARGS="path/to.md"     # open a file on launch
-make app                       # release build packaged as .build/Markio.app
-make prod                      # build the .app and launch it (single instance)
-make prod ARGS="path/to.md"    # …and open a file
-make run ARGS="path/to.md"     # manual-QA loop: rebuild, restart, re-register Quick Look
+deno task dev                 # launch raw debug binary (fast; each run = new process)
+deno task dev path/to.md      # open a file on launch
+deno task app                 # release build packaged as .build/Markio.app
+deno task prod                # build the .app and launch it (single instance)
+deno task prod path/to.md     # …and open a file
+deno task run path/to.md      # manual-QA loop: rebuild, restart, re-register Quick Look
 ```
 
-`make prod` builds a real `Markio.app` bundle, so macOS keeps a **single
+`deno task prod` builds a real `Markio.app` bundle, so macOS keeps a **single
 instance** and routes every open into it (one window per document), and Finder
-"Open With ▸ Markio" works. The raw `make dev` binary has no bundle, so each
+"Open With ▸ Markio" works. The raw `deno task dev` binary has no bundle, so each
 launch is a separate process — fine for quick debugging.
 
 Open a document with ⌘O, drag-and-drop onto a window, or *Open With ▸ Markio*
@@ -81,12 +82,12 @@ window); *File ▸ Open Recent* and state restoration are provided by the system
 ## Develop
 
 ```sh
-make check    # build + comment-scan + swift-format lint + tests
-make test     # tests only (filter: make test ARGS="--filter RenderTests")
-make fmt      # apply formatting
+deno task check    # task-script tooling + build + comment-scan + swift-format lint + tests
+deno task test     # tests only (filter: deno task test --filter RenderTests)
+deno task fmt      # apply formatting (Swift sources and task scripts)
 ```
 
-CI runs the same `make check` on every push (`.github/workflows/check.yml`, macOS
+CI runs the same `deno task check` on every push (`.github/workflows/check.yml`, macOS
 runner). It only checks — nothing is signed, packaged or published from here.
 
 ## Architecture

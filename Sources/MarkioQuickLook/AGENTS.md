@@ -20,7 +20,7 @@ system preview lacks.
   A view-based controller hosting its own WKWebView runs the full engine.
 - **No main entry point**: the binary links with entry `_NSExtensionMain`
   (Foundation) via linker flags in `Package.swift` — how Xcode links app
-  extensions. The `.appex` bundle is assembled and ad-hoc signed by `make app`
-  (see Makefile); distribution signing happens outside this repo.
+  extensions. The `.appex` bundle is assembled and ad-hoc signed by `deno task app`
+  (see `scripts/app.ts`); distribution signing happens outside this repo.
 - The appex carries its own copy of `Markio_MarkioEngine.bundle` — reading the
   host app's copy across the extension sandbox boundary is not guaranteed.

@@ -1,0 +1,23 @@
+{
+  "name": "markio",
+  "version": "1.0.0",
+  "exports": {},
+  "tasks": {
+    "check": "deno run -A scripts/check.ts",
+    "test": "deno run -A scripts/test.ts",
+    "dev": "deno run -A scripts/dev.ts",
+    "prod": "deno run -A scripts/prod.ts",
+    "dist": "deno run -A scripts/dist.ts",
+    "fmt": "deno run -A scripts/fmt.ts",
+    "app": "deno run -A scripts/app.ts",
+    "run": "deno run -A scripts/run.ts",
+    "clean": "deno run -A scripts/clean.ts"
+  },
+  "fmt": {
+    "include": ["scripts/", "deno.json"],
+    "lineWidth": 100
+  },
+  "lint": {
+    "include": ["scripts/"]
+  }
+}
