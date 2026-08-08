@@ -61,6 +61,10 @@ enum MermaidLayout {
             return pie(chart, theme: theme, width: width, metrics: metrics)
         case .boxes(let diagram):
             return boxes(diagram, theme: theme, width: width, metrics: metrics)
+        case .mindmap(let map):
+            return mindmap(map, theme: theme, width: width, metrics: metrics)
+        case .timeline(let line):
+            return timeline(line, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -517,6 +521,308 @@ enum MermaidLayout {
                 )
             )
             y += entry.size.height + 6 * metrics.scale
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Mindmap
+
+    /// A mindmap: the root on the left, its branches opening to the right.
+    ///
+    /// Depth decides the column and nothing else does, so every node the same
+    /// number of steps from the root lines up. A parent is then centred on the
+    /// children it opens, which is what makes a branch read as one thing however
+    /// deep it goes.
+    private static func mindmap(
+        _ map: Mindmap, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let fonts = [
+            scaled(theme.bodyBold, by: metrics.scale * 1.1),
+            scaled(theme.body, by: metrics.scale),
+            scaled(theme.body, by: metrics.scale * 0.92),
+        ]
+        // Which top-level branch each node hangs off, so a branch keeps one
+        // colour from its first node to its last leaf.
+        var branch = [Int](repeating: 0, count: map.nodes.count)
+        for (index, node) in map.nodes.enumerated() {
+            for (position, child) in node.children.enumerated() {
+                branch[child] = index == 0 ? position : branch[index]
+            }
+        }
+
+        var boxes: [Placed] = []
+        for (index, node) in map.nodes.enumerated() {
+            let font = fonts[min(node.depth, fonts.count - 1)]
+            let line = text(node.label, font: font, color: theme.palette.text)
+            let size = measure(line)
+            var box = CGSize(
+                width: size.width + metrics.nodePaddingX * 2,
+                height: size.height + metrics.nodePaddingY * 2
+            )
+            if node.shape == .circle { box.width = max(box.width, box.height) }
+            if node.shape == .hexagon { box.width += size.width * 0.2 }
+            boxes.append(
+                Placed(
+                    frame: CGRect(origin: .zero, size: box),
+                    label: line,
+                    labelSize: size,
+                    shape: node.shape,
+                    style: Flowchart.Style(stroke: colour(wheel[branch[index] % wheel.count]))
+                )
+            )
+        }
+
+        // Columns first: a node's x is settled by its depth alone.
+        let deepest = map.nodes.map(\.depth).max() ?? 0
+        var columns = [CGFloat](repeating: 0, count: deepest + 1)
+        for (index, node) in map.nodes.enumerated() {
+            columns[node.depth] = max(columns[node.depth], boxes[index].frame.width)
+        }
+        var lefts = [CGFloat](repeating: 0, count: columns.count)
+        for depth in 1..<max(1, columns.count) {
+            lefts[depth] = lefts[depth - 1] + columns[depth - 1] + metrics.rankGap
+        }
+        for index in boxes.indices { boxes[index].frame.origin.x = lefts[map.nodes[index].depth] }
+
+        // Then rows: leaves take the next free line, parents take the middle of
+        // the children they opened.
+        let rowGap = 10 * metrics.scale
+        var cursor: CGFloat = 0
+        func place(_ index: Int) {
+            let children = map.nodes[index].children
+            guard let first = children.first, let last = children.last else {
+                boxes[index].frame.origin.y = cursor
+                cursor += boxes[index].frame.height + rowGap
+                return
+            }
+            for child in children { place(child) }
+            let middle = (boxes[first].frame.midY + boxes[last].frame.midY) / 2
+            boxes[index].frame.origin.y = middle - boxes[index].frame.height / 2
+        }
+        place(0)
+
+        // A root taller than everything it opens would be placed above the top
+        // of the picture, so the whole tree is dropped back into view.
+        let top = boxes.map(\.frame.minY).min() ?? 0
+        let bottom = boxes.map(\.frame.maxY).max() ?? 0
+        let content = CGSize(
+            width: (boxes.map(\.frame.maxX).max() ?? 0), height: bottom - top)
+        let left = max(metrics.padding, (width - content.width) / 2)
+        for index in boxes.indices {
+            boxes[index].frame.origin.x += left
+            boxes[index].frame.origin.y += metrics.padding - top
+        }
+
+        var decorations: [BlockBox.Decoration] = []
+        for (index, node) in map.nodes.enumerated() {
+            for child in node.children {
+                let start = CGPoint(x: boxes[index].frame.maxX, y: boxes[index].frame.midY)
+                let end = CGPoint(x: boxes[child].frame.minX, y: boxes[child].frame.midY)
+                let path = CGMutablePath()
+                path.move(to: start)
+                let waist = (start.x + end.x) / 2
+                path.addCurve(
+                    to: end,
+                    control1: CGPoint(x: waist, y: start.y),
+                    control2: CGPoint(x: waist, y: end.y)
+                )
+                decorations.append(
+                    .path(
+                        path,
+                        color: wheel[branch[child] % wheel.count],
+                        // A branch near the root is drawn thicker, the way a
+                        // trunk is thicker than a twig.
+                        lineWidth: max(1, 3 - CGFloat(map.nodes[child].depth)) * metrics.scale,
+                        filled: false
+                    )
+                )
+            }
+        }
+        for box in boxes { decorations += node(box, theme: theme, metrics: metrics) }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: content.height + metrics.padding * 2),
+            contentWidth: content.width
+        )
+    }
+
+    /// Turns a drawn colour back into the registry's, so a mindmap can hand a
+    /// stroke to the same node drawer a flowchart uses.
+    private static func colour(_ value: CGColor) -> Flowchart.Colour {
+        let parts = value.components ?? [0, 0, 0, 1]
+        guard parts.count >= 3 else { return Flowchart.Colour(red: 0, green: 0, blue: 0) }
+        return Flowchart.Colour(
+            red: Double(parts[0]), green: Double(parts[1]), blue: Double(parts[2]))
+    }
+
+    // MARK: - Timeline
+
+    /// A timeline: periods across the page, what happened in each one under it.
+    private static func timeline(
+        _ timeline: Timeline, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.94)
+        let periodFont = scaled(theme.bodyBold, by: metrics.scale)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let pad = 8 * metrics.scale
+        let gap = 12 * metrics.scale
+
+        struct Column {
+            var head: CTLine
+            var headSize: CGSize
+            var events: [(line: CTLine, size: CGSize)]
+            var frame: CGRect
+            var tint: CGColor
+        }
+        var columns: [Column] = []
+        for (index, period) in timeline.periods.enumerated() {
+            let head = text(period.title, font: periodFont, color: theme.palette.text)
+            var widest = measure(head).width
+            var events: [(line: CTLine, size: CGSize)] = []
+            var stack: CGFloat = 0
+            for event in period.events {
+                let line = text(event, font: font, color: theme.palette.text)
+                let size = measure(line)
+                widest = max(widest, size.width)
+                stack += size.height + pad * 2 + 6 * metrics.scale
+                events.append((line, size))
+            }
+            columns.append(
+                Column(
+                    head: head,
+                    headSize: measure(head),
+                    events: events,
+                    frame: CGRect(
+                        x: 0, y: 0, width: max(96 * metrics.scale, widest + pad * 2),
+                        height: stack),
+                    tint: wheel[(period.section ?? index) % wheel.count]
+                )
+            )
+        }
+        var x: CGFloat = 0
+        for index in columns.indices {
+            columns[index].frame.origin.x = x
+            x += columns[index].frame.width + gap
+        }
+        let content = x - gap
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !timeline.title.isEmpty {
+            let line = text(timeline.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let headHeight = (columns.map(\.headSize.height).max() ?? 0) + pad * 2
+        let sectionHeight =
+            timeline.sections.isEmpty ? 0 : headHeight * 0.9 + 8 * metrics.scale
+        let bodyHeight = columns.map(\.frame.height).max() ?? 0
+        let height =
+            metrics.padding * 2 + titleRoom + sectionHeight + headHeight + 18 * metrics.scale
+            + bodyHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+
+        // A section is a band over the run of periods it owns, so its span says
+        // which columns belong to it without a line joining them.
+        let sectionTop = metrics.padding + titleRoom
+        for (index, name) in timeline.sections.enumerated() {
+            let owned = columns.indices.filter { timeline.periods[$0].section == index }
+            guard let first = owned.first, let last = owned.last else { continue }
+            let band = CGRect(
+                x: left + columns[first].frame.minX,
+                y: sectionTop,
+                width: columns[last].frame.maxX - columns[first].frame.minX,
+                height: sectionHeight - 8 * metrics.scale
+            )
+            decorations.append(
+                .fill(
+                    rect: band, color: wheel[index % wheel.count].copy(alpha: 0.22) ?? wheel[0],
+                    cornerRadius: 4 * metrics.scale))
+            let line = text(name, font: font, color: theme.palette.text)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: band.midX - size.width / 2,
+                        y: band.midY + size.height / 2 - descent(line)
+                    )
+                )
+            )
+        }
+
+        let headTop = sectionTop + sectionHeight
+        let axis = headTop + headHeight + 9 * metrics.scale
+        let rule = CGMutablePath()
+        rule.move(to: CGPoint(x: left, y: axis))
+        rule.addLine(to: CGPoint(x: left + content, y: axis))
+        decorations.append(
+            .path(rule, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+
+        for column in columns {
+            let head = CGRect(
+                x: left + column.frame.minX, y: headTop, width: column.frame.width,
+                height: headHeight)
+            decorations.append(
+                .fill(
+                    rect: head, color: column.tint.copy(alpha: 0.3) ?? column.tint,
+                    cornerRadius: 4 * metrics.scale))
+            decorations.append(
+                .glyphs(
+                    column.head,
+                    origin: CGPoint(
+                        x: head.midX - column.headSize.width / 2,
+                        y: head.midY + column.headSize.height / 2 - descent(column.head)
+                    )
+                )
+            )
+            // The dot is what ties the column to the line under it.
+            let dot = CGRect(
+                x: head.midX - 3 * metrics.scale, y: axis - 3 * metrics.scale,
+                width: 6 * metrics.scale, height: 6 * metrics.scale)
+            decorations.append(
+                .path(
+                    CGPath(ellipseIn: dot, transform: nil), color: column.tint, lineWidth: 0,
+                    filled: true))
+
+            var y = axis + 9 * metrics.scale
+            for event in column.events {
+                let card = CGRect(
+                    x: left + column.frame.minX, y: y, width: column.frame.width,
+                    height: event.size.height + pad * 2)
+                decorations.append(
+                    .fill(
+                        rect: card, color: column.tint.copy(alpha: 0.14) ?? column.tint,
+                        cornerRadius: 4 * metrics.scale))
+                decorations.append(
+                    .glyphs(
+                        event.line,
+                        origin: CGPoint(
+                            x: card.midX - event.size.width / 2,
+                            y: card.midY + event.size.height / 2 - descent(event.line)
+                        )
+                    )
+                )
+                y = card.maxY + 6 * metrics.scale
+            }
         }
         return Drawing(
             decorations: decorations,

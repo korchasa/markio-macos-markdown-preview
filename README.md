@@ -42,9 +42,10 @@ Markio 2 reads. It never writes a file it opens.
 - `<details>` sections, folded away until you click their summary
 - Mermaid flowcharts — every shape, all four directions, subgraphs in their own
   frames, `classDef` colours — and sequence diagrams with loops, alternatives,
-  notes and activation bars, plus pie charts, state machines, class diagrams
-  and entity–relationship diagrams, drawn with paths and glyphs. No web view,
-  no diagram library. What the subset does not cover stays a fenced block
+  notes and activation bars, plus pie charts, state machines, class diagrams,
+  entity–relationship diagrams, mindmaps and timelines, drawn with paths and
+  glyphs. No web view, no diagram library. What the subset does not cover stays
+  a fenced block
 
 ## Reading it
 

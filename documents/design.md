@@ -259,10 +259,11 @@ both.
 
 ### Diagrams
 
-`MermaidDiagram.parse` reads a fence into a flowchart or a sequence diagram and
-returns nil for everything else, including the constructs inside those two that
+`MermaidDiagram.parse` reads a fence into one of the diagrams below and returns
+nil for everything else, including the constructs inside those it does read that
 the layout cannot draw — a subgraph inside a subgraph, a tinted band, a click
-handler, a colour it does not know. The rule is the same one the formula
+handler, a mindmap icon, a colour it does not know. The rule is the same one the
+formula
 typesetter follows: a diagram is drawn whole or shown as source, because half a
 graph asserts something its author did not write.
 
@@ -287,6 +288,20 @@ ends carry the meaning — a hollow triangle for inheritance, a diamond for
 composition, a crow's foot for how many. They differ only in how they are read
 and in which ends their lines may have, which is why `BoxDiagram` is shared and
 `ClassDiagram`/`EntityDiagram` are two readers of it.
+
+A mindmap is a tree, and depth alone decides the column, so every node the same
+number of steps from the root lines up. A parent is then centred on the children
+it opens, which is what makes a branch read as one thing however deep it goes. A
+root taller than everything it opens would land above the top of the picture, so
+the whole tree is dropped back into view once it is placed. Each top-level
+branch keeps one colour to its last leaf, and a connector near the root is drawn
+thicker than one near a twig.
+
+A timeline is columns. A section is a band over the run of periods it owns, so
+its span says which columns belong to it without a line joining them; under the
+band each period is a tinted head with a dot on the axis, and what happened in
+it is a stack of cards below. The colour comes from the section where there is
+one and from the column where there is not.
 
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which

@@ -407,6 +407,95 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAMindmapIsATreeReadFromItsIndentation() throws {
+        guard
+            case .mindmap(let map)? = MermaidDiagram.parse(
+                """
+                mindmap
+                  root((Markio))
+                    Parser
+                      Blocks
+                      Inline
+                    Renderer
+                      CoreText
+                """
+            )
+        else { return XCTFail("expected a mindmap") }
+        XCTAssertEqual(
+            map.nodes.map(\.label),
+            ["Markio", "Parser", "Blocks", "Inline", "Renderer", "CoreText"])
+        XCTAssertEqual(map.nodes.map(\.depth), [0, 1, 2, 2, 1, 2])
+        XCTAssertEqual(map.nodes[0].shape, .circle)
+        XCTAssertEqual(map.nodes[0].children, [1, 4])
+        XCTAssertEqual(map.nodes[1].children, [2, 3])
+        XCTAssertEqual(map.nodes[4].children, [5])
+    }
+
+    func testAMindmapKeepsTheShapeItsBracketsAskFor() throws {
+        guard
+            case .mindmap(let map)? = MermaidDiagram.parse(
+                "mindmap\n  root[Square]\n    a(Rounded)\n    b{{Hexagon}}\n    Plain"
+            )
+        else { return XCTFail("expected a mindmap") }
+        XCTAssertEqual(map.nodes.map(\.shape), [.rectangle, .rounded, .hexagon, .rounded])
+        XCTAssertEqual(map.nodes.map(\.label), ["Square", "Rounded", "Hexagon", "Plain"])
+    }
+
+    func testATimelineGroupsItsPeriodsIntoSections() throws {
+        guard
+            case .timeline(let timeline)? = MermaidDiagram.parse(
+                """
+                timeline
+                    title History
+                    section Writing
+                      2023 : First draft : Outline
+                      2024 : Review
+                    section Shipping
+                      2025 : Release
+                      : Site
+                """
+            )
+        else { return XCTFail("expected a timeline") }
+        XCTAssertEqual(timeline.title, "History")
+        XCTAssertEqual(timeline.sections, ["Writing", "Shipping"])
+        XCTAssertEqual(timeline.periods.map(\.title), ["2023", "2024", "2025"])
+        XCTAssertEqual(timeline.periods.map(\.section), [0, 0, 1])
+        XCTAssertEqual(timeline.periods[0].events, ["First draft", "Outline"])
+        // A bare `:` line adds to the period written above it.
+        XCTAssertEqual(timeline.periods[2].events, ["Release", "Site"])
+    }
+
+    func testWhatTheTreeDiagramsRefuse() {
+        for source in [
+            // An icon and a class are decoration the layout has no place for.
+            "mindmap\n  root\n    ::icon(fa fa-book)",
+            "mindmap\n  root\n    a\n  second root",
+            // A cloud and a bang need paths this does not draw.
+            "mindmap\n  root\n    id)Cloud(",
+            "mindmap",
+            "timeline",
+            "timeline\n    section",
+            "timeline\n    : an event with no period",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testTheTreeDiagramsAreDrawnWhole() throws {
+        for source in [
+            "mindmap\n  root((Markio))\n    Parser\n      Blocks\n    Renderer",
+            "timeline\n    title History\n    2023 : Draft\n    2024 : Review",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 8, source)
+            XCTAssertGreaterThan(box.height, 80, source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

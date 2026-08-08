@@ -2,29 +2,44 @@ import Foundation
 
 /// A Mermaid diagram, read from a ```mermaid fence.
 ///
-/// The subset is the two diagrams that fill READMEs: a flowchart — with its
-/// shapes, subgraphs, styling and all four directions — and a sequence diagram
-/// with its loops, alternatives, notes and activation bars. Everything else, and
-/// every construct inside those two that this does not draw, makes `parse`
-/// return nil, and the fence is shown as source, which is what happened before
-/// this existed. A diagram that is drawn is drawn completely or not at all;
-/// there is no "most of your graph".
+/// The subset is the diagrams that fill READMEs: a flowchart — with its shapes,
+/// subgraphs, styling and all four directions — a sequence diagram with its
+/// loops, alternatives, notes and activation bars, a pie chart, a state machine,
+/// a class diagram, an entity–relationship diagram, a mindmap and a timeline.
+/// Everything else, and every construct inside those that this does not draw,
+/// makes `parse` return nil, and the fence is shown as source, which is what
+/// happened before this existed. A diagram that is drawn is drawn completely or
+/// not at all; there is no "most of your graph".
 enum MermaidDiagram {
     case flowchart(Flowchart)
     case sequence(SequenceDiagram)
     case pie(PieChart)
     case boxes(BoxDiagram)
+    case mindmap(Mindmap)
+    case timeline(Timeline)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
+        /// How far each line was indented. A mindmap is the one diagram whose
+        /// meaning lives in the leading spaces, so they are measured here rather
+        /// than thrown away with the rest of the whitespace.
+        var indents: [Int] = []
         for raw in source.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             // `%%` is a Mermaid comment, and a blank line means nothing here.
             guard !line.isEmpty, !line.hasPrefix("%%") else { continue }
             lines.append(Substring(line))
+            indents.append(raw.prefix(while: { $0 == " " || $0 == "\t" }).count)
         }
         guard let header = lines.first else { return nil }
         let rest = Array(lines.dropFirst())
+        if header == "mindmap" {
+            let body = zip(indents.dropFirst(), rest).map { (indent: $0, text: $1) }
+            return Mindmap.parse(body).map(MermaidDiagram.mindmap)
+        }
+        if header == "timeline" {
+            return Timeline.parse(rest).map(MermaidDiagram.timeline)
+        }
         if header == "sequenceDiagram" {
             return SequenceDiagram.parse(rest).map(MermaidDiagram.sequence)
         }

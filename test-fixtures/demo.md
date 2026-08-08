@@ -147,3 +147,24 @@ sequenceDiagram
     end
     Note right of V: nothing else is laid out
 ```
+
+```mermaid
+mindmap
+  root((Markio))
+    Parser
+      Blocks
+      Inline
+    Renderer
+      CoreText
+      Diagrams
+```
+
+```mermaid
+timeline
+    title How a document is read
+    section Opening
+      Bytes : Mapped from disk
+      Blocks : Scanned into a tree
+    section Drawing
+      Boxes : Typeset one at a time
+```
