@@ -591,6 +591,124 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAQuadrantChartPlacesItsPointsInTheSquare() throws {
+        guard
+            case .quadrant(let chart)? = MermaidDiagram.parse(
+                """
+                quadrantChart
+                    title Reach and engagement
+                    x-axis Low Reach --> High Reach
+                    y-axis Low Engagement --> High Engagement
+                    quadrant-1 We should expand
+                    quadrant-3 Re-evaluate
+                    Campaign A: [0.3, 0.6]
+                    Campaign B: [0.45, 0.23]
+                """
+            )
+        else { return XCTFail("expected a quadrant chart") }
+        XCTAssertEqual(chart.title, "Reach and engagement")
+        XCTAssertEqual(chart.xAxis.low, "Low Reach")
+        XCTAssertEqual(chart.xAxis.high, "High Reach")
+        // Numbered clockwise from the top right, so 1 and 3 are opposite.
+        XCTAssertEqual(chart.quadrants, ["We should expand", "", "Re-evaluate", ""])
+        XCTAssertEqual(chart.points.map(\.label), ["Campaign A", "Campaign B"])
+        XCTAssertEqual(chart.points[0].x, 0.3)
+        XCTAssertEqual(chart.points[0].y, 0.6)
+    }
+
+    func testAnXYChartTakesItsRangeFromTheAxisOrTheData() throws {
+        guard
+            case .xy(let named)? = MermaidDiagram.parse(
+                """
+                xychart-beta
+                    title "Sales revenue"
+                    x-axis [jan, feb, mar]
+                    y-axis "Revenue" 4000 --> 11000
+                    bar [5000, 6000, 7500]
+                    line [4500, 6500, 7000]
+                """
+            )
+        else { return XCTFail("expected an xy chart") }
+        XCTAssertEqual(named.title, "Sales revenue")
+        XCTAssertEqual(named.categories, ["jan", "feb", "mar"])
+        XCTAssertEqual(named.yTitle, "Revenue")
+        XCTAssertEqual(named.yRange?.low, 4000)
+        XCTAssertEqual(named.yRange?.high, 11000)
+        XCTAssertEqual(named.series.map(\.isBar), [true, false])
+
+        guard case .xy(let bare)? = MermaidDiagram.parse("xychart-beta\n  bar [1, 2, 3]") else {
+            return XCTFail("expected an xy chart")
+        }
+        // With no categories written down the bars are simply numbered.
+        XCTAssertEqual(bare.categories, ["1", "2", "3"])
+        XCTAssertNil(bare.yRange)
+    }
+
+    func testAGitGraphPutsEachBranchInItsOwnLane() throws {
+        guard
+            case .git(let graph)? = MermaidDiagram.parse(
+                """
+                gitGraph
+                   commit id: "start"
+                   commit
+                   branch develop
+                   checkout develop
+                   commit
+                   checkout main
+                   merge develop
+                   commit tag: "v1.0" type: HIGHLIGHT
+                """
+            )
+        else { return XCTFail("expected a git graph") }
+        XCTAssertEqual(graph.branches, ["main", "develop"])
+        XCTAssertEqual(graph.commits.map(\.branch), [0, 0, 1, 0, 0])
+        // Every commit takes the next column, merges included.
+        XCTAssertEqual(graph.commits.map(\.column), [0, 1, 2, 3, 4])
+        XCTAssertEqual(graph.commits[0].label, "start")
+        XCTAssertEqual(graph.commits[3].merges, 2)
+        XCTAssertEqual(graph.commits[4].tag, "v1.0")
+        XCTAssertTrue(graph.commits[4].highlighted)
+    }
+
+    func testWhatThePlotsRefuse() {
+        for source in [
+            // A point outside the square, and one with no coordinates at all.
+            "quadrantChart\n  A: [1.4, 0.2]",
+            "quadrantChart\n  A: [0.2]",
+            "quadrantChart\n  x-axis Low --> High",
+            // Series that do not line up with the names under them.
+            "xychart-beta\n  x-axis [a, b]\n  bar [1, 2, 3]",
+            "xychart-beta\n  bar [1, 2]\n  line [1, 2, 3]",
+            "xychart-beta\n  x-axis [a, b]",
+            // A cherry-pick needs a commit this never recorded, and a merge of
+            // a branch nothing opened has nothing to point at.
+            "gitGraph\n  commit\n  cherry-pick id: \"x\"",
+            "gitGraph\n  commit\n  merge nothing",
+            "gitGraph\n  commit\n  checkout nothing",
+            // Turning the lanes on their side is a layout this has not got.
+            "gitGraph TB:\n  commit",
+            "gitGraph",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testThePlotsAreDrawnWhole() throws {
+        for source in [
+            "quadrantChart\n  quadrant-1 Expand\n  A: [0.3, 0.6]\n  B: [0.8, 0.2]",
+            "xychart-beta\n  x-axis [a, b, c]\n  bar [1, 2, 3]",
+            "gitGraph\n  commit\n  branch dev\n  checkout dev\n  commit\n  checkout main\n  merge dev",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 8, source)
+            XCTAssertGreaterThan(box.height, 60, source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

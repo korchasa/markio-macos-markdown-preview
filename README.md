@@ -43,9 +43,10 @@ Markio 2 reads. It never writes a file it opens.
 - Mermaid flowcharts — every shape, all four directions, subgraphs in their own
   frames, `classDef` colours — and sequence diagrams with loops, alternatives,
   notes and activation bars, plus pie charts, state machines, class diagrams,
-  entity–relationship diagrams, mindmaps, timelines, user journeys and Gantt
-  charts, drawn with paths and glyphs. No web view, no diagram library. What the
-  subset does not cover stays a fenced block
+  entity–relationship diagrams, mindmaps, timelines, user journeys, Gantt
+  charts, quadrant charts, xy charts and git graphs, drawn with paths and
+  glyphs. No web view, no diagram library. What the subset does not cover stays
+  a fenced block
 
 ## Reading it
 

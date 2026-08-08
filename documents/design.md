@@ -303,6 +303,19 @@ band each period is a tinted head with a dot on the axis, and what happened in
 it is a stack of cards below. The colour comes from the section where there is
 one and from the column where there is not.
 
+A quadrant chart is a square cut in four, with each quarter's name along its own
+top edge rather than through the middle of it, which is where the points are; a
+point's name goes to the right of its dot, or to the left when the right would
+run out of the square. An xy chart is bars and lines over named categories, and
+several bar series share a category by each taking a slice of it. Its y axis is
+named above itself rather than turned on its side: rotated glyphs are the one
+thing this drawing has no way to place.
+
+A git graph is one lane per branch, a column per commit, and a curve wherever a
+branch left its parent or merged back — so a lane is never a line floating on
+its own. `gitGraph TB:` turns the lanes on their side, which is a layout this
+has not got, so only the plain form is read.
+
 A journey is a line that rises and falls over the steps it is scored on, with
 the sections banded above it and each step's name and actors written under its
 own column. The top and bottom rules are held a dot's radius inside the plot, or

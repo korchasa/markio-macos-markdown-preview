@@ -180,3 +180,23 @@ gantt
         First screen    :crit, a3, after a2, 1d
         Shown           :milestone, m1, after a3, 0d
 ```
+
+```mermaid
+xychart-beta
+    title "Parse cost by document size"
+    x-axis [1 MB, 8 MB, 32 MB]
+    y-axis "Milliseconds" 0 --> 80
+    bar [2, 15, 69]
+```
+
+```mermaid
+gitGraph
+   commit id: "parser"
+   branch renderer
+   checkout renderer
+   commit
+   commit id: "diagrams"
+   checkout main
+   merge renderer
+   commit tag: "1.0"
+```

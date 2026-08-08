@@ -21,7 +21,7 @@ final class DiagramInteractionTests: XCTestCase {
 
         // The same fence with something the layout cannot draw stays text.
         let refused = DocumentLayout(
-            document: Document(text: "```mermaid\ngitGraph\n  commit\n```"),
+            document: Document(text: "```mermaid\nsankey-beta\nA,B,10\n```"),
             theme: Theme(isDark: false), columnWidth: 520)
         XCTAssertEqual(try XCTUnwrap(refused.box(at: 0)).codeRegion?.isDiagram, false)
 
@@ -47,7 +47,7 @@ final class DiagramInteractionTests: XCTestCase {
     func testAFenceItCannotDrawHasNoPictureToCopy() {
         XCTAssertNil(
             DocumentRenderer.diagram(
-                source: "gitGraph\n  commit", theme: Theme(isDark: false), width: 400))
+                source: "sankey-beta\nA,B,10", theme: Theme(isDark: false), width: 400))
     }
 
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {

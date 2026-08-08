@@ -72,11 +72,13 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
   `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram`, an
-  `erDiagram`, a `mindmap`, a `timeline`, a `journey` or a `gantt` chart written
-  in the default date format. Every other diagram kind, and every construct
+  `erDiagram`, a `mindmap`, a `timeline`, a `journey`, a `gantt` chart written in
+  the default date format, a `quadrantChart`, an `xychart-beta` or a `gitGraph`
+  whose lanes run across the page. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a nested subgraph, a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
-  an excluded weekday — is not read, and the fence stays a fenced block.
+  an excluded weekday, a cherry-pick — is not read, and the fence stays a fenced
+  block.
 
 ## VIEW — What the reader sees
 
@@ -157,8 +159,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   arrows between them, subgraphs in titled frames, participants with messages,
   notes and framed blocks across them, a tree opening to the right of its root,
   periods across the page with what happened in each one under it, a line rising
-  and falling over the steps of a journey, or a row per task with its bar over
-  the days it takes — centred in the reading column, in the current theme's
+  and falling over the steps of a journey, a row per task with its bar over the
+  days it takes, a square cut in four with points scattered over it, bars and
+  lines over named categories, or commits along a lane per branch — centred in
+  the reading column, in the current theme's
   colours except where the diagram names its own, and with a colour per branch
   or section where the diagram's own meaning is carried by colour. A picture too
   wide for the column is drawn smaller rather than cut off. The block keeps the

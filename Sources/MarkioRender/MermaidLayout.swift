@@ -69,6 +69,12 @@ enum MermaidLayout {
             return self.journey(journey, theme: theme, width: width, metrics: metrics)
         case .gantt(let chart):
             return gantt(chart, theme: theme, width: width, metrics: metrics)
+        case .quadrant(let chart):
+            return quadrant(chart, theme: theme, width: width, metrics: metrics)
+        case .xy(let chart):
+            return xy(chart, theme: theme, width: width, metrics: metrics)
+        case .git(let graph):
+            return gitGraph(graph, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -1186,6 +1192,407 @@ enum MermaidLayout {
                         cornerRadius: 3 * metrics.scale))
             }
             y += rowHeight
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Quadrant chart
+
+    /// A square cut in four, with the points scattered over it.
+    private static func quadrant(
+        _ chart: QuadrantChart, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.9)
+        let quadrantFont = scaled(theme.bodyBold, by: metrics.scale * 0.9)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let side = 300 * metrics.scale
+        let axisRoom =
+            measure(text("Ay", font: font, color: theme.palette.text)).height + 8 * metrics.scale
+        // The y axis is written down the left, so it takes the width of its
+        // longest word rather than the height of a line.
+        let yWords = [chart.yAxis.low, chart.yAxis.high].filter { !$0.isEmpty }
+        let yRoom =
+            (yWords.map { measure(text($0, font: font, color: theme.palette.text)).width }.max()
+                ?? 0) + 10 * metrics.scale
+        let content = side + yRoom
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !chart.title.isEmpty {
+            let line = text(chart.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let height = metrics.padding * 2 + titleRoom + side + axisRoom
+
+        let left = max(metrics.padding, (width - content) / 2)
+        let plot = CGRect(
+            x: left + yRoom, y: metrics.padding + titleRoom, width: side, height: side)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+        // Numbered clockwise from the top right, the way Mermaid numbers them.
+        let corners = [
+            CGRect(x: plot.midX, y: plot.minY, width: side / 2, height: side / 2),
+            CGRect(x: plot.minX, y: plot.minY, width: side / 2, height: side / 2),
+            CGRect(x: plot.minX, y: plot.midY, width: side / 2, height: side / 2),
+            CGRect(x: plot.midX, y: plot.midY, width: side / 2, height: side / 2),
+        ]
+        for (index, corner) in corners.enumerated() {
+            decorations.append(
+                .fill(
+                    rect: corner.insetBy(dx: 1, dy: 1),
+                    color: wheel[index % wheel.count].copy(alpha: 0.14) ?? wheel[index],
+                    cornerRadius: 0))
+            let name = chart.quadrants[index]
+            guard !name.isEmpty else { continue }
+            let line = text(name, font: quadrantFont, color: theme.palette.secondaryText)
+            let size = measure(line)
+            // Along the top of its own quarter rather than through the middle
+            // of it, which is where the points are.
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: corner.midX - size.width / 2,
+                        y: corner.minY + 10 * metrics.scale + size.height - descent(line))))
+        }
+        let frame = CGMutablePath()
+        frame.addRect(plot)
+        frame.move(to: CGPoint(x: plot.midX, y: plot.minY))
+        frame.addLine(to: CGPoint(x: plot.midX, y: plot.maxY))
+        frame.move(to: CGPoint(x: plot.minX, y: plot.midY))
+        frame.addLine(to: CGPoint(x: plot.maxX, y: plot.midY))
+        decorations.append(
+            .path(frame, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+
+        for point in chart.points {
+            // y grows up the page here and down everywhere else, so a point
+            // written at 1 belongs at the top.
+            let centre = CGPoint(
+                x: plot.minX + CGFloat(point.x) * side,
+                y: plot.maxY - CGFloat(point.y) * side
+            )
+            let dot = CGRect(
+                x: centre.x - 5 * metrics.scale, y: centre.y - 5 * metrics.scale,
+                width: 10 * metrics.scale, height: 10 * metrics.scale)
+            decorations.append(
+                .path(
+                    CGPath(ellipseIn: dot, transform: nil), color: wheel[0], lineWidth: 0,
+                    filled: true))
+            let line = text(point.label, font: font, color: theme.palette.text)
+            let size = measure(line)
+            // Beside its dot, and on the other side of it when the name would
+            // otherwise run out of the square.
+            let right = centre.x + 8 * metrics.scale
+            let x =
+                right + size.width <= plot.maxX ? right : centre.x - 8 * metrics.scale - size.width
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: max(plot.minX, x), y: centre.y + size.height / 2 - descent(line))))
+        }
+
+        for (words, position) in [
+            (chart.xAxis.low, CGPoint(x: plot.minX + side / 4, y: plot.maxY + axisRoom / 2)),
+            (chart.xAxis.high, CGPoint(x: plot.maxX - side / 4, y: plot.maxY + axisRoom / 2)),
+        ] where !words.isEmpty {
+            let line = text(words, font: font, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: position.x - size.width / 2,
+                        y: position.y + size.height / 2 - descent(line))))
+        }
+        for (words, y) in [
+            (chart.yAxis.high, plot.minY + side / 4), (chart.yAxis.low, plot.maxY - side / 4),
+        ] where !words.isEmpty {
+            let line = text(words, font: font, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: plot.minX - 10 * metrics.scale - size.width,
+                        y: y + size.height / 2 - descent(line))))
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - XY chart
+
+    /// Bars and lines over named categories.
+    private static func xy(
+        _ chart: XYChart, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale * 0.9)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let values = chart.series.flatMap(\.values)
+        let low = chart.yRange?.low ?? min(0, values.min() ?? 0)
+        let high = chart.yRange?.high ?? (values.max() ?? 1)
+        guard high > low else { return Drawing(decorations: [], size: .zero, contentWidth: 0) }
+
+        // Room down the left for the biggest number the axis will print.
+        let ticks = (0...4).map { low + (high - low) * Double($0) / 4 }
+        let tickLines = ticks.map {
+            text(number($0), font: font, color: theme.palette.secondaryText)
+        }
+        let gutter = (tickLines.map { measure($0).width }.max() ?? 0) + 10 * metrics.scale
+        let plotWidth = max(
+            240 * metrics.scale,
+            min(420 * metrics.scale, CGFloat(chart.categories.count) * 60 * metrics.scale))
+        let plotHeight = 190 * metrics.scale
+        let labelRoom = (tickLines.first.map { measure($0).height } ?? 10) + 8 * metrics.scale
+        let content = gutter + plotWidth
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !chart.title.isEmpty {
+            let line = text(chart.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        // The axis is named above it rather than turned on its side: rotated
+        // glyphs are the one thing this drawing has no way to place.
+        var yTitleLine: CTLine?
+        var yTitleSize = CGSize.zero
+        if !chart.yTitle.isEmpty {
+            let line = text(chart.yTitle, font: font, color: theme.palette.secondaryText)
+            yTitleLine = line
+            yTitleSize = measure(line)
+        }
+        let yTitleRoom = yTitleLine == nil ? 0 : yTitleSize.height + 6 * metrics.scale
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let height = metrics.padding * 2 + titleRoom + yTitleRoom + plotHeight + labelRoom
+
+        let left = max(metrics.padding, (width - content) / 2)
+        let plot = CGRect(
+            x: left + gutter, y: metrics.padding + titleRoom + yTitleRoom, width: plotWidth,
+            height: plotHeight)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+        if let yTitleLine {
+            decorations.append(
+                .glyphs(
+                    yTitleLine,
+                    origin: CGPoint(
+                        x: left, y: plot.minY - 6 * metrics.scale - descent(yTitleLine))))
+        }
+        for (index, line) in tickLines.enumerated() {
+            let y = plot.maxY - plotHeight * CGFloat(index) / 4
+            let rule = CGMutablePath()
+            rule.move(to: CGPoint(x: plot.minX, y: y))
+            rule.addLine(to: CGPoint(x: plot.maxX, y: y))
+            decorations.append(
+                .path(
+                    rule, color: theme.palette.tableBorder, lineWidth: index == 0 ? 1 : 0.5,
+                    filled: false))
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: plot.minX - 8 * metrics.scale - size.width,
+                        y: y + size.height / 2 - descent(line))))
+        }
+
+        let step = plotWidth / CGFloat(chart.categories.count)
+        func level(_ value: Double) -> CGFloat {
+            CGFloat((value - low) / (high - low)) * plotHeight
+        }
+        let bars = chart.series.filter(\.isBar).count
+        var barIndex = 0
+        for (index, series) in chart.series.enumerated() {
+            let colour = wheel[index % wheel.count]
+            if series.isBar {
+                // Several bar series share a category, so each takes a slice of
+                // it rather than standing on top of the one before.
+                let room = step * 0.7 / CGFloat(max(1, bars))
+                for (position, value) in series.values.enumerated() {
+                    let tall = max(1, level(value))
+                    let bar = CGRect(
+                        x: plot.minX + step * CGFloat(position) + step * 0.15
+                            + room * CGFloat(barIndex),
+                        y: plot.maxY - tall,
+                        width: room,
+                        height: tall
+                    )
+                    decorations.append(
+                        .fill(rect: bar, color: colour, cornerRadius: 2 * metrics.scale))
+                }
+                barIndex += 1
+            } else {
+                let path = CGMutablePath()
+                for (position, value) in series.values.enumerated() {
+                    let point = CGPoint(
+                        x: plot.minX + step * (CGFloat(position) + 0.5),
+                        y: plot.maxY - level(value)
+                    )
+                    if position == 0 { path.move(to: point) } else { path.addLine(to: point) }
+                }
+                decorations.append(
+                    .path(path, color: colour, lineWidth: 2 * metrics.scale, filled: false))
+            }
+        }
+        for (index, name) in chart.categories.enumerated() {
+            let line = text(name, font: font, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: plot.minX + step * (CGFloat(index) + 0.5) - size.width / 2,
+                        y: plot.maxY + 6 * metrics.scale + size.height - descent(line))))
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    /// A number for an axis: no decimal point where it does not need one.
+    private static func number(_ value: Double) -> String {
+        value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
+    }
+
+    // MARK: - Git graph
+
+    /// Commits along a line, one lane per branch.
+    private static func gitGraph(
+        _ graph: GitGraph, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale * 0.9)
+        let branchFont = scaled(theme.bodyBold, by: metrics.scale * 0.9)
+        let gutter =
+            (graph.branches.map {
+                measure(text($0, font: branchFont, color: theme.palette.text)).width
+            }.max() ?? 0) + 14 * metrics.scale
+        let step = 56 * metrics.scale
+        let lane = 46 * metrics.scale
+        let radius = 7 * metrics.scale
+        let columns = (graph.commits.map(\.column).max() ?? 0) + 1
+        let content = gutter + CGFloat(columns) * step
+        let height = metrics.padding * 2 + CGFloat(graph.branches.count) * lane
+
+        let left = max(metrics.padding, (width - content) / 2)
+        func centre(of commit: GitGraph.Commit) -> CGPoint {
+            CGPoint(
+                x: left + gutter + step * (CGFloat(commit.column) + 0.5),
+                y: metrics.padding + lane * (CGFloat(commit.branch) + 0.5)
+            )
+        }
+
+        var decorations: [BlockBox.Decoration] = []
+        for (index, name) in graph.branches.enumerated() {
+            let y = metrics.padding + lane * (CGFloat(index) + 0.5)
+            let colour = wheel[index % wheel.count]
+            let own = graph.commits.filter { $0.branch == index }
+            guard let first = own.first, let last = own.last else { continue }
+            let rail = CGMutablePath()
+            rail.move(to: CGPoint(x: centre(of: first).x, y: y))
+            rail.addLine(to: CGPoint(x: centre(of: last).x, y: y))
+            decorations.append(
+                .path(rail, color: colour, lineWidth: 2.5 * metrics.scale, filled: false))
+            let line = text(name, font: branchFont, color: colour)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: left + gutter - 10 * metrics.scale - size.width,
+                        y: y + size.height / 2 - descent(line))))
+        }
+        // A branch is drawn from where it left its parent and a merge back to
+        // where it rejoined, so a lane is never a line floating on its own.
+        for (index, commit) in graph.commits.enumerated() {
+            let here = centre(of: commit)
+            let opened = !graph.commits[..<index].contains { $0.branch == commit.branch }
+            let source =
+                commit.merges
+                ?? (opened
+                    ? graph.commits[..<index].lastIndex(where: { $0.branch != commit.branch })
+                    : nil)
+            guard let source else { continue }
+            let from = centre(of: graph.commits[source])
+            let path = CGMutablePath()
+            path.move(to: from)
+            path.addCurve(
+                to: here,
+                control1: CGPoint(x: (from.x + here.x) / 2, y: from.y),
+                control2: CGPoint(x: (from.x + here.x) / 2, y: here.y))
+            decorations.append(
+                .path(
+                    path, color: wheel[commit.branch % wheel.count],
+                    lineWidth: 2 * metrics.scale, filled: false))
+        }
+        for commit in graph.commits {
+            let here = centre(of: commit)
+            let colour = wheel[commit.branch % wheel.count]
+            let dot = CGRect(
+                x: here.x - radius, y: here.y - radius, width: radius * 2, height: radius * 2)
+            decorations.append(
+                .path(
+                    CGPath(ellipseIn: dot, transform: nil), color: colour, lineWidth: 0,
+                    filled: true))
+            if commit.highlighted {
+                decorations.append(
+                    .path(
+                        CGPath(
+                            ellipseIn: dot.insetBy(dx: -3 * metrics.scale, dy: -3 * metrics.scale),
+                            transform: nil),
+                        color: colour, lineWidth: 1.5 * metrics.scale, filled: false))
+            }
+            // A name goes above the dot and a tag below, so the two never land
+            // on each other.
+            for (words, above) in [(commit.label, true), (commit.tag, false)] where !words.isEmpty {
+                let line = text(
+                    words, font: above ? font : scaled(theme.bodyBold, by: metrics.scale * 0.8),
+                    color: above ? theme.palette.secondaryText : colour)
+                let size = measure(line)
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: here.x - size.width / 2,
+                            y: above
+                                ? here.y - radius - 4 * metrics.scale - descent(line)
+                                : here.y + radius + 4 * metrics.scale + size.height - descent(line)
+                        )
+                    )
+                )
+            }
         }
         return Drawing(
             decorations: decorations,

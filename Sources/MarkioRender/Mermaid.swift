@@ -19,6 +19,9 @@ enum MermaidDiagram {
     case timeline(Timeline)
     case journey(UserJourney)
     case gantt(GanttChart)
+    case quadrant(QuadrantChart)
+    case xy(XYChart)
+    case git(GitGraph)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -47,6 +50,17 @@ enum MermaidDiagram {
         }
         if header == "gantt" {
             return GanttChart.parse(rest).map(MermaidDiagram.gantt)
+        }
+        if header == "quadrantChart" {
+            return QuadrantChart.parse(rest).map(MermaidDiagram.quadrant)
+        }
+        if header == "xychart-beta" || header == "xychart" {
+            return XYChart.parse(rest).map(MermaidDiagram.xy)
+        }
+        // `gitGraph TB:` turns the lanes on their side, which is a layout this
+        // has not got, so only the plain form is read.
+        if header == "gitGraph" || header == "gitGraph:" {
+            return GitGraph.parse(rest).map(MermaidDiagram.git)
         }
         if header == "sequenceDiagram" {
             return SequenceDiagram.parse(rest).map(MermaidDiagram.sequence)
