@@ -64,6 +64,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **PARSE-11** A `<table>` written with tags is read as a grid, `rowspan` and
   `colspan` included. Anything the reader cannot resolve into a grid stays raw
   HTML.
+- **PARSE-12** A ```mermaid fence is read as a diagram when it is a flowchart
+  (`flowchart`/`graph`, `TD` or `LR`) or a sequence diagram. Subgraphs,
+  styling, loops, notes and every other diagram kind are not read, and the
+  fence stays a fenced block.
 
 ## VIEW — What the reader sees
 
@@ -135,6 +139,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   It occupies one placeholder character in find and copy, the way an inline
   picture does. A formula the parser does not understand keeps its source, and
   that source stays searchable.
+
+- **VIEW-25** A diagram is drawn in place of its fence — boxes on ranks with
+  arrows between them, or participants with messages across them — centred in
+  the reading column, in the current theme's colours. The block keeps the
+  fence's own text, so find and copy still work on the diagram's source.
 
 ## QL — Quick Look
 

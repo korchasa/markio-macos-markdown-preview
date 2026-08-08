@@ -117,6 +117,28 @@ public final class BlockBox {
         return total
     }
 
+    /// Move one piece of drawing into the block's coordinates.
+    ///
+    /// A diagram is laid out from its own corner and then placed, which is what
+    /// keeps the geometry readable — the alternative is threading the block's
+    /// origin through every line of it.
+    static func move(_ decoration: Decoration, dx: CGFloat, dy: CGFloat) -> Decoration {
+        switch decoration {
+        case .fill(let rect, let color, let radius):
+            return .fill(rect: rect.offsetBy(dx: dx, dy: dy), color: color, cornerRadius: radius)
+        case .stroke(let rect, let color, let width):
+            return .stroke(rect: rect.offsetBy(dx: dx, dy: dy), color: color, width: width)
+        case .image(let image, let rect):
+            return .image(image, rect: rect.offsetBy(dx: dx, dy: dy))
+        case .glyphs(let line, let origin):
+            return .glyphs(line, origin: CGPoint(x: origin.x + dx, y: origin.y + dy))
+        case .path(let path, let color, let lineWidth, let filled):
+            var transform = CGAffineTransform(translationX: dx, y: dy)
+            let moved = path.copy(using: &transform) ?? path
+            return .path(moved, color: color, lineWidth: lineWidth, filled: filled)
+        }
+    }
+
     func link(at point: CGPoint) -> InlineLink? {
         for region in links where region.rect.contains(point) {
             guard region.link >= 0, Int(region.link) < linkTargets.count else { continue }

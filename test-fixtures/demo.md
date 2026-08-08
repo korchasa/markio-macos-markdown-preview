@@ -110,3 +110,14 @@ block goes here as it would anywhere else.
 <tr><td colspan="3">Markdown's own table syntax cannot merge cells; this is why
 the tags are read.</td></tr>
 </table>
+
+### A diagram
+
+```mermaid
+flowchart LR
+    Source[Bytes on disk] --> Scan{Larger than 32 MB?}
+    Scan -->|yes| Background(Scan in the background)
+    Scan -->|no| Once(Scan at once)
+    Background --> Screen([First screen])
+    Once --> Screen
+```

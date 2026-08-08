@@ -244,6 +244,31 @@ it is safe on the find queue — and emits the same placeholder for the same
 sources. That is what keeps a match offset landing on the same character in
 both.
 
+### Diagrams
+
+`MermaidDiagram.parse` reads a fence into a flowchart or a sequence diagram and
+returns nil for everything else, including the constructs inside those two that
+the layout cannot draw — a subgraph, a loop, a note. The rule is the same one
+the formula typesetter follows: a diagram is drawn whole or shown as source,
+because half a graph asserts something its author did not write.
+
+`MermaidLayout` places it. A flowchart is ranked by longest path — the edges
+relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
+— then each rank is measured, centred against the widest, and laid along the
+rank axis. `TD` and `LR` are the same routine with the axes swapped. Edges are
+drawn between box centres and clipped to the boxes, so an edge across a rank or
+back up the graph needs no special case. A sequence diagram is columns with
+dashed lifelines and one arrow per message.
+
+Everything it produces is `BlockBox.Decoration` — filled and stroked paths, and
+the glyph runs added for formulas — so the diagram draws in the window and in
+the offscreen PNG by the same path as the text, and nothing about a diagram
+reaches `DocumentRenderer`. `Decoration` has no dash pattern, so a dashed line
+is a path of short segments rather than a sixth case every renderer would have
+to honour. The block types nothing: the fence's own text stays the block's
+plain text, which keeps the diagram findable and copyable as the source its
+author wrote.
+
 ### Comparing versions
 
 `CompareEngine` diffs the two versions line by line — hashes, not slices, with

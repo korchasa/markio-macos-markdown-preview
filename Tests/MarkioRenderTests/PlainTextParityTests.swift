@@ -56,6 +56,24 @@ final class PlainTextParityTests: XCTestCase {
         )
     }
 
+    /// A drawn diagram types nothing, so its block's text is the fence the
+    /// author wrote — which is what keeps it findable.
+    func testMermaid() {
+        assertParity(
+            """
+            ```mermaid
+            flowchart TD
+                A[Parse] --> B{Big?}
+                B -->|yes| C(Background)
+            ```
+
+            ```mermaid
+            pie title Not supported
+            ```
+            """
+        )
+    }
+
     /// A formula that is typeset occupies a placeholder; one that is not keeps
     /// its source. Find has to make the same choice as the renderer for both.
     func testMath() {

@@ -74,6 +74,15 @@ here is `@MainActor` except the parts that deliberately are not.
 - **A formula's glyphs are drawn after the highlights.** They are decorations,
   and decorations are painted first — a selection would cover the formula
   instead of tinting it.
+- **A diagram is drawn whole or not at all.** `MermaidDiagram.parse` returns nil
+  for every construct the layout cannot draw — a subgraph, a loop, a note — so
+  the fence falls back to a code block. Adding a keyword to the accepted list
+  without drawing it is how a graph starts asserting something its author did
+  not write.
+- **A drawn diagram types nothing**, so its block has no segments and its plain
+  text is the fence's own source. That is deliberate: find still locates the
+  diagram, copy still yields something useful, and there is no text to
+  highlight because there is no text.
 
 ## Tests
 

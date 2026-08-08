@@ -109,7 +109,18 @@ struct BlockLayoutEngine {
         case .heading:
             builder.layoutHeading(block)
         case .codeBlock:
-            builder.layoutCode(block, language: document.text(block.info))
+            let language = document.text(block.info)
+            // A Mermaid fence is a picture the author drew in text. Anything in
+            // it this cannot draw falls back to the fence itself, which is what
+            // a viewer with no diagram engine always showed.
+            if language == "mermaid",
+                let diagram = MermaidDiagram.parse(
+                    String(decoding: document.content(of: leaf), as: UTF8.self))
+            {
+                builder.layoutDiagram(diagram, language: language)
+            } else {
+                builder.layoutCode(block, language: language)
+            }
         case .htmlBlock:
             // A table written with tags is the one piece of HTML worth drawing
             // rather than showing: Markdown's own syntax cannot merge cells, so
@@ -508,6 +519,30 @@ struct BlockLayoutEngine {
             )
             codeRegion = BlockBox.CodeRegion(rect: frame, language: language)
             addCodeTints(code.tints, lines: result.lines, padding: padding)
+        }
+
+        /// Draw a Mermaid diagram in place of its fence.
+        ///
+        /// The block keeps the fence's own text: nothing is typeset, so there
+        /// is nothing to highlight inside it, but a search still finds the
+        /// diagram by what its author wrote and Copy still yields the source —
+        /// which is the only form of a diagram worth putting on a clipboard.
+        mutating func layoutDiagram(_ diagram: MermaidDiagram, language: String) {
+            let drawing = MermaidLayout.draw(diagram, theme: theme, width: available)
+            let frame = CGRect(x: indent, y: y, width: available, height: drawing.size.height)
+            decorations.append(
+                .fill(
+                    rect: frame,
+                    color: theme.palette.codeBackground,
+                    cornerRadius: theme.metrics.codeCornerRadius
+                )
+            )
+            for decoration in drawing.decorations {
+                decorations.append(BlockBox.move(decoration, dx: indent, dy: y))
+            }
+            plainText = String(decoding: document.content(of: leaf), as: UTF8.self)
+            codeRegion = BlockBox.CodeRegion(rect: frame, language: language)
+            y += drawing.size.height
         }
 
         /// Paint the bands a diff or a terminal log carries.
