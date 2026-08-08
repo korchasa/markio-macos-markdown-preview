@@ -59,6 +59,352 @@ enum MermaidLayout {
             return self.sequence(sequence, theme: theme, width: width, metrics: metrics)
         case .pie(let chart):
             return pie(chart, theme: theme, width: width, metrics: metrics)
+        case .boxes(let diagram):
+            return boxes(diagram, theme: theme, width: width, metrics: metrics)
+        }
+    }
+
+    // MARK: - Boxes with rows
+
+    private struct Compartment {
+        var lines: [CTLine]
+        var height: CGFloat
+    }
+
+    private struct Entity {
+        var frame: CGRect
+        var title: CTLine
+        var titleSize: CGSize
+        var stereotype: CTLine?
+        var stereotypeSize: CGSize
+        var compartments: [Compartment]
+    }
+
+    /// A class diagram and an entity diagram: titled boxes with rows, joined by
+    /// lines whose ends say what the relation is.
+    private static func boxes(
+        _ diagram: BoxDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale)
+        let rowFont = scaled(theme.controlLabel, by: metrics.scale)
+        let padding = 8 * metrics.scale
+        var entities: [Entity] = []
+        for box in diagram.boxes {
+            let title = text(box.name, font: titleFont, color: theme.palette.text)
+            let titleSize = measure(title)
+            var stereotype: CTLine?
+            var stereotypeSize = CGSize.zero
+            if !box.stereotype.isEmpty {
+                let line = text(
+                    "«\(box.stereotype)»", font: rowFont, color: theme.palette.secondaryText)
+                stereotype = line
+                stereotypeSize = measure(line)
+            }
+            var widest = max(titleSize.width, stereotypeSize.width)
+            var compartments: [Compartment] = []
+            for rows in box.compartments where !rows.isEmpty {
+                var lines: [CTLine] = []
+                var height: CGFloat = padding
+                for row in rows {
+                    let line = text(row, font: rowFont, color: theme.palette.text)
+                    widest = max(widest, measure(line).width)
+                    height += measure(line).height + 2 * metrics.scale
+                    lines.append(line)
+                }
+                compartments.append(Compartment(lines: lines, height: height))
+            }
+            let header =
+                padding * 2 + titleSize.height + (stereotype == nil ? 0 : stereotypeSize.height)
+            let height = header + compartments.reduce(0) { $0 + $1.height }
+            entities.append(
+                Entity(
+                    frame: CGRect(
+                        x: 0, y: 0, width: widest + padding * 2 + 12 * metrics.scale,
+                        height: height),
+                    title: title,
+                    titleSize: titleSize,
+                    stereotype: stereotype,
+                    stereotypeSize: stereotypeSize,
+                    compartments: compartments
+                )
+            )
+        }
+
+        // The same ranking a flowchart uses: a box sits one rank below whatever
+        // points at it, and a cycle cannot spin it.
+        let ranks = self.ranks(
+            count: entities.count, edges: diagram.links.map { ($0.from, $0.to) })
+        let down = diagram.direction == .down || diagram.direction == .up
+        let depths = ranks.map { rank in
+            rank.map { down ? entities[$0].frame.height : entities[$0].frame.width }.max() ?? 0
+        }
+        let extents = ranks.map { rank in
+            rank.reduce(CGFloat(0)) {
+                $0 + (down ? entities[$1].frame.width : entities[$1].frame.height)
+            } + metrics.siblingGap * CGFloat(max(0, rank.count - 1))
+        }
+        let crossExtent = extents.max() ?? 0
+        let rankGap = metrics.rankGap * 1.3
+        var rankOffset = metrics.padding
+        for (level, rank) in ranks.enumerated() {
+            var cross = (crossExtent - extents[level]) / 2
+            for index in rank {
+                let size = entities[index].frame.size
+                entities[index].frame.origin =
+                    down
+                    ? CGPoint(x: cross, y: rankOffset + (depths[level] - size.height) / 2)
+                    : CGPoint(x: rankOffset + (depths[level] - size.width) / 2, y: cross)
+                cross += (down ? size.width : size.height) + metrics.siblingGap
+            }
+            rankOffset += depths[level] + rankGap
+        }
+        let along = rankOffset - rankGap - metrics.padding
+        let content = CGSize(
+            width: down ? crossExtent : along, height: down ? along : crossExtent)
+        let left = max(metrics.padding, (width - content.width) / 2)
+        for index in entities.indices {
+            if down {
+                entities[index].frame.origin.x += left
+            } else {
+                entities[index].frame.origin.x += left - metrics.padding
+                entities[index].frame.origin.y += metrics.padding
+            }
+        }
+
+        var decorations: [BlockBox.Decoration] = []
+        for link in diagram.links {
+            guard link.from < entities.count, link.to < entities.count else { continue }
+            decorations += relation(
+                link, from: entities[link.from].frame, to: entities[link.to].frame, theme: theme,
+                font: rowFont, metrics: metrics)
+        }
+        for entity in entities {
+            decorations += self.entity(
+                entity, theme: theme, padding: padding, metrics: metrics)
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: content.height + metrics.padding * 2),
+            contentWidth: content.width
+        )
+    }
+
+    private static func entity(
+        _ entity: Entity, theme: Theme, padding: CGFloat, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let frame = entity.frame
+        let path = CGPath(roundedRect: frame, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        var decorations: [BlockBox.Decoration] = [
+            .path(path, color: theme.palette.background, lineWidth: 0, filled: true),
+            .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
+        ]
+        var y = frame.minY + padding
+        if let stereotype = entity.stereotype {
+            decorations.append(
+                .glyphs(
+                    stereotype,
+                    origin: CGPoint(
+                        x: frame.midX - entity.stereotypeSize.width / 2,
+                        y: y + entity.stereotypeSize.height - descent(stereotype)
+                    )
+                )
+            )
+            y += entity.stereotypeSize.height
+        }
+        decorations.append(
+            .glyphs(
+                entity.title,
+                origin: CGPoint(
+                    x: frame.midX - entity.titleSize.width / 2,
+                    y: y + entity.titleSize.height - descent(entity.title)
+                )
+            )
+        )
+        y += entity.titleSize.height + padding
+        for compartment in entity.compartments {
+            let rule = CGMutablePath()
+            rule.move(to: CGPoint(x: frame.minX, y: y))
+            rule.addLine(to: CGPoint(x: frame.maxX, y: y))
+            decorations.append(
+                .path(rule, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            var rowY = y + padding / 2
+            for line in compartment.lines {
+                let size = measure(line)
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: frame.minX + padding, y: rowY + size.height - descent(line))))
+                rowY += size.height + 2 * metrics.scale
+            }
+            y += compartment.height
+        }
+        return decorations
+    }
+
+    private static func relation(
+        _ link: BoxDiagram.Link, from: CGRect, to: CGRect, theme: Theme, font: CTFont,
+        metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let colour = theme.palette.secondaryText
+        let start = exit(of: from, towards: to.center)
+        let end = exit(of: to, towards: from.center)
+        let direction = normalized(CGPoint(x: end.x - start.x, y: end.y - start.y))
+        let backwards = CGPoint(x: -direction.x, y: -direction.y)
+        let headRoom = 11 * metrics.scale
+        let shaftStart = CGPoint(
+            x: start.x + direction.x * inset(link.fromEnd, room: headRoom),
+            y: start.y + direction.y * inset(link.fromEnd, room: headRoom))
+        let shaftEnd = CGPoint(
+            x: end.x - direction.x * inset(link.toEnd, room: headRoom),
+            y: end.y - direction.y * inset(link.toEnd, room: headRoom))
+        var decorations: [BlockBox.Decoration] = []
+        if link.dashed {
+            decorations.append(
+                .path(
+                    dashed(from: shaftStart, to: shaftEnd, dash: 5, gap: 4), color: colour,
+                    lineWidth: 1.3, filled: false))
+        } else {
+            let shaft = CGMutablePath()
+            shaft.move(to: shaftStart)
+            shaft.addLine(to: shaftEnd)
+            decorations.append(.path(shaft, color: colour, lineWidth: 1.3, filled: false))
+        }
+        decorations += terminal(
+            link.fromEnd, at: start, direction: backwards, theme: theme, metrics: metrics)
+        decorations += terminal(
+            link.toEnd, at: end, direction: direction, theme: theme, metrics: metrics)
+
+        // A count stands beside the line, a little way along it from its own
+        // box, so it never lands on the box or on the relation's own words.
+        for (words, point, away) in [
+            (link.fromCount, start, direction), (link.toCount, end, backwards),
+        ] where !words.isEmpty {
+            let line = text(words, font: font, color: colour)
+            let size = measure(line)
+            let across = CGPoint(x: -away.y, y: away.x)
+            let centre = CGPoint(
+                x: point.x + away.x * 20 * metrics.scale + across.x * (size.height * 0.8),
+                y: point.y + away.y * 20 * metrics.scale + across.y * (size.height * 0.8)
+            )
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: centre.x - size.width / 2,
+                        y: centre.y + size.height / 2 - descent(line)
+                    )
+                )
+            )
+        }
+        guard !link.label.isEmpty else { return decorations }
+        let line = text(link.label, font: font, color: colour)
+        let size = measure(line)
+        let middle = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+        decorations.append(
+            .fill(
+                rect: CGRect(
+                    x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
+                    width: size.width + 6, height: size.height + 2),
+                color: theme.palette.background, cornerRadius: 2))
+        decorations.append(
+            .glyphs(
+                line,
+                origin: CGPoint(
+                    x: middle.x - size.width / 2, y: middle.y + size.height / 2 - descent(line))))
+        return decorations
+    }
+
+    /// How far the shaft stops short of the box, to leave the end its room.
+    private static func inset(_ end: BoxDiagram.End, room: CGFloat) -> CGFloat {
+        switch end {
+        case .none: return 0
+        case .arrow, .triangle: return room
+        case .diamond, .hollowDiamond: return room * 1.3
+        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return room
+        }
+    }
+
+    /// What is drawn where a line meets a box.
+    private static func terminal(
+        _ end: BoxDiagram.End, at tip: CGPoint, direction: CGPoint, theme: Theme, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let colour = theme.palette.secondaryText
+        let side = CGPoint(x: -direction.y, y: direction.x)
+        let length = 11 * metrics.scale
+        let half = 5 * metrics.scale
+        func point(_ along: CGFloat, _ across: CGFloat) -> CGPoint {
+            CGPoint(
+                x: tip.x - direction.x * along + side.x * across,
+                y: tip.y - direction.y * along + side.y * across)
+        }
+        switch end {
+        case .none:
+            return []
+        case .arrow:
+            let path = CGMutablePath()
+            path.move(to: tip)
+            path.addLine(to: point(length, half))
+            path.addLine(to: point(length, -half))
+            path.closeSubpath()
+            return [.path(path, color: colour, lineWidth: 0, filled: true)]
+        case .triangle:
+            let path = CGMutablePath()
+            path.move(to: tip)
+            path.addLine(to: point(length, half + 1))
+            path.addLine(to: point(length, -half - 1))
+            path.closeSubpath()
+            return [
+                .path(path, color: theme.palette.background, lineWidth: 0, filled: true),
+                .path(path, color: colour, lineWidth: 1.3, filled: false),
+            ]
+        case .diamond, .hollowDiamond:
+            let path = CGMutablePath()
+            path.move(to: tip)
+            path.addLine(to: point(length * 0.7, half))
+            path.addLine(to: point(length * 1.4, 0))
+            path.addLine(to: point(length * 0.7, -half))
+            path.closeSubpath()
+            return end == .diamond
+                ? [.path(path, color: colour, lineWidth: 0, filled: true)]
+                : [
+                    .path(path, color: theme.palette.background, lineWidth: 0, filled: true),
+                    .path(path, color: colour, lineWidth: 1.3, filled: false),
+                ]
+        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore:
+            // A crow's foot: a bar or a circle for whether none is allowed, and
+            // three prongs for whether many are.
+            var decorations: [BlockBox.Decoration] = []
+            let many = end == .oneOrMore || end == .zeroOrMore
+            if many {
+                let crow = CGMutablePath()
+                for across in [half, 0, -half] {
+                    crow.move(to: tip)
+                    crow.addLine(to: point(length, across))
+                }
+                decorations.append(.path(crow, color: colour, lineWidth: 1.3, filled: false))
+            }
+            let mark = many ? length : length * 0.45
+            if end == .zeroOrOne || end == .zeroOrMore {
+                let radius = 3.5 * metrics.scale
+                let centre = point(mark + radius, 0)
+                let circle = CGPath(
+                    ellipseIn: CGRect(
+                        x: centre.x - radius, y: centre.y - radius, width: radius * 2,
+                        height: radius * 2), transform: nil)
+                decorations.append(
+                    .path(circle, color: theme.palette.background, lineWidth: 0, filled: true))
+                decorations.append(.path(circle, color: colour, lineWidth: 1.3, filled: false))
+            } else {
+                // "Exactly one" is two bars, "one or many" the crow plus one.
+                let bar = CGMutablePath()
+                for along in end == .one ? [mark, mark + 4 * metrics.scale] : [mark] {
+                    bar.move(to: point(along, half))
+                    bar.addLine(to: point(along, -half))
+                }
+                decorations.append(.path(bar, color: colour, lineWidth: 1.3, filled: false))
+            }
+            return decorations
         }
     }
 
@@ -426,10 +772,14 @@ enum MermaidLayout {
     /// at it. Relaxing the edges `|V|` times gives the same answer as a
     /// topological sweep and, unlike one, cannot spin on a cycle.
     private static func ranks(_ chart: Flowchart) -> [[Int]] {
-        var rank = [Int](repeating: 0, count: chart.nodes.count)
-        for _ in 0..<chart.nodes.count {
+        ranks(count: chart.nodes.count, edges: chart.edges.map { ($0.from, $0.to) })
+    }
+
+    private static func ranks(count: Int, edges: [(from: Int, to: Int)]) -> [[Int]] {
+        var rank = [Int](repeating: 0, count: count)
+        for _ in 0..<count {
             var moved = false
-            for edge in chart.edges where edge.from < rank.count && edge.to < rank.count {
+            for edge in edges where edge.from < rank.count && edge.to < rank.count {
                 if rank[edge.to] < rank[edge.from] + 1 {
                     rank[edge.to] = rank[edge.from] + 1
                     moved = true

@@ -333,6 +333,80 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    private func boxes(_ source: String) -> BoxDiagram? {
+        guard case .boxes(let diagram)? = MermaidDiagram.parse(source) else { return nil }
+        return diagram
+    }
+
+    func testAClassDiagramReadsItsMembersAndItsRelations() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                classDiagram
+                    class Animal {
+                        +String name
+                        +isMammal() bool
+                    }
+                    class Duck
+                    Duck : +swim()
+                    <<interface>> Flyer
+                    Animal <|-- Duck
+                    Animal "1" o-- "many" Leg : has
+                    Duck ..> Flyer
+                """
+            )
+        )
+        XCTAssertEqual(diagram.boxes.map(\.name), ["Animal", "Duck", "Flyer", "Leg"])
+        // A member with brackets is a call and goes in the second compartment.
+        XCTAssertEqual(diagram.boxes[0].compartments, [["+String name"], ["+isMammal() bool"]])
+        XCTAssertEqual(diagram.boxes[1].compartments, [[], ["+swim()"]])
+        XCTAssertEqual(diagram.boxes[2].stereotype, "interface")
+        XCTAssertEqual(diagram.links.map(\.fromEnd), [.triangle, .hollowDiamond, .none])
+        XCTAssertEqual(diagram.links.map(\.toEnd), [.none, .none, .arrow])
+        XCTAssertEqual(diagram.links.map(\.dashed), [false, false, true])
+        XCTAssertEqual(diagram.links[1].fromCount, "1")
+        XCTAssertEqual(diagram.links[1].toCount, "many")
+        XCTAssertEqual(diagram.links[1].label, "has")
+    }
+
+    func testAnEntityDiagramReadsItsCrowsFeet() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                erDiagram
+                    CUSTOMER ||--o{ ORDER : places
+                    ORDER }|..|{ LINE-ITEM : contains
+                    CUSTOMER {
+                        string email PK
+                    }
+                """
+            )
+        )
+        XCTAssertEqual(diagram.boxes.map(\.name), ["CUSTOMER", "ORDER", "LINE-ITEM"])
+        // The name is written before its type, the way a table reads.
+        XCTAssertEqual(diagram.boxes[0].compartments, [["email  string  PK"]])
+        XCTAssertEqual(diagram.links.map(\.fromEnd), [.one, .oneOrMore])
+        XCTAssertEqual(diagram.links.map(\.toEnd), [.zeroOrMore, .oneOrMore])
+        XCTAssertEqual(diagram.links.map(\.dashed), [false, true])
+    }
+
+    func testWhatTheBoxDiagramsRefuse() {
+        for source in [
+            // A note, a namespace and a click handler are not drawn.
+            "classDiagram\n class A\n note \"hello\"",
+            "classDiagram\n namespace one {\n class A\n }",
+            "classDiagram\n class A\n click A href \"x\"",
+            "classDiagram\n A B C",
+            "classDiagram",
+            // A relation with an end this does not know, and an unclosed block.
+            "erDiagram\n A |>--o{ B : x",
+            "erDiagram\n A {\n string name",
+            "erDiagram",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

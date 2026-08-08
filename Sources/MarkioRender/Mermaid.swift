@@ -13,6 +13,7 @@ enum MermaidDiagram {
     case flowchart(Flowchart)
     case sequence(SequenceDiagram)
     case pie(PieChart)
+    case boxes(BoxDiagram)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -34,6 +35,12 @@ enum MermaidDiagram {
         }
         if header.hasPrefix("pie") {
             return PieChart.parse(header: header, lines: rest).map(MermaidDiagram.pie)
+        }
+        if header == "classDiagram" || header == "classDiagram-v2" {
+            return ClassDiagram.parse(rest).map(MermaidDiagram.boxes)
+        }
+        if header == "erDiagram" {
+            return EntityDiagram.parse(rest).map(MermaidDiagram.boxes)
         }
         guard let direction = Flowchart.direction(header: header) else { return nil }
         return Flowchart.parse(rest, direction: direction).map(MermaidDiagram.flowchart)

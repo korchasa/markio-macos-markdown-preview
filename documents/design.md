@@ -281,6 +281,13 @@ nothing else: no node outside the group is ever placed in the strip. The strips
 are ordered by the rank their contents first appear on, so the graph still reads
 from its first node onwards.
 
+A class diagram and an entity–relationship diagram are one layout: titled boxes
+with rows in them, ranked the same way a flowchart is, joined by lines whose
+ends carry the meaning — a hollow triangle for inheritance, a diamond for
+composition, a crow's foot for how many. They differ only in how they are read
+and in which ends their lines may have, which is why `BoxDiagram` is shared and
+`ClassDiagram`/`EntityDiagram` are two readers of it.
+
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which
 slice is which by colour, so the colours have to stay apart from each other on
