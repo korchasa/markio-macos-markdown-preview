@@ -388,10 +388,27 @@ final class RenderTests: XCTestCase {
     }
 
     /// NFR Scale: a multi-MB document renders without hanging the pipeline.
+    ///
+    /// The budget is what makes this a guard. Awaiting `render` bare asserts
+    /// only that paragraphs eventually appeared — a render that took ten minutes
+    /// passed, and one that never returned hung the whole suite instead of
+    /// failing it. Measured 2026-08-07: ~120 s for this document, which is
+    /// itself slow enough to be worth fixing (rendering degrades faster than
+    /// linearly with size: 312 KB → 4 s, 1.2 MB → 123 s). The budget is set
+    /// above today's cost, not at it — it catches a hang or a step change, not
+    /// a loaded machine. Lower it when the renderer gets faster.
     func testRendersLargeDocumentWithoutHanging() async throws {
+        let budget: TimeInterval = 180
         let preview = try await makeLoadedPreview()
         let large = String(repeating: "# Heading\n\nLorem ipsum dolor sit amet.\n\n", count: 30_000)
-        await preview.render(large)  // ~1.2 MB
+
+        let rendered = expectation(description: "1.2 MB document finishes rendering")
+        Task { @MainActor in
+            await preview.render(large)  // ~1.2 MB
+            rendered.fulfill()
+        }
+        await fulfillment(of: [rendered], timeout: budget)
+
         let paragraphs = try await count(preview, "document.querySelectorAll('#content p').length")
         XCTAssertGreaterThan(paragraphs, 0, "Large document should render content")
     }
