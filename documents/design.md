@@ -281,6 +281,13 @@ nothing else: no node outside the group is ever placed in the strip. The strips
 are ordered by the rank their contents first appear on, so the graph still reads
 from its first node onwards.
 
+A pie chart is wedges from twelve o'clock with a legend beside them, and its
+colours are written down rather than taken from the theme: a pie says which
+slice is which by colour, so the colours have to stay apart from each other on
+either background. A state machine has no layout of its own at all — it is read
+into a `Flowchart` whose start and end are a filled dot and a ring, because that
+is the only thing about it a flowchart cannot already draw.
+
 A sequence diagram is columns with dashed lifelines, walked in document order.
 The walk hands back three lists — block frames, activation bars and the
 messages and notes themselves — because they are painted in that order: a frame

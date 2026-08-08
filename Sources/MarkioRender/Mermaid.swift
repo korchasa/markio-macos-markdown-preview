@@ -12,6 +12,7 @@ import Foundation
 enum MermaidDiagram {
     case flowchart(Flowchart)
     case sequence(SequenceDiagram)
+    case pie(PieChart)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -22,12 +23,137 @@ enum MermaidDiagram {
             lines.append(Substring(line))
         }
         guard let header = lines.first else { return nil }
+        let rest = Array(lines.dropFirst())
         if header == "sequenceDiagram" {
-            return SequenceDiagram.parse(Array(lines.dropFirst())).map(MermaidDiagram.sequence)
+            return SequenceDiagram.parse(rest).map(MermaidDiagram.sequence)
+        }
+        if header == "stateDiagram-v2" || header == "stateDiagram" {
+            // A state machine is a flowchart whose boxes happen to be states, so
+            // it is read into one rather than given a layout of its own.
+            return StateDiagram.parse(rest).map(MermaidDiagram.flowchart)
+        }
+        if header.hasPrefix("pie") {
+            return PieChart.parse(header: header, lines: rest).map(MermaidDiagram.pie)
         }
         guard let direction = Flowchart.direction(header: header) else { return nil }
-        return Flowchart.parse(Array(lines.dropFirst()), direction: direction)
-            .map(MermaidDiagram.flowchart)
+        return Flowchart.parse(rest, direction: direction).map(MermaidDiagram.flowchart)
+    }
+}
+
+// MARK: - Pie chart
+
+struct PieChart {
+    struct Slice {
+        var label: String
+        var value: Double
+    }
+
+    var title: String
+    var slices: [Slice]
+    /// `pie showData` writes each slice's own number beside its name.
+    var showData: Bool
+
+    var total: Double { slices.reduce(0) { $0 + $1.value } }
+
+    static func parse(header: Substring, lines: [Substring]) -> PieChart? {
+        var words = header.split(separator: " ", omittingEmptySubsequences: true)
+        guard words.first == "pie" else { return nil }
+        words.removeFirst()
+        var chart = PieChart(title: "", slices: [], showData: false)
+        if words.first == "showData" {
+            chart.showData = true
+            words.removeFirst()
+        }
+        if words.first == "title" {
+            chart.title = words.dropFirst().joined(separator: " ")
+            words = []
+        }
+        guard words.isEmpty else { return nil }
+        for line in lines {
+            if line.hasPrefix("title ") {
+                chart.title = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            guard let colon = line.lastIndex(of: ":") else { return nil }
+            let label = line[line.startIndex..<colon]
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            let number = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            guard !label.isEmpty, let value = Double(number), value >= 0 else { return nil }
+            chart.slices.append(Slice(label: label, value: value))
+        }
+        guard !chart.slices.isEmpty, chart.total > 0 else { return nil }
+        return chart
+    }
+}
+
+// MARK: - State diagram
+
+/// A state machine, read into a flowchart.
+///
+/// The shapes carry the difference: a start is a filled dot, an end is a ring,
+/// and every named state is a rounded box. Anything that needs a layout a
+/// flowchart has not got — a composite state, a fork, a note — is refused.
+enum StateDiagram {
+    static func parse(_ lines: [Substring]) -> Flowchart? {
+        var direction = Flowchart.Direction.down
+        var body: [Substring] = []
+        var names: [String: String] = [:]
+        for line in lines {
+            let word = String(line.prefix(while: { !$0.isWhitespace }))
+            let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
+            if word == "direction" {
+                guard let read = Flowchart.direction(header: Substring("flowchart \(rest)"))
+                else { return nil }
+                direction = read
+                continue
+            }
+            if word == "state" {
+                // `state "Long name" as id` is a label; `state id { … }` is a
+                // machine inside a machine, and `<<fork>>` is a bar this does
+                // not draw.
+                guard rest.hasPrefix("\""), let close = rest.dropFirst().firstIndex(of: "\"")
+                else { return nil }
+                let label = String(rest[rest.index(after: rest.startIndex)..<close])
+                let tail = rest[rest.index(after: close)...].trimmingCharacters(in: .whitespaces)
+                guard tail.hasPrefix("as ") else { return nil }
+                names[String(tail.dropFirst(3)).trimmingCharacters(in: .whitespaces)] = label
+                continue
+            }
+            guard !["note", "end", "class", "classDef", "click"].contains(word) else { return nil }
+            // `A --> B : go` is the same edge a flowchart writes `A -->|go| B`.
+            guard let arrow = line.range(of: "-->") else { return nil }
+            var from = String(line[line.startIndex..<arrow.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+            var tail = String(line[arrow.upperBound...]).trimmingCharacters(in: .whitespaces)
+            var label = ""
+            if let colon = tail.firstIndex(of: ":") {
+                label = String(tail[tail.index(after: colon)...])
+                    .trimmingCharacters(in: .whitespaces)
+                tail = String(tail[tail.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+            }
+            guard !from.isEmpty, !tail.isEmpty else { return nil }
+            if from == "[*]" { from = "__start" }
+            if tail == "[*]" { tail = "__end" }
+            let arrowText = label.isEmpty ? "-->" : "-->|\(label)|"
+            body.append(Substring("\(from) \(arrowText) \(tail)"))
+        }
+        guard !body.isEmpty, var chart = Flowchart.parse(body, direction: direction) else {
+            return nil
+        }
+        for index in chart.nodes.indices {
+            switch chart.nodes[index].id {
+            case "__start":
+                chart.nodes[index] = Flowchart.Node(id: "__start", label: "", shape: .point)
+            case "__end":
+                chart.nodes[index] = Flowchart.Node(id: "__end", label: "", shape: .endPoint)
+            default:
+                chart.nodes[index].shape = .rounded
+                if let label = names[chart.nodes[index].id] {
+                    chart.nodes[index].label = label
+                }
+            }
+        }
+        return chart
     }
 }
 
@@ -60,6 +186,10 @@ struct Flowchart {
         case cylinder
         /// `>…]`: a flag, notched on its left.
         case flag
+        /// A state machine's `[*]`: a filled dot where it starts, a ring where
+        /// it ends. No flowchart writes these; the state reader does.
+        case point
+        case endPoint
     }
 
     enum Stroke {

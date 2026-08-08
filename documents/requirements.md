@@ -71,8 +71,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs,
   `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
-  `autonumber`). Every other diagram kind, and every construct inside those two
-  the layout cannot draw — a nested subgraph, a tinted band, a click handler —
+  `autonumber`), a `pie` chart, or a `stateDiagram-v2`. Every other diagram
+  kind, and every construct inside the ones it reads that the layout cannot
+  draw — a nested subgraph, a composite state, a tinted band, a click handler —
   is not read, and the fence stays a fenced block.
 
 ## VIEW — What the reader sees

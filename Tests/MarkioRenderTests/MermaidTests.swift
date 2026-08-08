@@ -271,6 +271,68 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAPieChartIsItsSlicesAndItsTitle() throws {
+        guard
+            case .pie(let chart)? = MermaidDiagram.parse(
+                """
+                pie showData title Where the time goes
+                    "Parsing" : 12
+                    "Layout" : 48
+                    Drawing : 40
+                """
+            )
+        else { return XCTFail("a pie chart") }
+        XCTAssertEqual(chart.title, "Where the time goes")
+        XCTAssertTrue(chart.showData)
+        XCTAssertEqual(chart.slices.map(\.label), ["Parsing", "Layout", "Drawing"])
+        XCTAssertEqual(chart.total, 100)
+    }
+
+    func testWhatAPieRefuses() {
+        for source in [
+            "pie title Costs",
+            "pie\n \"Parsing\" : none",
+            "pie\n \"Parsing\" : 0",
+            "pie something else\n \"Parsing\" : 1",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    /// A state machine is read into a flowchart: the shapes carry what makes it
+    /// a state machine, so it needs no layout of its own.
+    func testAStateMachineBecomesAFlowchart() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                stateDiagram-v2
+                    direction LR
+                    state "Waiting for a file" as Idle
+                    [*] --> Idle
+                    Idle --> Busy: open
+                    Busy --> [*]
+                """
+            )
+        )
+        XCTAssertEqual(chart.direction, .right)
+        XCTAssertEqual(chart.nodes.map(\.shape), [.point, .rounded, .rounded, .endPoint])
+        XCTAssertEqual(chart.nodes[1].label, "Waiting for a file")
+        XCTAssertEqual(chart.edges[1].label, "open")
+    }
+
+    func testWhatAStateMachineRefuses() {
+        for source in [
+            // A machine inside a machine, a fork bar, a note, a plain word.
+            "stateDiagram-v2\n state Big {\n [*] --> A\n }",
+            "stateDiagram-v2\n state fork <<fork>>\n [*] --> fork",
+            "stateDiagram-v2\n [*] --> A\n note right of A: waiting",
+            "stateDiagram-v2\n A",
+            "stateDiagram-v2",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

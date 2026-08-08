@@ -57,7 +57,126 @@ enum MermaidLayout {
             return flowchart(chart, theme: theme, width: width, metrics: metrics)
         case .sequence(let sequence):
             return self.sequence(sequence, theme: theme, width: width, metrics: metrics)
+        case .pie(let chart):
+            return pie(chart, theme: theme, width: width, metrics: metrics)
         }
+    }
+
+    // MARK: - Pie chart
+
+    /// Slice colours, written down rather than taken from the theme: a pie says
+    /// which slice is which by colour, so the colours have to stay apart from
+    /// each other and readable on either background.
+    private static let wheel: [CGColor] = [
+        CGColor(red: 0.30, green: 0.55, blue: 0.90, alpha: 1),
+        CGColor(red: 0.95, green: 0.60, blue: 0.25, alpha: 1),
+        CGColor(red: 0.35, green: 0.72, blue: 0.50, alpha: 1),
+        CGColor(red: 0.85, green: 0.40, blue: 0.45, alpha: 1),
+        CGColor(red: 0.60, green: 0.50, blue: 0.85, alpha: 1),
+        CGColor(red: 0.45, green: 0.75, blue: 0.80, alpha: 1),
+        CGColor(red: 0.90, green: 0.75, blue: 0.30, alpha: 1),
+        CGColor(red: 0.65, green: 0.55, blue: 0.45, alpha: 1),
+    ]
+
+    private static func pie(
+        _ chart: PieChart, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale)
+        let diameter = 180 * metrics.scale
+        let swatch = 12 * metrics.scale
+        let total = chart.total
+
+        var entries: [(line: CTLine, size: CGSize)] = []
+        for slice in chart.slices {
+            let share = Int((slice.value / total * 100).rounded())
+            let number =
+                slice.value == slice.value.rounded() ? "\(Int(slice.value))" : "\(slice.value)"
+            let words =
+                chart.showData
+                ? "\(slice.label) — \(number) (\(share)%)" : "\(slice.label) — \(share)%"
+            let line = text(words, font: font, color: theme.palette.text)
+            entries.append((line, measure(line)))
+        }
+        let legendWidth =
+            (entries.map(\.size.width).max() ?? 0) + swatch + 8 * metrics.scale
+        let legendHeight =
+            entries.reduce(0) { $0 + $1.size.height + 6 * metrics.scale } - 6 * metrics.scale
+        let gap = 24 * metrics.scale
+        let content = diameter + gap + legendWidth
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !chart.title.isEmpty {
+            let line = text(chart.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let bodyHeight = max(diameter, legendHeight)
+        let height = metrics.padding * 2 + titleRoom + bodyHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+        let centre = CGPoint(
+            x: left + diameter / 2,
+            y: metrics.padding + titleRoom + bodyHeight / 2
+        )
+        // Wedges start at twelve o'clock and go round clockwise, which is the
+        // order a reader expects the first slice to be in.
+        var angle = -CGFloat.pi / 2
+        for (index, slice) in chart.slices.enumerated() {
+            let sweep = CGFloat(slice.value / total) * .pi * 2
+            let wedge = CGMutablePath()
+            wedge.move(to: centre)
+            wedge.addArc(
+                center: centre, radius: diameter / 2, startAngle: angle, endAngle: angle + sweep,
+                clockwise: false)
+            wedge.closeSubpath()
+            decorations.append(
+                .path(wedge, color: wheel[index % wheel.count], lineWidth: 0, filled: true))
+            decorations.append(
+                .path(wedge, color: theme.palette.background, lineWidth: 1, filled: false))
+            angle += sweep
+        }
+
+        var y = metrics.padding + titleRoom + (bodyHeight - legendHeight) / 2
+        for (index, entry) in entries.enumerated() {
+            let box = CGRect(
+                x: left + diameter + gap,
+                y: y + (entry.size.height - swatch) / 2,
+                width: swatch,
+                height: swatch
+            )
+            decorations.append(
+                .fill(rect: box, color: wheel[index % wheel.count], cornerRadius: 2))
+            decorations.append(
+                .glyphs(
+                    entry.line,
+                    origin: CGPoint(
+                        x: box.maxX + 8 * metrics.scale,
+                        y: y + entry.size.height - descent(entry.line)
+                    )
+                )
+            )
+            y += entry.size.height + 6 * metrics.scale
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
     }
 
     // MARK: - Flowchart
@@ -98,6 +217,9 @@ enum MermaidLayout {
                 box = CGSize(width: side, height: side)
             case .flag:
                 box.width += 10 * metrics.scale
+            case .point, .endPoint:
+                let side = 16 * metrics.scale
+                box = CGSize(width: side, height: side)
             case .rectangle, .rounded, .stadium:
                 break
             }
@@ -259,16 +381,33 @@ enum MermaidLayout {
         // Two labelled edges leaving one node run side by side, so their words
         // are spaced out along the line instead of landing on each other.
         var written: [Int: Int] = [:]
+        // Two nodes joined both ways — a state and the state it goes back to —
+        // have their words laid either side of the line rather than on top of
+        // each other.
+        func pair(_ edge: Flowchart.Edge) -> Int {
+            min(edge.from, edge.to) &* 100_003 &+ max(edge.from, edge.to)
+        }
+        var pairs: [Int: Int] = [:]
+        for edge in chart.edges where !edge.label.isEmpty {
+            pairs[pair(edge), default: 0] += 1
+        }
+        var seen: [Int: Int] = [:]
         for edge in chart.edges {
             guard edge.from < boxes.count, edge.to < boxes.count else { continue }
             var order = 0
+            var side: CGFloat = 0
             if !edge.label.isEmpty {
                 order = written[edge.from, default: 0]
                 written[edge.from] = order + 1
+                let key = pair(edge)
+                let index = seen[key, default: 0]
+                seen[key] = index + 1
+                let count = pairs[key] ?? 1
+                side = CGFloat(index) - CGFloat(count - 1) / 2
             }
             let drawn = self.edge(
                 edge, from: boxes[edge.from], to: boxes[edge.to], theme: theme, metrics: metrics,
-                order: order)
+                order: order, side: side)
             decorations += drawn.shaft
             labels += drawn.label
         }
@@ -347,6 +486,30 @@ enum MermaidLayout {
             x: box.frame.midX - box.labelSize.width / 2,
             y: box.frame.midY + box.labelSize.height / 2 - descent(box.label)
         )
+        // A state machine's ends are marks, not boxes: a filled dot where it
+        // starts and a ring where it stops.
+        if box.shape == .point || box.shape == .endPoint {
+            var decorations: [BlockBox.Decoration] = [
+                .path(
+                    CGPath(ellipseIn: box.frame, transform: nil), color: theme.palette.text,
+                    lineWidth: 0, filled: true)
+            ]
+            if box.shape == .endPoint {
+                decorations.append(
+                    .path(
+                        CGPath(
+                            ellipseIn: box.frame.insetBy(
+                                dx: 3 * metrics.scale, dy: 3 * metrics.scale), transform: nil),
+                        color: theme.palette.background, lineWidth: 0, filled: true))
+                decorations.append(
+                    .path(
+                        CGPath(
+                            ellipseIn: box.frame.insetBy(
+                                dx: 5 * metrics.scale, dy: 5 * metrics.scale), transform: nil),
+                        color: theme.palette.text, lineWidth: 0, filled: true))
+            }
+            return decorations
+        }
         var decorations: [BlockBox.Decoration] = []
         // A `fill:transparent` is the author asking for the page to show
         // through, which is not the same as filling it with the page's colour.
@@ -412,7 +575,7 @@ enum MermaidLayout {
             let radius = frame.height / 2
             return CGPath(
                 roundedRect: frame, cornerWidth: radius, cornerHeight: radius, transform: nil)
-        case .circle, .doubleCircle:
+        case .circle, .doubleCircle, .point, .endPoint:
             return CGPath(ellipseIn: frame, transform: nil)
         case .diamond:
             return polygon([
@@ -492,7 +655,7 @@ enum MermaidLayout {
     /// same routine draw an edge down a rank, across one, or back up the graph.
     private static func edge(
         _ edge: Flowchart.Edge, from: Placed, to: Placed, theme: Theme, metrics: Metrics,
-        order: Int
+        order: Int, side: CGFloat
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
         let start = exit(of: from.frame, towards: to.frame.center)
         let end = exit(of: to.frame, towards: from.frame.center)
@@ -541,7 +704,14 @@ enum MermaidLayout {
         let length = distance(start, end)
         let base = min(length / 2, metrics.rankGap / 2 + 6) + CGFloat(order) * (size.width + 10)
         let along = max(size.width / 2 + 2, min(base, length - size.width / 2 - 2))
-        let middle = CGPoint(x: start.x + direction.x * along, y: start.y + direction.y * along)
+        // Sideways room is the label's own size, so two words either side of a
+        // vertical line clear each other however long they are.
+        let across = CGPoint(x: -direction.y, y: direction.x)
+        let step = abs(direction.y) > abs(direction.x) ? size.width + 10 : size.height + 6
+        let middle = CGPoint(
+            x: start.x + direction.x * along + across.x * side * step,
+            y: start.y + direction.y * along + across.y * side * step
+        )
         let plate = CGRect(
             x: middle.x - size.width / 2 - 3,
             y: middle.y - size.height / 2 - 1,
