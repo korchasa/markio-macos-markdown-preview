@@ -31,7 +31,12 @@ enum Snapshot {
         let document = Document(bytes: [UInt8](data))
         let theme = Theme(isDark: dark)
         let columnWidth = min(CGFloat(width) - 120, 720)
-        let layout = DocumentLayout(document: document, theme: theme, columnWidth: columnWidth)
+        let layout = DocumentLayout(
+            document: document,
+            theme: theme,
+            columnWidth: columnWidth,
+            baseURL: input
+        )
 
         guard
             let image = DocumentRenderer.image(

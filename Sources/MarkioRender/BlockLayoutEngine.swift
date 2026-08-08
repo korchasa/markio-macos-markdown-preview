@@ -8,17 +8,22 @@ import MarkdownKit
 /// chain and nothing about its neighbours. That independence is what allows the
 /// document view to lay out only what is on screen, in any order, and to throw
 /// the result away without invalidating anything else.
+@MainActor
 struct BlockLayoutEngine {
     let document: Document
     let theme: Theme
     /// Width available for content, gutters included.
     let width: CGFloat
+    /// The document's own location, so a relative image path can be resolved.
+    /// Nil for a document with no file behind it, which simply has no images.
+    let baseURL: URL?
     private let syntax: SyntaxHighlighter.Palette
 
-    init(document: Document, theme: Theme, width: CGFloat) {
+    init(document: Document, theme: Theme, width: CGFloat, baseURL: URL?) {
         self.document = document
         self.theme = theme
         self.width = width
+        self.baseURL = baseURL
         self.syntax = SyntaxHighlighter.Palette(isDark: theme.isDark)
     }
 
@@ -122,6 +127,7 @@ struct BlockLayoutEngine {
 
     /// Accumulates the pieces of one box. A struct so the whole layout of a
     /// block happens on the stack, with one array growth per block at most.
+    @MainActor
     private struct Builder {
         let engine: BlockLayoutEngine
         let leaf: Int32
@@ -167,6 +173,7 @@ struct BlockLayoutEngine {
                 skip = task.contentStart
             }
             let inline = parseInline(content)
+            if skip == 0, layoutLoneImage(content: content, inline: inline) { return }
             let styled = AttributedBuilder.build(
                 content: content,
                 inline: inline,
@@ -178,6 +185,79 @@ struct BlockLayoutEngine {
             place(
                 styled, inline: inline, width: available, x: indent,
                 lineHeight: theme.metrics.lineHeightMultiple)
+        }
+
+        // MARK: Images
+
+        /// A paragraph that is nothing but one image becomes that image.
+        ///
+        /// Only a paragraph on its own: an image sitting inside a sentence has
+        /// no sensible line box without a text attachment, and a picture
+        /// interrupting a line reads worse than the marker it replaces. This is
+        /// how images are written in practice anyway — on a line of their own.
+        ///
+        /// Returns false when the block is not a lone image, or when the file
+        /// cannot be read, so the caller falls back to ordinary text and the
+        /// alt text still says what was meant to be there.
+        mutating func layoutLoneImage(content: [UInt8], inline: InlineContent) -> Bool {
+            guard let link = soleImageLink(content: content, inline: inline),
+                let base = engine.baseURL,
+                let url = Self.imageURL(destination: link.destination, base: base)
+            else { return false }
+
+            let maxWidth = available
+            guard let image = ImageLoader.image(at: url, maxWidth: maxWidth) else { return false }
+
+            let aspect = CGFloat(image.height) / CGFloat(max(1, image.width))
+            let width = min(maxWidth, CGFloat(image.width) / 2)
+            let height = (width * aspect).rounded()
+            let top = y + theme.metrics.paragraphSpacing
+            decorations.append(
+                .image(image, rect: CGRect(x: indent, y: top, width: width, height: height))
+            )
+            y = top + height + theme.metrics.paragraphSpacing
+            // The alt text is what Copy and Find see: the picture itself has no
+            // characters, and its description is the only text the block has.
+            plainText = BlockPlainText.inlineText(content: content, inline: inline, skipBytes: 0)
+            return true
+        }
+
+        /// The image link of a block whose only content is that image.
+        private func soleImageLink(content: [UInt8], inline: InlineContent) -> InlineLink? {
+            var found: Int32 = -1
+            for run in inline.runs {
+                switch run.kind {
+                case .image:
+                    guard found < 0 else { return nil }
+                    found = run.link
+                case .text:
+                    // Text belonging to the image is its alt text; anything
+                    // else means the picture shares the paragraph with prose.
+                    guard
+                        run.link == found || content.text(in: run.range).allSatisfy(\.isWhitespace)
+                    else { return nil }
+                case .entity, .softBreak, .hardBreak:
+                    return nil
+                }
+            }
+            guard found >= 0, Int(found) < inline.links.count else { return nil }
+            let link = inline.links[Int(found)]
+            return link.isImage ? link : nil
+        }
+
+        /// Resolve a destination against the document, refusing anything that
+        /// is not a local file beside it — the same default-deny rule links get.
+        private static func imageURL(destination: String, base: URL) -> URL? {
+            let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else { return nil }
+            if let scheme = URL(string: trimmed)?.scheme?.lowercased() {
+                // A remote image cannot be fetched: there is no network path.
+                guard scheme == "file" else { return nil }
+                return URL(string: trimmed)
+            }
+            let decoded = trimmed.removingPercentEncoding ?? trimmed
+            let directory = base.deletingLastPathComponent()
+            return URL(fileURLWithPath: decoded, relativeTo: directory).standardizedFileURL
         }
 
         mutating func layoutHeading(_ block: Block) {

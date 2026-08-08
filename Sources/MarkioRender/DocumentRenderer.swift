@@ -47,6 +47,16 @@ public enum DocumentRenderer {
                 context.setStrokeColor(color)
                 context.setLineWidth(width)
                 context.stroke(rect.insetBy(dx: width / 2, dy: width / 2))
+            case .image(let image, let rect):
+                // The context is flipped for text, so an image drawn straight
+                // into it comes out upside down.
+                context.saveGState()
+                context.translateBy(x: 0, y: rect.midY)
+                context.scaleBy(x: 1, y: -1)
+                context.draw(
+                    image,
+                    in: CGRect(origin: CGPoint(x: rect.minX, y: -rect.height / 2), size: rect.size))
+                context.restoreGState()
             case .path(let path, let color, let lineWidth, let filled):
                 context.addPath(path)
                 if filled {

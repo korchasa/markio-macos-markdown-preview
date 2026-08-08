@@ -36,7 +36,8 @@ final class DocumentWindowController: NSWindowController {
         self.layout = DocumentLayout(
             document: document.parsed,
             theme: theme,
-            columnWidth: DocumentWindowController.columnWidth(for: theme)
+            columnWidth: DocumentWindowController.columnWidth(for: theme),
+            baseURL: document.fileURL
         )
         self.documentView = DocumentView(layout: layout)
 

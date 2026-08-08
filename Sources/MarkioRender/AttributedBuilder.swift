@@ -45,6 +45,11 @@ enum AttributedBuilder {
 
         for run in inline.runs {
             let start = attributed.length
+            // Alt text belongs to a picture, not to a destination: styling it
+            // as a link would invite a click that goes nowhere.
+            let isImageAlt =
+                run.link >= 0 && Int(run.link) < inline.links.count
+                && inline.links[Int(run.link)].isImage
             switch run.kind {
             case .text:
                 guard Int(run.range.end) > skipBytes else { continue }
@@ -53,7 +58,14 @@ enum AttributedBuilder {
                 let text = content.text(in: range)
                 guard !text.isEmpty else { continue }
                 append(
-                    text, run: run, to: attributed, theme: theme, base: baseFont, color: baseColor)
+                    text,
+                    run: run,
+                    to: attributed,
+                    theme: theme,
+                    base: baseFont,
+                    color: baseColor,
+                    isImageAlt: isImageAlt
+                )
             case .entity:
                 guard let scalar = Unicode.Scalar(run.scalar) else { continue }
                 append(
@@ -96,7 +108,7 @@ enum AttributedBuilder {
                     StyledText.Span(
                         range: NSRange(location: start, length: length),
                         style: run.style,
-                        link: run.link
+                        link: isImageAlt ? -1 : run.link
                     )
                 )
             }
@@ -110,7 +122,8 @@ enum AttributedBuilder {
         to attributed: NSMutableAttributedString,
         theme: Theme,
         base: CTFont,
-        color: CGColor
+        color: CGColor,
+        isImageAlt: Bool = false
     ) {
         var mask: InlineStyleMask = []
         if run.style.contains(.strong) { mask.insert(.bold) }
@@ -122,7 +135,7 @@ enum AttributedBuilder {
         }
         let font = mask.isEmpty ? base : styledFont(base: base, mask: mask, theme: theme)
         var foreground = color
-        if run.style.contains(.link) { foreground = theme.palette.link }
+        if run.style.contains(.link), !isImageAlt { foreground = theme.palette.link }
         if run.style.contains(.math) { foreground = theme.palette.secondaryText }
 
         var attributes: [NSAttributedString.Key: Any] = [

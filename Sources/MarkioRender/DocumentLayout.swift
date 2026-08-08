@@ -17,6 +17,8 @@ public final class DocumentLayout {
     public private(set) var theme: Theme
     /// Width of the reading column.
     public private(set) var columnWidth: CGFloat
+    /// Where the document lives, so images beside it can be found.
+    public var baseURL: URL?
 
     private var heights: HeightIndex
     private var engine: BlockLayoutEngine
@@ -25,14 +27,16 @@ public final class DocumentLayout {
     /// so a small scroll never has to lay anything out again.
     private let retainMargin = 40
 
-    public init(document: Document, theme: Theme, columnWidth: CGFloat) {
+    public init(document: Document, theme: Theme, columnWidth: CGFloat, baseURL: URL? = nil) {
         self.document = document
         self.theme = theme
         self.columnWidth = max(120, columnWidth)
+        self.baseURL = baseURL
         self.engine = BlockLayoutEngine(
             document: document,
             theme: theme,
-            width: max(120, columnWidth)
+            width: max(120, columnWidth),
+            baseURL: baseURL
         )
         self.heights = HeightIndex(estimates: [])
         rebuildEstimates()
@@ -75,7 +79,12 @@ public final class DocumentLayout {
     public func replace(document: Document) {
         self.document = document
         boxes.removeAll(keepingCapacity: true)
-        engine = BlockLayoutEngine(document: document, theme: theme, width: columnWidth)
+        engine = BlockLayoutEngine(
+            document: document,
+            theme: theme,
+            width: columnWidth,
+            baseURL: baseURL
+        )
         rebuildEstimates()
     }
 
@@ -96,7 +105,12 @@ public final class DocumentLayout {
     /// every line in the document, so no old measurement is still true.
     private func invalidateLayout() {
         boxes.removeAll(keepingCapacity: true)
-        engine = BlockLayoutEngine(document: document, theme: theme, width: columnWidth)
+        engine = BlockLayoutEngine(
+            document: document,
+            theme: theme,
+            width: columnWidth,
+            baseURL: baseURL
+        )
         rebuildEstimates()
     }
 

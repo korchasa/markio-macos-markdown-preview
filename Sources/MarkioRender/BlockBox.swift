@@ -22,6 +22,7 @@ public final class BlockBox {
         case fill(rect: CGRect, color: CGColor, cornerRadius: CGFloat)
         case stroke(rect: CGRect, color: CGColor, width: CGFloat)
         case path(CGPath, color: CGColor, lineWidth: CGFloat, filled: Bool)
+        case image(CGImage, rect: CGRect)
     }
 
     public struct LinkRegion {
@@ -66,6 +67,14 @@ public final class BlockBox {
             total += segment.attributed.length * 4 + segment.lines.count * 96
         }
         total += decorations.count * 64 + links.count * 48 + plainText.utf8.count
+        for decoration in decorations {
+            // An image dwarfs everything else in a box, and the cache that
+            // holds it is bounded separately; count it so eviction sees the
+            // real cost of keeping this block around.
+            if case .image(let image, _) = decoration {
+                total += image.bytesPerRow * image.height
+            }
+        }
         return total
     }
 
