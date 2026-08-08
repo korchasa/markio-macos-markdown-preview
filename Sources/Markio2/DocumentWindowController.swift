@@ -331,8 +331,9 @@ final class DocumentWindowController: NSWindowController {
     /// Compare the open file against an older version of it.
     ///
     /// The panel is the sandbox grant: choosing the baseline is what gives this
-    /// app permission to read it. The baseline is read, never opened — there is
-    /// no second window and no second scroll to keep in step.
+    /// app permission to read it. The baseline is read, never opened: it becomes
+    /// marked-up source in this window, or the second column of it, but never a
+    /// document with a life of its own.
     @objc func compareWithBaseline(_ sender: Any?) {
         guard let window else { return }
         let panel = NSOpenPanel()

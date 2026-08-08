@@ -115,10 +115,6 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   cover the removed text as well. Stop Comparing returns the plain document; an
   edit while comparing re-reads the baseline and compares again. The baseline
   choice lasts for the session only.
-- **VIEW-17a** File ▸ Side by Side gives the baseline a column of its own: the
-  older version on the left with what it lost, the current file on the right
-  with what it gained. The two scroll together. Find, the outline and every
-  command keep working on the document the window belongs to.
 - **VIEW-18** The app carries its own icon, drawn from code and compiled as an
   asset catalog, so every size comes from one drawing.
 - **VIEW-19** Quitting with documents open and relaunching brings those windows
@@ -148,6 +144,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   arrows between them, or participants with messages across them — centred in
   the reading column, in the current theme's colours. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
+- **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
+  older version on the left with what it lost, the current file on the right
+  with what it gained. The two scroll together. Find, the outline and every
+  command keep working on the document the window belongs to.
 
 ## QL — Quick Look
 
@@ -202,6 +202,6 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
 - **BUILD-5** Rendering can be verified without a screen: the app draws its own
   window to a PNG (`--capture=<path>`, with `--capture-hover=<x>,<y>` for the
   controls that only appear under the pointer and `--capture-click=<x>,<y>` for
-  what only a click reveals), and the bench harness renders a
-  document offscreen — with an optional baseline, so a comparison can be
-  checked the same way.
+  what only a click reveals, and `--compare=<path>` with `--side-by-side` for a
+  comparison), and the bench harness renders a document offscreen — with an
+  optional baseline, so a comparison can be checked the same way.

@@ -51,4 +51,6 @@ under the point rather than posting it to the window: a window hands mouse-moved
 events to its first responder, which during a capture is whatever the last
 control was. `--capture-click=<x>,<y>` clicks once before the shot, which is how
 folding a `<details>` section away is checked: what a click does cannot be seen
-in a picture of a document nobody has touched.
+in a picture of a document nobody has touched. `--compare=<path>`, with
+`--side-by-side`, starts a comparison without the panel, which is the only way
+to photograph two columns.
