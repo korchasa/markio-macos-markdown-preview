@@ -22,6 +22,8 @@ enum MermaidDiagram {
     case quadrant(QuadrantChart)
     case xy(XYChart)
     case git(GitGraph)
+    case packet(PacketDiagram)
+    case kanban(KanbanBoard)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -38,9 +40,11 @@ enum MermaidDiagram {
         }
         guard let header = lines.first else { return nil }
         let rest = Array(lines.dropFirst())
-        if header == "mindmap" {
+        if header == "mindmap" || header == "kanban" {
             let body = zip(indents.dropFirst(), rest).map { (indent: $0, text: $1) }
-            return Mindmap.parse(body).map(MermaidDiagram.mindmap)
+            return header == "mindmap"
+                ? Mindmap.parse(body).map(MermaidDiagram.mindmap)
+                : KanbanBoard.parse(body).map(MermaidDiagram.kanban)
         }
         if header == "timeline" {
             return Timeline.parse(rest).map(MermaidDiagram.timeline)
@@ -61,6 +65,12 @@ enum MermaidDiagram {
         // has not got, so only the plain form is read.
         if header == "gitGraph" || header == "gitGraph:" {
             return GitGraph.parse(rest).map(MermaidDiagram.git)
+        }
+        if header == "packet-beta" || header == "packet" {
+            return PacketDiagram.parse(rest).map(MermaidDiagram.packet)
+        }
+        if header == "requirementDiagram" {
+            return RequirementDiagram.parse(rest).map(MermaidDiagram.boxes)
         }
         if header == "sequenceDiagram" {
             return SequenceDiagram.parse(rest).map(MermaidDiagram.sequence)

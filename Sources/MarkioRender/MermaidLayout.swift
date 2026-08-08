@@ -75,6 +75,10 @@ enum MermaidLayout {
             return xy(chart, theme: theme, width: width, metrics: metrics)
         case .git(let graph):
             return gitGraph(graph, theme: theme, width: width, metrics: metrics)
+        case .packet(let diagram):
+            return packet(diagram, theme: theme, width: width, metrics: metrics)
+        case .kanban(let board):
+            return kanban(board, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -1198,6 +1202,260 @@ enum MermaidLayout {
             size: CGSize(width: width, height: height),
             contentWidth: content
         )
+    }
+
+    // MARK: - Packet diagram
+
+    /// A run of bits cut into named fields, wrapped at a row of thirty-two.
+    private static func packet(
+        _ packet: PacketDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let bit = 15 * metrics.scale
+        let rowHeight = 30 * metrics.scale
+        let numberRoom =
+            measure(text("00", font: font, color: theme.palette.text)).height
+            + 3 * metrics.scale
+        let content = bit * CGFloat(packet.bitsPerRow)
+
+        // A field wider than the row is cut where the row ends, which is what a
+        // packet does: the bits carry on over the line.
+        struct Piece {
+            var label: String
+            var row: Int
+            var first: Int
+            var last: Int
+            var field: Int
+            /// Whether the field starts here, so only one piece is labelled.
+            var opens: Bool
+        }
+        var pieces: [Piece] = []
+        for (index, field) in packet.fields.enumerated() {
+            var start = field.first
+            while start <= field.last {
+                let row = start / packet.bitsPerRow
+                let end = min(field.last, (row + 1) * packet.bitsPerRow - 1)
+                pieces.append(
+                    Piece(
+                        label: field.label, row: row, first: start % packet.bitsPerRow,
+                        last: end % packet.bitsPerRow, field: index, opens: start == field.first))
+                start = end + 1
+            }
+        }
+        let rows = (pieces.map(\.row).max() ?? 0) + 1
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !packet.title.isEmpty {
+            let line = text(packet.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let height =
+            metrics.padding * 2 + titleRoom + CGFloat(rows) * (rowHeight + numberRoom)
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+        for piece in pieces {
+            let top = metrics.padding + titleRoom + CGFloat(piece.row) * (rowHeight + numberRoom)
+            let frame = CGRect(
+                x: left + bit * CGFloat(piece.first),
+                y: top + numberRoom,
+                width: bit * CGFloat(piece.last - piece.first + 1),
+                height: rowHeight
+            )
+            decorations.append(
+                .fill(
+                    rect: frame.insetBy(dx: 0.5, dy: 0.5),
+                    color: wheel[piece.field % wheel.count].copy(alpha: 0.2)
+                        ?? theme.palette.tableHeaderBackground,
+                    cornerRadius: 2 * metrics.scale))
+            decorations.append(
+                .path(
+                    CGPath(rect: frame, transform: nil), color: theme.palette.tableBorder,
+                    lineWidth: 1, filled: false))
+            if piece.opens || piece.first == 0 {
+                let line = text(piece.label, font: font, color: theme.palette.text)
+                let size = measure(line)
+                // A name too long for its own field is dropped rather than
+                // spilled over the field beside it.
+                if size.width <= frame.width - 4 * metrics.scale {
+                    decorations.append(
+                        .glyphs(
+                            line,
+                            origin: CGPoint(
+                                x: frame.midX - size.width / 2,
+                                y: frame.midY + size.height / 2 - descent(line))))
+                }
+            }
+            // The bit each end of the field stands on, above its own edge.
+            for (number, x) in [
+                (piece.row * packet.bitsPerRow + piece.first, frame.minX),
+                (piece.row * packet.bitsPerRow + piece.last, frame.maxX),
+            ] {
+                let line = text("\(number)", font: font, color: theme.palette.secondaryText)
+                let size = measure(line)
+                let anchor = x == frame.minX ? x + 1 : x - 1 - size.width
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: min(left + content - size.width, max(left, anchor)),
+                            y: top + numberRoom - 3 * metrics.scale - descent(line))))
+            }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Kanban board
+
+    /// Columns of cards, each column as tall as it needs to be.
+    private static func kanban(
+        _ board: KanbanBoard, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.94)
+        let smallFont = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let headFont = scaled(theme.bodyBold, by: metrics.scale)
+        let pad = 8 * metrics.scale
+        let gap = 12 * metrics.scale
+        let columnWidth = 150 * metrics.scale
+
+        struct Card {
+            var label: CTLine
+            var labelSize: CGSize
+            var details: CTLine?
+            var detailsSize: CGSize
+            var priority: String
+            var height: CGFloat
+        }
+        struct Column {
+            var head: CTLine
+            var headSize: CGSize
+            var cards: [Card]
+            var height: CGFloat
+        }
+        var columns: [Column] = []
+        for column in board.columns {
+            let head = text(column.title, font: headFont, color: theme.palette.text)
+            var cards: [Card] = []
+            var stack: CGFloat = 0
+            for card in column.cards {
+                let label = text(card.label, font: font, color: theme.palette.text)
+                var details: CTLine?
+                var detailsSize = CGSize.zero
+                if !card.details.isEmpty {
+                    let line = text(
+                        card.details.joined(separator: " · "), font: smallFont,
+                        color: theme.palette.secondaryText)
+                    details = line
+                    detailsSize = measure(line)
+                }
+                let labelSize = measure(label)
+                let height =
+                    pad * 2 + labelSize.height + (details == nil ? 0 : detailsSize.height + 2)
+                cards.append(
+                    Card(
+                        label: label, labelSize: labelSize, details: details,
+                        detailsSize: detailsSize, priority: card.priority, height: height))
+                stack += height + 6 * metrics.scale
+            }
+            columns.append(
+                Column(head: head, headSize: measure(head), cards: cards, height: stack))
+        }
+        let headHeight = (columns.map(\.headSize.height).max() ?? 0) + pad * 2
+        let bodyHeight = columns.map(\.height).max() ?? 0
+        let content = CGFloat(columns.count) * columnWidth + CGFloat(columns.count - 1) * gap
+        let height = metrics.padding * 2 + headHeight + 8 * metrics.scale + bodyHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var decorations: [BlockBox.Decoration] = []
+        for (index, column) in columns.enumerated() {
+            let x = left + CGFloat(index) * (columnWidth + gap)
+            let tint = wheel[index % wheel.count]
+            let head = CGRect(
+                x: x, y: metrics.padding, width: columnWidth, height: headHeight)
+            decorations.append(
+                .fill(
+                    rect: head, color: tint.copy(alpha: 0.28) ?? tint,
+                    cornerRadius: 5 * metrics.scale))
+            decorations.append(
+                .glyphs(
+                    column.head,
+                    origin: CGPoint(
+                        x: head.midX - column.headSize.width / 2,
+                        y: head.midY + column.headSize.height / 2 - descent(column.head))))
+            var y = head.maxY + 8 * metrics.scale
+            for card in column.cards {
+                let frame = CGRect(x: x, y: y, width: columnWidth, height: card.height)
+                decorations.append(
+                    .fill(
+                        rect: frame, color: theme.palette.background,
+                        cornerRadius: 5 * metrics.scale))
+                decorations.append(
+                    .path(
+                        CGPath(
+                            roundedRect: frame, cornerWidth: 5 * metrics.scale,
+                            cornerHeight: 5 * metrics.scale, transform: nil),
+                        color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+                // A priority is a stripe down the card's own edge, so a glance
+                // over the board finds the urgent ones without reading them.
+                if !card.priority.isEmpty {
+                    decorations.append(
+                        .fill(
+                            rect: CGRect(
+                                x: frame.minX, y: frame.minY, width: 4 * metrics.scale,
+                                height: frame.height),
+                            color: priorityColour(card.priority, theme: theme),
+                            cornerRadius: 2 * metrics.scale))
+                }
+                decorations.append(
+                    .glyphs(
+                        card.label,
+                        origin: CGPoint(
+                            x: frame.minX + pad + 4 * metrics.scale,
+                            y: frame.minY + pad + card.labelSize.height - descent(card.label))))
+                if let details = card.details {
+                    decorations.append(
+                        .glyphs(
+                            details,
+                            origin: CGPoint(
+                                x: frame.minX + pad + 4 * metrics.scale,
+                                y: frame.minY + pad + card.labelSize.height + 2
+                                    + card.detailsSize.height - descent(details))))
+                }
+                y = frame.maxY + 6 * metrics.scale
+            }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    private static func priorityColour(_ priority: String, theme: Theme) -> CGColor {
+        switch priority.lowercased() {
+        case "very high", "high": return CGColor(red: 0.85, green: 0.33, blue: 0.33, alpha: 1)
+        case "low", "very low": return CGColor(red: 0.45, green: 0.70, blue: 0.50, alpha: 1)
+        default: return theme.palette.secondaryText
+        }
     }
 
     // MARK: - Quadrant chart

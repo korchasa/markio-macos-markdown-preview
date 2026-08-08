@@ -218,6 +218,69 @@ enum ClassDiagram {
     }
 }
 
+// MARK: - Requirement diagram
+
+/// Requirements and the things that satisfy them: the same titled boxes with
+/// rows in them, joined by lines that say which way the claim runs.
+enum RequirementDiagram {
+    private static let kinds: Set<String> = [
+        "requirement", "functionalRequirement", "interfaceRequirement",
+        "performanceRequirement", "physicalRequirement", "designConstraint", "element",
+    ]
+    private static let relations: Set<String> = [
+        "contains", "copies", "derives", "satisfies", "verifies", "refines", "traces",
+    ]
+
+    static func parse(_ lines: [Substring]) -> BoxDiagram? {
+        var diagram = BoxDiagram(boxes: [], links: [], direction: .down)
+        var open: Int?
+        for line in lines {
+            if let box = open {
+                if line == "}" {
+                    open = nil
+                    continue
+                }
+                // `id: 1`, `text: the test text.`, `risk: high`
+                guard let colon = line.firstIndex(of: ":") else { return nil }
+                let key = line[line.startIndex..<colon].trimmingCharacters(in: .whitespaces)
+                let value = line[line.index(after: colon)...]
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+                guard !key.isEmpty, !value.isEmpty else { return nil }
+                diagram.boxes[box].compartments[0].append("\(key): \(value)")
+                continue
+            }
+            let words = line.split(separator: " ", omittingEmptySubsequences: true)
+            if let kind = words.first, kinds.contains(String(kind)) {
+                guard words.count == 3, words[2] == "{" else { return nil }
+                let index = diagram.index(of: String(words[1]))
+                diagram.boxes[index].stereotype = String(kind)
+                diagram.boxes[index].compartments = [[]]
+                open = index
+                continue
+            }
+            // `test_entity - satisfies -> test_req`
+            guard words.count == 5, words[1] == "-", relations.contains(String(words[2])),
+                words[3] == "->" || words[3] == "<-"
+            else { return nil }
+            let forwards = words[3] == "->"
+            diagram.links.append(
+                BoxDiagram.Link(
+                    from: diagram.index(of: String(words[forwards ? 0 : 4])),
+                    to: diagram.index(of: String(words[forwards ? 4 : 0])),
+                    label: String(words[2]),
+                    dashed: true,
+                    fromEnd: .none,
+                    toEnd: .arrow,
+                    fromCount: "",
+                    toCount: ""
+                )
+            )
+        }
+        guard open == nil, !diagram.boxes.isEmpty else { return nil }
+        return diagram
+    }
+}
+
 // MARK: - Entity–relationship diagram
 
 enum EntityDiagram {

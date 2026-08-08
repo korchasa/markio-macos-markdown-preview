@@ -709,6 +709,114 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAPacketIsReadAsAContiguousRunOfBits() throws {
+        guard
+            case .packet(let packet)? = MermaidDiagram.parse(
+                """
+                packet-beta
+                title UDP header
+                0-15: "Source port"
+                16-31: "Destination port"
+                +16: "Length"
+                48: "One flag"
+                """
+            )
+        else { return XCTFail("expected a packet diagram") }
+        XCTAssertEqual(packet.title, "UDP header")
+        XCTAssertEqual(
+            packet.fields.map(\.label),
+            [
+                "Source port", "Destination port", "Length", "One flag",
+            ])
+        // `+16` is sixteen more bits after the field above it.
+        XCTAssertEqual(packet.fields.map(\.first), [0, 16, 32, 48])
+        XCTAssertEqual(packet.fields.map(\.last), [15, 31, 47, 48])
+    }
+
+    func testAKanbanBoardTakesItsColumnsFromTheIndentation() throws {
+        guard
+            case .kanban(let board)? = MermaidDiagram.parse(
+                """
+                kanban
+                  Todo
+                    t1[Read the bytes]
+                    t2[Scan the blocks]@{ assigned: 'korchasa', priority: 'High' }
+                  Done
+                    t3[Ship]
+                """
+            )
+        else { return XCTFail("expected a kanban board") }
+        XCTAssertEqual(board.columns.map(\.title), ["Todo", "Done"])
+        XCTAssertEqual(board.columns[0].cards.map(\.label), ["Read the bytes", "Scan the blocks"])
+        XCTAssertEqual(board.columns[0].cards[1].details, ["korchasa"])
+        XCTAssertEqual(board.columns[0].cards[1].priority, "High")
+        XCTAssertEqual(board.columns[1].cards.map(\.label), ["Ship"])
+    }
+
+    func testARequirementDiagramReadsIntoTheSameBoxes() throws {
+        guard
+            case .boxes(let diagram)? = MermaidDiagram.parse(
+                """
+                requirementDiagram
+                requirement speed_req {
+                id: 1
+                text: opens fast.
+                risk: high
+                }
+                element bench {
+                type: measurement
+                }
+                bench - verifies -> speed_req
+                """
+            )
+        else { return XCTFail("expected a requirement diagram") }
+        XCTAssertEqual(diagram.boxes.map(\.name), ["speed_req", "bench"])
+        XCTAssertEqual(diagram.boxes.map(\.stereotype), ["requirement", "element"])
+        XCTAssertEqual(
+            diagram.boxes[0].compartments[0], ["id: 1", "text: opens fast.", "risk: high"])
+        XCTAssertEqual(diagram.links.count, 1)
+        XCTAssertEqual(diagram.links[0].label, "verifies")
+        // The arrow runs from the thing that verifies to the thing verified.
+        XCTAssertEqual(diagram.links[0].from, 1)
+        XCTAssertEqual(diagram.links[0].to, 0)
+    }
+
+    func testWhatTheBoardsRefuse() {
+        for source in [
+            // A hole in the packet, and two fields over one bit.
+            "packet-beta\n0-15: \"A\"\n20-31: \"B\"",
+            "packet-beta\n0-15: \"A\"\n8-31: \"B\"",
+            "packet-beta\n0-15",
+            "packet-beta",
+            // Metadata this does not draw, and a card with no column above it.
+            "kanban\n  Todo\n    t1[A]@{ colour: 'red' }",
+            "kanban\n    t1[A]\n  Todo",
+            "kanban",
+            // A relation this does not know, and an unclosed block.
+            "requirementDiagram\n requirement a {\n id: 1\n }\n a - invents -> a",
+            "requirementDiagram\n requirement a {\n id: 1",
+            "requirementDiagram",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testTheBoardsAreDrawnWhole() throws {
+        for source in [
+            "packet-beta\n0-15: \"Source\"\n16-31: \"Target\"",
+            "kanban\n  Todo\n    t1[Read]\n  Done\n    t2[Ship]",
+            "requirementDiagram\nrequirement a {\nid: 1\n}\nelement b {\ntype: test\n}\nb - verifies -> a",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 6, source)
+            XCTAssertGreaterThan(box.height, 50, source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid
