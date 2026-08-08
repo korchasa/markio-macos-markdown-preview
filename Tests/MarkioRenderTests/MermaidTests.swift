@@ -496,6 +496,101 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAJourneyScoresEachStepAndNamesWhoTookIt() throws {
+        guard
+            case .journey(let journey)? = MermaidDiagram.parse(
+                """
+                journey
+                    title My working day
+                    section Go to work
+                      Make tea: 5: Me
+                      Go upstairs: 3: Me, Cat
+                    section Go home
+                      Sit down: 5: Me
+                """
+            )
+        else { return XCTFail("expected a journey") }
+        XCTAssertEqual(journey.title, "My working day")
+        XCTAssertEqual(journey.sections, ["Go to work", "Go home"])
+        XCTAssertEqual(journey.tasks.map(\.name), ["Make tea", "Go upstairs", "Sit down"])
+        XCTAssertEqual(journey.tasks.map(\.score), [5, 3, 5])
+        XCTAssertEqual(journey.tasks.map(\.section), [0, 0, 1])
+        XCTAssertEqual(journey.tasks[1].actors, ["Me", "Cat"])
+    }
+
+    func testAGanttCountsDaysFromItsFirstTask() throws {
+        guard
+            case .gantt(let chart)? = MermaidDiagram.parse(
+                """
+                gantt
+                    title A release
+                    dateFormat YYYY-MM-DD
+                    section Writing
+                        Draft  :done, a1, 2026-01-01, 10d
+                        Review :active, a2, after a1, 5d
+                    section Shipping
+                        Build  :crit, a3, after a2, 1w
+                        Live   :milestone, m1, after a3, 0d
+                """
+            )
+        else { return XCTFail("expected a Gantt chart") }
+        XCTAssertEqual(chart.sections, ["Writing", "Shipping"])
+        XCTAssertEqual(chart.tasks.map(\.start), [0, 10, 15, 22])
+        // A week is seven days, and a milestone has no length at all.
+        XCTAssertEqual(chart.tasks.map(\.length), [10, 5, 7, 0])
+        XCTAssertEqual(chart.tasks.map(\.done), [true, false, false, false])
+        XCTAssertEqual(chart.tasks.map(\.critical), [false, false, true, false])
+        XCTAssertTrue(chart.tasks[3].milestone)
+        // The axis can print real dates because the source named one.
+        XCTAssertEqual(chart.origin, GanttChart.day("2026-01-01"))
+    }
+
+    func testAGanttWithoutDatesJustCountsDays() throws {
+        guard
+            case .gantt(let chart)? = MermaidDiagram.parse(
+                "gantt\n  Draft :3d\n  Review :2d"
+            )
+        else { return XCTFail("expected a Gantt chart") }
+        // With no start written down, a task begins where the one above ended.
+        XCTAssertEqual(chart.tasks.map(\.start), [0, 3])
+        XCTAssertNil(chart.origin)
+    }
+
+    func testWhatTheChartsRefuse() {
+        for source in [
+            "journey\n  Make tea: 9: Me",
+            "journey\n  Make tea: 5",
+            "journey",
+            // Excluded days move every bar after them, so the chart would be
+            // drawn on days its author did not ask for.
+            "gantt\n  excludes weekends\n  Draft :3d",
+            // Another date format would put the bars on the wrong days.
+            "gantt\n  dateFormat DD-MM-YYYY\n  Draft :3d",
+            // A reference to a task that was never named.
+            "gantt\n  Draft :after nothing, 3d",
+            // A unit this does not know.
+            "gantt\n  Draft :3y",
+            "gantt",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testTheChartsAreDrawnWhole() throws {
+        for source in [
+            "journey\n  title Day\n  section Work\n    Make tea: 5: Me\n    Do work: 1: Me",
+            "gantt\n  title A release\n  section Writing\n    Draft :a1, 3d\n    Review :after a1, 2d",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 8, source)
+            XCTAssertGreaterThan(box.height, 80, source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

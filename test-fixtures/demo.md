@@ -168,3 +168,15 @@ timeline
     section Drawing
       Boxes : Typeset one at a time
 ```
+
+```mermaid
+gantt
+    title Opening a large document
+    dateFormat YYYY-MM-DD
+    section Scanning
+        Map the bytes   :done, a1, 2026-01-01, 2d
+        Scan the blocks :active, a2, after a1, 5d
+    section Drawing
+        First screen    :crit, a3, after a2, 1d
+        Shown           :milestone, m1, after a3, 0d
+```

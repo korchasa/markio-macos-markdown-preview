@@ -17,6 +17,8 @@ enum MermaidDiagram {
     case boxes(BoxDiagram)
     case mindmap(Mindmap)
     case timeline(Timeline)
+    case journey(UserJourney)
+    case gantt(GanttChart)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -39,6 +41,12 @@ enum MermaidDiagram {
         }
         if header == "timeline" {
             return Timeline.parse(rest).map(MermaidDiagram.timeline)
+        }
+        if header == "journey" {
+            return UserJourney.parse(rest).map(MermaidDiagram.journey)
+        }
+        if header == "gantt" {
+            return GanttChart.parse(rest).map(MermaidDiagram.gantt)
         }
         if header == "sequenceDiagram" {
             return SequenceDiagram.parse(rest).map(MermaidDiagram.sequence)

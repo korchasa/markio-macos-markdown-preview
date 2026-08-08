@@ -65,6 +65,10 @@ enum MermaidLayout {
             return mindmap(map, theme: theme, width: width, metrics: metrics)
         case .timeline(let line):
             return timeline(line, theme: theme, width: width, metrics: metrics)
+        case .journey(let journey):
+            return self.journey(journey, theme: theme, width: width, metrics: metrics)
+        case .gantt(let chart):
+            return gantt(chart, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -823,6 +827,365 @@ enum MermaidLayout {
                 )
                 y = card.maxY + 6 * metrics.scale
             }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - User journey
+
+    /// A journey: how each step of it felt, drawn as a line that rises and falls
+    /// over the steps it is scored on.
+    private static func journey(
+        _ journey: UserJourney, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.94)
+        let smallFont = scaled(theme.controlLabel, by: metrics.scale * 0.9)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let pad = 8 * metrics.scale
+
+        struct Step {
+            var name: CTLine
+            var nameSize: CGSize
+            var actors: CTLine?
+            var actorsSize: CGSize
+            var score: Int
+            var column: CGFloat
+            var columnWidth: CGFloat
+            var tint: CGColor
+        }
+        var steps: [Step] = []
+        for (index, task) in journey.tasks.enumerated() {
+            let name = text(task.name, font: font, color: theme.palette.text)
+            var actors: CTLine?
+            var actorsSize = CGSize.zero
+            if !task.actors.isEmpty {
+                let line = text(
+                    task.actors.joined(separator: ", "), font: smallFont,
+                    color: theme.palette.secondaryText)
+                actors = line
+                actorsSize = measure(line)
+            }
+            let nameSize = measure(name)
+            steps.append(
+                Step(
+                    name: name,
+                    nameSize: nameSize,
+                    actors: actors,
+                    actorsSize: actorsSize,
+                    score: task.score,
+                    column: 0,
+                    columnWidth: max(
+                        84 * metrics.scale, max(nameSize.width, actorsSize.width) + pad * 2),
+                    tint: wheel[(task.section ?? index) % wheel.count]
+                )
+            )
+        }
+        var x: CGFloat = 0
+        for index in steps.indices {
+            steps[index].column = x
+            x += steps[index].columnWidth
+        }
+        let content = x
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !journey.title.isEmpty {
+            let line = text(journey.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let bandHeight = journey.sections.isEmpty ? 0 : measure(steps[0].name).height + pad * 2
+        let plotHeight = 130 * metrics.scale
+        let labelHeight =
+            (steps.map(\.nameSize.height).max() ?? 0) + (steps.map(\.actorsSize.height).max() ?? 0)
+            + pad * 2
+        let height = metrics.padding * 2 + titleRoom + bandHeight + plotHeight + labelHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+        let bandTop = metrics.padding + titleRoom
+        for (index, name) in journey.sections.enumerated() {
+            let owned = steps.indices.filter { journey.tasks[$0].section == index }
+            guard let first = owned.first, let last = owned.last else { continue }
+            let band = CGRect(
+                x: left + steps[first].column,
+                y: bandTop,
+                width: steps[last].column + steps[last].columnWidth - steps[first].column,
+                height: bandHeight - 6 * metrics.scale
+            )
+            decorations.append(
+                .fill(
+                    rect: band, color: wheel[index % wheel.count].copy(alpha: 0.22) ?? wheel[0],
+                    cornerRadius: 4 * metrics.scale))
+            let line = text(name, font: font, color: theme.palette.text)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: band.midX - size.width / 2,
+                        y: band.midY + size.height / 2 - descent(line)
+                    )
+                )
+            )
+        }
+
+        // Five rules, one per score, so the height of a point can be read off
+        // the picture rather than guessed at. The top and bottom rules are held
+        // a dot's radius inside the plot, or a five would ride up into the band
+        // above it and a one would sit on the names below.
+        let plotBottom = bandTop + bandHeight + plotHeight
+        let dotRadius = 11 * metrics.scale
+        func level(_ score: Int) -> CGFloat {
+            (plotBottom - dotRadius) - (plotHeight - dotRadius * 2) * CGFloat(score - 1) / 4
+        }
+        for score in 1...5 {
+            let y = level(score)
+            let rule = CGMutablePath()
+            rule.move(to: CGPoint(x: left, y: y))
+            rule.addLine(to: CGPoint(x: left + content, y: y))
+            decorations.append(
+                .path(
+                    rule, color: theme.palette.tableBorder,
+                    lineWidth: score == 1 ? 1 : 0.5, filled: false))
+        }
+        func point(_ step: Step) -> CGPoint {
+            CGPoint(x: left + step.column + step.columnWidth / 2, y: level(step.score))
+        }
+        if steps.count > 1 {
+            let path = CGMutablePath()
+            path.move(to: point(steps[0]))
+            for step in steps.dropFirst() { path.addLine(to: point(step)) }
+            decorations.append(
+                .path(
+                    path, color: theme.palette.secondaryText, lineWidth: 1.5 * metrics.scale,
+                    filled: false))
+        }
+        for step in steps {
+            let centre = point(step)
+            let dot = CGRect(
+                x: centre.x - 11 * metrics.scale, y: centre.y - 11 * metrics.scale,
+                width: 22 * metrics.scale, height: 22 * metrics.scale)
+            decorations.append(
+                .path(
+                    CGPath(ellipseIn: dot, transform: nil), color: step.tint, lineWidth: 0,
+                    filled: true))
+            let score = text(
+                "\(step.score)", font: scaled(theme.bodyBold, by: metrics.scale * 0.85),
+                color: theme.palette.background)
+            let size = measure(score)
+            decorations.append(
+                .glyphs(
+                    score,
+                    origin: CGPoint(
+                        x: dot.midX - size.width / 2,
+                        y: dot.midY + size.height / 2 - descent(score)
+                    )
+                )
+            )
+            var y = plotBottom + pad
+            for (line, size) in [(step.name, step.nameSize)]
+                + (step.actors.map {
+                    [($0, step.actorsSize)]
+                } ?? [])
+            {
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: centre.x - size.width / 2,
+                            y: y + size.height
+                                - descent(line))))
+                y += size.height
+            }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Gantt chart
+
+    /// A Gantt chart: one row per task, its bar spanning the days it takes.
+    private static func gantt(
+        _ chart: GanttChart, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.94)
+        let smallFont = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let sectionFont = scaled(theme.bodyBold, by: metrics.scale * 0.94)
+        let pad = 6 * metrics.scale
+
+        let names = chart.tasks.map { text($0.name, font: font, color: theme.palette.text) }
+        let sectionNames = chart.sections.map {
+            text($0, font: sectionFont, color: theme.palette.text)
+        }
+        let gutter =
+            max(
+                names.map { measure($0).width }.max() ?? 0,
+                sectionNames.map { measure($0).width }.max() ?? 0
+            ) + 16 * metrics.scale
+        let rowHeight = (names.map { measure($0).height }.max() ?? 12) + pad * 2
+        let span = chart.tasks.map { $0.start + $0.length }.max() ?? 1
+        // A day gets at least a hair of width, and the plot never gets so wide
+        // that the caller's shrinking cannot bring it back.
+        let plotWidth = max(
+            240 * metrics.scale, min(430 * metrics.scale, span * 14 * metrics.scale))
+        let perDay = span > 0 ? plotWidth / span : plotWidth
+        let content = gutter + plotWidth
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !chart.title.isEmpty {
+            let line = text(chart.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        let axisHeight =
+            measure(text("00-00", font: smallFont, color: theme.palette.text)).height
+            + 10 * metrics.scale
+        // A section takes a row of its own before the tasks under it.
+        var rows = chart.tasks.count
+        var lastSection: Int?
+        for task in chart.tasks where task.section != lastSection {
+            rows += 1
+            lastSection = task.section
+        }
+        let height = metrics.padding * 2 + titleRoom + axisHeight + CGFloat(rows) * rowHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        let plotLeft = left + gutter
+        var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine)
+                    )
+                )
+            )
+        }
+
+        // Five ticks across the span, each with the day it stands for. Without a
+        // date in the source the axis counts days from the first task instead.
+        let axisTop = metrics.padding + titleRoom
+        let bodyTop = axisTop + axisHeight
+        let bodyBottom = bodyTop + CGFloat(rows) * rowHeight
+        for step in 0...4 {
+            let day = span * Double(step) / 4
+            let x = plotLeft + CGFloat(day) * perDay
+            let rule = CGMutablePath()
+            rule.move(to: CGPoint(x: x, y: bodyTop))
+            rule.addLine(to: CGPoint(x: x, y: bodyBottom))
+            decorations.append(
+                .path(rule, color: theme.palette.tableBorder, lineWidth: 0.5, filled: false))
+            let words =
+                chart.origin.map { GanttChart.date($0 + Int(day.rounded())) }
+                ?? "day \(Int(day.rounded()))"
+            let line = text(words, font: smallFont, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: min(
+                            left + content - size.width,
+                            max(left, x - size.width / 2)),
+                        y: bodyTop - 6 * metrics.scale - descent(line)
+                    )
+                )
+            )
+        }
+
+        var y = bodyTop
+        lastSection = nil
+        for (index, task) in chart.tasks.enumerated() {
+            if task.section != lastSection {
+                lastSection = task.section
+                if let section = task.section {
+                    let line = sectionNames[section]
+                    let size = measure(line)
+                    let band = CGRect(
+                        x: left, y: y, width: content, height: rowHeight - 2 * metrics.scale)
+                    decorations.append(
+                        .fill(
+                            rect: band,
+                            color: wheel[section % wheel.count].copy(alpha: 0.16) ?? wheel[0],
+                            cornerRadius: 3 * metrics.scale))
+                    decorations.append(
+                        .glyphs(
+                            line,
+                            origin: CGPoint(
+                                x: left + 6 * metrics.scale,
+                                y: band.midY + size.height / 2 - descent(line))))
+                }
+                y += rowHeight
+            }
+            let line = names[index]
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: plotLeft - 10 * metrics.scale - size.width,
+                        y: y + rowHeight / 2 + size.height / 2 - descent(line))))
+            let colour =
+                task.critical
+                ? CGColor(red: 0.85, green: 0.33, blue: 0.33, alpha: 1)
+                : task.done
+                    ? theme.palette.secondaryText
+                    : task.active
+                        ? wheel[0]
+                        : wheel[(task.section ?? 0) % wheel.count]
+            let barTop = y + pad
+            let barHeight = rowHeight - pad * 2
+            if task.milestone {
+                // No length to draw, so a milestone is the diamond the day it
+                // falls on, not a bar of zero width nobody would see.
+                let centre = CGPoint(
+                    x: plotLeft + CGFloat(task.start) * perDay, y: barTop + barHeight / 2)
+                let radius = barHeight / 2
+                let diamond = CGMutablePath()
+                diamond.move(to: CGPoint(x: centre.x, y: centre.y - radius))
+                diamond.addLine(to: CGPoint(x: centre.x + radius, y: centre.y))
+                diamond.addLine(to: CGPoint(x: centre.x, y: centre.y + radius))
+                diamond.addLine(to: CGPoint(x: centre.x - radius, y: centre.y))
+                diamond.closeSubpath()
+                decorations.append(.path(diamond, color: colour, lineWidth: 0, filled: true))
+            } else {
+                let bar = CGRect(
+                    x: plotLeft + CGFloat(task.start) * perDay,
+                    y: barTop,
+                    width: max(2 * metrics.scale, CGFloat(task.length) * perDay),
+                    height: barHeight
+                )
+                decorations.append(
+                    .fill(
+                        rect: bar, color: task.done ? (colour.copy(alpha: 0.45) ?? colour) : colour,
+                        cornerRadius: 3 * metrics.scale))
+            }
+            y += rowHeight
         }
         return Drawing(
             decorations: decorations,

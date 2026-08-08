@@ -303,6 +303,19 @@ band each period is a tinted head with a dot on the axis, and what happened in
 it is a stack of cards below. The colour comes from the section where there is
 one and from the column where there is not.
 
+A journey is a line that rises and falls over the steps it is scored on, with
+the sections banded above it and each step's name and actors written under its
+own column. The top and bottom rules are held a dot's radius inside the plot, or
+a five would ride up into the band above it and a one would sit on the names.
+
+A Gantt chart counts days from its first task and nothing here knows about
+calendars beyond turning `YYYY-MM-DD` into a day number and back, which is why
+`after`/`until` references, durations in days, weeks and hours, and bars all
+work in the same units. A chart that excludes weekends is refused rather than
+drawn on days its author did not ask for, and so is one written in another date
+format. A milestone has no length, so it is drawn as a diamond on its day rather
+than a bar nobody would see.
+
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which
 slice is which by colour, so the colours have to stay apart from each other on
