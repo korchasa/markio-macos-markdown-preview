@@ -11,6 +11,8 @@ public enum BlockKind: UInt8, Sendable {
     case thematicBreak
     case table
     case frontMatter
+    /// The text of a footnote (`[^label]: …`), drawn beside its label.
+    case footnoteDefinition
 }
 
 extension BlockKind {
@@ -18,7 +20,8 @@ extension BlockKind {
     public var isLeaf: Bool {
         switch self {
         case .document, .blockQuote, .list, .listItem: return false
-        case .paragraph, .heading, .codeBlock, .htmlBlock, .thematicBreak, .table, .frontMatter:
+        case .paragraph, .heading, .codeBlock, .htmlBlock, .thematicBreak, .table, .frontMatter,
+            .footnoteDefinition:
             return true
         }
     }

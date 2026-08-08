@@ -524,8 +524,7 @@ final class DocumentWindowController: NSWindowController {
         case .external(let external):
             NSWorkspace.shared.open(external)
         case .anchor(let slug):
-            guard let index = headings.firstIndex(where: { $0.slug == slug }) else { return }
-            jumpToHeading(index)
+            jumpToAnchor(slug)
         case .document(let file, let anchor):
             NSDocumentController.shared.openDocument(withContentsOf: file, display: true) {
                 document, _, _ in
@@ -538,9 +537,19 @@ final class DocumentWindowController: NSWindowController {
         }
     }
 
+    /// Scroll to whatever the anchor names: a heading, or the text of a
+    /// footnote. Footnote anchors carry a prefix of their own, so the two kinds
+    /// can never be confused for one another.
     func jumpToAnchor(_ slug: String) {
-        guard let index = headings.firstIndex(where: { $0.slug == slug }) else { return }
-        jumpToHeading(index)
+        if let index = headings.firstIndex(where: { $0.slug == slug }) {
+            jumpToHeading(index)
+            return
+        }
+        for (label, block) in displayed.footnotes where Footnote.anchor(label: label) == slug {
+            guard let ordinal = layout.ordinal(ofLeaf: block) else { return }
+            documentView.reveal(ordinal: ordinal)
+            return
+        }
     }
 
     @objc func copyFilePath(_ sender: Any?) {

@@ -109,6 +109,8 @@ struct BlockLayoutEngine {
             builder.layoutRule()
         case .table:
             builder.layoutTable(leaf: leaf)
+        case .footnoteDefinition:
+            builder.layoutFootnote(block)
         default:
             builder.layoutParagraph(block)
         }
@@ -202,6 +204,71 @@ struct BlockLayoutEngine {
             place(
                 styled, inline: inline, width: available, x: indent,
                 lineHeight: theme.metrics.lineHeightMultiple)
+        }
+
+        /// A footnote's text, set smaller and indented, with its label standing
+        /// in the space that indent opens up.
+        ///
+        /// The label is drawn rather than kept in the text so that it lines up
+        /// under a run of definitions no matter how long each one is — and so
+        /// that Copy gives the note, not the bracket syntax that named it.
+        mutating func layoutFootnote(_ block: Block) {
+            let content = document.content(of: leaf)
+            let inline = parseInline(content)
+            let styled = AttributedBuilder.build(
+                content: content,
+                inline: inline,
+                theme: theme,
+                baseFont: theme.footnote,
+                baseColor: theme.palette.secondaryText,
+                image: { [engine] link, maxHeight in
+                    engine.inlineImage(link: link, maxHeight: maxHeight)
+                }
+            )
+            let marker = footnoteLabel(document.text(block.info))
+            // Wide enough for the label the note actually carries: `[^1]` and
+            // `[^design-notes]` are both legal, and a fixed gutter would either
+            // waste space or let the long one run into the text.
+            let markerWidth = CGFloat(
+                CTLineGetTypographicBounds(
+                    CTLineCreateWithAttributedString(marker), nil, nil, nil)
+            )
+            let gutter = max(theme.metrics.listIndent, markerWidth + 8)
+            place(
+                styled,
+                inline: inline,
+                width: available - gutter,
+                x: indent + gutter,
+                lineHeight: theme.metrics.lineHeightMultiple
+            )
+            addFootnoteLabel(marker, gutter: gutter)
+        }
+
+        private func footnoteLabel(_ label: String) -> NSAttributedString {
+            NSAttributedString(
+                string: label + ".",
+                attributes: [
+                    AttributedBuilder.fontKey: theme.footnote,
+                    AttributedBuilder.colorKey: theme.palette.link,
+                ]
+            )
+        }
+
+        /// The label beside a footnote's first line, right-aligned into the
+        /// gutter the text was indented by.
+        private mutating func addFootnoteLabel(_ attributed: NSAttributedString, gutter: CGFloat) {
+            guard
+                let line = Typesetter.singleLine(
+                    attributed,
+                    x: indent,
+                    width: gutter - 6,
+                    baseline: firstLineBaseline(),
+                    alignment: .right
+                )
+            else { return }
+            segments.append(
+                BlockBox.Segment(attributed: attributed, lines: [line], textOffset: -1)
+            )
         }
 
         // MARK: Images
@@ -636,7 +703,8 @@ struct BlockLayoutEngine {
             InlineParser.parse(
                 content: content,
                 references: document.references,
-                documentBytes: document.bytes
+                documentBytes: document.bytes,
+                footnotes: document.footnotes
             )
         }
 
@@ -761,18 +829,23 @@ struct BlockLayoutEngine {
                 }
                 if span.style.contains(.link), span.link >= 0 {
                     for rect in rects {
-                        decorations.append(
-                            .fill(
-                                rect: CGRect(
-                                    x: rect.minX,
-                                    y: rect.maxY - 1,
-                                    width: rect.width,
-                                    height: 1
-                                ),
-                                color: theme.palette.link,
-                                cornerRadius: 0
+                        // A footnote marker is clickable but not underlined: a
+                        // rule under a raised digit reads as a stray mark
+                        // rather than as a link.
+                        if !span.style.contains(.footnote) {
+                            decorations.append(
+                                .fill(
+                                    rect: CGRect(
+                                        x: rect.minX,
+                                        y: rect.maxY - 1,
+                                        width: rect.width,
+                                        height: 1
+                                    ),
+                                    color: theme.palette.link,
+                                    cornerRadius: 0
+                                )
                             )
-                        )
+                        }
                         links.append(
                             BlockBox.LinkRegion(
                                 rect: rect.insetBy(dx: 0, dy: -2),

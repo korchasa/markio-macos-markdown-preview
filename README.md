@@ -22,14 +22,17 @@ Markio 2 reads. It never writes a file it opens.
 - Inline: emphasis, strong, code spans, links (inline, reference, autolink),
   entities, hard and soft breaks
 - The inline HTML that carries meaning — `<b>`, `<em>`, `<kbd>`, `<mark>`,
-  `<u>`, `<del>`, `<code>`, `<br>` and their synonyms — mapped straight to text
-  styles. There is no HTML engine; anything else is dropped rather than shown
+  `<u>`, `<del>`, `<code>`, `<sup>`, `<sub>`, `<br>` and their synonyms —
+  mapped straight to text styles. There is no HTML engine; anything else is
+  dropped rather than shown
 - Inline math kept as its source in a distinct style
 - Syntax highlighting for Swift, Python, Go, Rust, shell, SQL, JSON, YAML and
   the C family, in light and dark
 - A pasted terminal log in its own colours: the sixteen basic colours, the
   256-colour cube and true colour; a ```diff block as added and removed bands
-- Images beside the document, decoded at the size they are drawn
+- Images beside the document, decoded at the size they are drawn — on a line
+  of their own, or inside a sentence
+- Footnotes: a raised label in the text, the note itself set smaller below
 
 Not yet: diagrams and typeset mathematics. Both are separate engines, and
 neither is worth the weight in a viewer built to stay small.
@@ -46,6 +49,7 @@ neither is worth the weight in a viewer built to stay small.
 - While searching, the strip at the right edge shows where the matches are;
   click one to go there
 - Hover a code block for its language and a Copy button
+- Click a footnote's marker to jump to the note
 - **File ▸ Compare…** shows the document against an older version of itself:
   what it gained on a green band, what it lost on a red one, in the same window
 - Edit the file in another app and the view reloads where you were reading

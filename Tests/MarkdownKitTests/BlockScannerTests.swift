@@ -263,6 +263,54 @@ final class BlockScannerTests: XCTestCase {
         XCTAssertEqual(document.text(reference!.title), "Title")
     }
 
+    func testFootnoteDefinitionsBecomeTheirOwnBlocks() {
+        let document = Document(
+            text: """
+                Text.[^1]
+
+                [^1]: The first note.
+                [^long]: A note whose text
+                    runs onto a second line.
+                """
+        )
+        XCTAssertEqual(
+            TreeDump.dump(document),
+            """
+            para "Text.[^1]"
+            footnote(1) "The first note."
+            footnote(long) "A note whose text\\nruns onto a second line."
+            """
+        )
+        XCTAssertEqual(Set(document.footnotes.keys), ["1", "long"])
+    }
+
+    func testAOneWordFootnoteIsNotReadAsALinkReference() {
+        // `[^1]: text` has the shape of a link reference definition, and a
+        // one-word note is where the two spellings meet.
+        let document = Document(text: "See.[^1]\n\n[^1]: Short.")
+        XCTAssertEqual(
+            TreeDump.dump(document),
+            """
+            para "See.[^1]"
+            footnote(1) "Short."
+            """
+        )
+        XCTAssertTrue(document.references.isEmpty)
+    }
+
+    func testBracketFormsThatAreNotFootnotes() {
+        let document = Document(text: "[^]: nothing\n\n[^a[b]]: nested\n\n[^1] no colon")
+        XCTAssertEqual(
+            TreeDump.dump(document),
+            """
+            para "[^]: nothing"
+            para "[^a[b]]: nested"
+            para "[^1] no colon"
+            """
+        )
+        XCTAssertTrue(document.footnotes.isEmpty)
+    }
+
     func testEmptyDocument() {
         let document = Document(text: "")
         XCTAssertTrue(document.isEmpty)

@@ -67,6 +67,8 @@ public struct Theme {
     /// Small label for the controls drawn over the text — the language badge
     /// and the Copy pill on a fenced block.
     public var controlLabel: CTFont
+    /// The text of a footnote, set smaller than the prose it belongs to.
+    public var footnote: CTFont
     public var headings: [CTFont]
 
     public init(isDark: Bool, metrics: Metrics = Metrics()) {
@@ -82,6 +84,7 @@ public struct Theme {
         mono = Theme.monoFont(size: size * 0.92, weight: .regular)
         monoBold = Theme.monoFont(size: size * 0.92, weight: .bold)
         controlLabel = Theme.systemFont(size: 11, weight: .medium)
+        footnote = Theme.systemFont(size: size * 0.9, weight: .regular)
         // Heading scale, largest first, tuned to stay readable next to 14 pt body.
         let scales: [CGFloat] = [1.9, 1.5, 1.25, 1.1, 1.0, 0.92]
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }

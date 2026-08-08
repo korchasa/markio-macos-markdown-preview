@@ -19,7 +19,8 @@ enum InlineDump {
         let parsed = InlineParser.parse(
             content: content,
             references: document.references,
-            documentBytes: document.bytes
+            documentBytes: document.bytes,
+            footnotes: document.footnotes
         )
         var out = ""
         for run in parsed.runs {

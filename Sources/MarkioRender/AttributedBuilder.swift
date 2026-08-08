@@ -156,12 +156,12 @@ enum AttributedBuilder {
             mask.insert(.monospaced)
         }
         var font = mask.isEmpty ? base : styledFont(base: base, mask: mask, theme: theme)
-        // A raised or lowered run is smaller text on a shifted baseline. The
-        // shift is a fraction of the *base* size, so `H₂O` in a heading moves
-        // as far as the heading is big.
-        let shift = baselineShift(style: run.style, size: CTFontGetSize(base))
-        if shift != 0 {
-            font = CTFontCreateCopyWithAttributes(font, CTFontGetSize(font) * 0.72, nil, nil)
+        // A raised or lowered run is smaller text on a shifted baseline.
+        var shift: CGFloat = 0
+        if run.style.contains(.raised) || run.style.contains(.lowered) {
+            let small = CTFontCreateCopyWithAttributes(font, CTFontGetSize(font) * 0.72, nil, nil)
+            shift = baselineShift(style: run.style, base: base, small: small)
+            font = small
         }
         var foreground = color
         if run.style.contains(.link), !isImageAlt { foreground = theme.palette.link }
@@ -208,15 +208,30 @@ enum AttributedBuilder {
         )
     }
 
-    /// How far off the baseline a `<sup>` or `<sub>` run sits, in points.
+    /// How far off the baseline a `<sup>`, `<sub>` or footnote marker sits, in
+    /// points.
+    ///
+    /// The distance is what the base font's own ascent and descent leave over
+    /// once the smaller glyphs are placed. Shift a run past those and CoreText
+    /// reports a taller line, so the one line of a paragraph that carries a
+    /// marker sits further from its neighbour than every other line — a
+    /// paragraph with three footnotes in it looks visibly loose. Fitting inside
+    /// the metrics keeps the leading even and still puts the marker clearly
+    /// above the x-height.
     ///
     /// A raised run takes a negative offset because the text matrix is flipped
     /// — the same flip that lets block offsets be read straight out of the
     /// height index. Get the sign the intuitive way round and superscripts come
     /// out as subscripts, which is exactly how it looked the first time.
-    private static func baselineShift(style: InlineStyle, size: CGFloat) -> CGFloat {
-        if style.contains(.raised) { return -size * 0.33 }
-        if style.contains(.lowered) { return size * 0.15 }
+    private static func baselineShift(style: InlineStyle, base: CTFont, small: CTFont)
+        -> CGFloat
+    {
+        if style.contains(.raised) {
+            return -max(0, CTFontGetAscent(base) - CTFontGetAscent(small)) * 0.9
+        }
+        if style.contains(.lowered) {
+            return max(0, CTFontGetDescent(base) - CTFontGetDescent(small)) * 0.9
+        }
         return 0
     }
 

@@ -32,6 +32,14 @@ screen exists. Everything downstream depends on that staying true.
   prints twice.
 - **`unescaped()` works in byte space.** A character-based version corrupts
   multi-byte UTF-8.
+- **`[^1]: text` is a footnote, and it has the shape of a link reference
+  definition.** `ReferenceCollector` refuses labels starting with a caret; drop
+  that guard and a one-word note is swallowed as a definition, line and all, so
+  the note simply disappears from the document.
+- **Whether `[^label]` is a reference is a fact about the document**, not about
+  the block. The labels are handed to `InlineParser.parse`; a caller that
+  forgets them gets literal brackets, which is also the right answer for a
+  block with no document behind it.
 
 ## Tests
 

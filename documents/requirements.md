@@ -43,13 +43,17 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   reference, autolink), images, character entities, hard and soft breaks.
 - **PARSE-5** Inline HTML that carries a text style — `b`, `strong`, `i`, `em`,
   `cite`, `s`, `del`, `strike`, `u`, `ins`, `mark`, `kbd`, `code`, `samp`,
-  `tt`, `var`, and `br`/`wbr` — becomes that style. Every other tag is dropped
-  with its content kept. There is no HTML parser beyond this mapping.
+  `tt`, `var`, `sup`, `sub`, and `br`/`wbr` — becomes that style. Every other
+  tag is dropped with its content kept. There is no HTML parser beyond this
+  mapping.
 - **PARSE-6** Inline math (`$…$`) is preserved as its source text in a
   distinct style. It is not typeset as mathematics.
 - **PARSE-7** Malformed UTF-8 is displayed, not rejected: a viewer must show
   whatever it was handed.
 - **PARSE-8** Parsing never depends on the theme, the window, or AppKit.
+- **PARSE-9** A line of the form `[^label]: text` is a footnote, and `[^label]`
+  in the prose is a reference to it. A reference whose label nothing defines
+  stays the literal brackets the author typed.
 
 ## VIEW — What the reader sees
 
@@ -84,16 +88,30 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   sixteen basic colours, the 256-colour cube and true colour — and never shown
   as text. Escapes that describe a terminal that is not there are dropped.
   Find and Copy see the text without them.
-- **VIEW-16** A paragraph that is nothing but an image shows the image, decoded
-  at the size it is drawn and no larger, from a file beside the document. A
-  remote address is not fetched; anything that cannot be shown falls back to
-  the alt text.
+- **VIEW-16** Images from a file beside the document are shown, decoded at the
+  size they are drawn and no larger. A paragraph that is nothing but an image
+  shows it full width; an image inside a sentence is drawn on the line, at most
+  a little taller than the text, and its alt text gives way to it. A remote
+  address is not fetched; a picture that cannot be read leaves an empty frame
+  where it belongs, so Find and the drawing agree on every character either
+  way.
 - **VIEW-17** A document can be compared against an older version of itself
   (File ▸ Compare…): blocks added since the baseline and blocks removed from it
   are marked in place, in one window with one scroll. The outline and find
   cover the removed text as well. Stop Comparing returns the plain document; an
   edit while comparing re-reads the baseline and compares again. The baseline
   choice lasts for the session only.
+- **VIEW-18** The app carries its own icon, drawn from code and compiled as an
+  asset catalog, so every size comes from one drawing.
+- **VIEW-19** Quitting with documents open and relaunching brings those windows
+  back, whatever the system's global "close windows when quitting" setting says.
+- **VIEW-20** `<sup>` and `<sub>` are drawn smaller, above and below the
+  baseline. The shift stays inside what the surrounding font's own ascent and
+  descent allow, so a paragraph carrying markers keeps the leading of one that
+  does not.
+- **VIEW-21** A footnote reference is a raised, clickable label; clicking it
+  scrolls to the note. The note itself is set smaller, indented, with its label
+  standing beside its first line.
 
 ## QL — Quick Look
 
@@ -104,11 +122,6 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   error back, and macOS shows its own plain-text preview.
 - **QL-3** The extension claims Markdown only, never plain text, and reads
   nothing from the app — it is sandboxed apart from it.
-
-- **VIEW-18** The app carries its own icon, drawn from code and compiled as an
-  asset catalog, so every size comes from one drawing.
-- **VIEW-19** Quitting with documents open and relaunching brings those windows
-  back, whatever the system's global "close windows when quitting" setting says.
 
 ## PERF — The reason it exists
 

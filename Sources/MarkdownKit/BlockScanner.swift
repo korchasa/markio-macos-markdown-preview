@@ -392,7 +392,10 @@ struct BlockScanner {
         // which case the line is simply more of that paragraph and no marker on
         // it means anything.
         if indent >= 4 {
-            if openLeaf >= 0, blocks[Int(openLeaf)].kind == .paragraph {
+            if openLeaf >= 0,
+                blocks[Int(openLeaf)].kind == .paragraph
+                    || blocks[Int(openLeaf)].kind == .footnoteDefinition
+            {
                 appendLine(line, contentStart: textPos)
                 return
             }
@@ -520,7 +523,26 @@ struct BlockScanner {
             }
         }
 
-        if openLeaf >= 0, blocks[Int(openLeaf)].kind == .paragraph {
+        // A footnote's text starts a block of its own even in the middle of a
+        // run of definitions, which is how people write them: one per line, no
+        // blank line between. Continuation lines then behave like a paragraph's.
+        if let footnote = footnoteDefinition(at: textPos, lineEnd: lineEnd) {
+            closeLeaf()
+            let block = Block(
+                kind: .footnoteDefinition,
+                parent: stack[stack.count - 1].block,
+                firstLine: Int32(line),
+                info: footnote.label
+            )
+            appendLeaf(block, line: line, contentStart: footnote.contentStart)
+            openLeaf = Int32(blocks.count - 1)
+            return
+        }
+
+        if openLeaf >= 0,
+            blocks[Int(openLeaf)].kind == .paragraph
+                || blocks[Int(openLeaf)].kind == .footnoteDefinition
+        {
             appendLine(line, contentStart: textPos)
             return
         }
@@ -791,7 +813,38 @@ struct BlockScanner {
         if fenceAt(pos, lineEnd: end) != nil { return true }
         if isThematicBreak(from: pos, to: end) { return true }
         if parseListMarker(at: pos, col: col, lineEnd: end) != nil { return true }
+        if footnoteDefinition(at: pos, lineEnd: end) != nil { return true }
         return false
+    }
+
+    // MARK: - Footnotes
+
+    /// A line of the form `[^label]: text`, or nil.
+    ///
+    /// The label may not be empty and may not contain a bracket of its own, so
+    /// `[^]` and `[^a[b]]:` are ordinary text. The text after the colon may be
+    /// empty — a definition someone has not written yet still marks the label as
+    /// defined, which keeps its references from turning back into raw brackets.
+    private func footnoteDefinition(at start: Int, lineEnd: Int) -> (
+        label: ByteRange, contentStart: Int
+    )? {
+        var index = start
+        guard index + 1 < lineEnd, bytes[index] == ASCII.leftBracket,
+            bytes[index + 1] == ASCII.caret
+        else { return nil }
+        index += 2
+        let labelStart = index
+        while index < lineEnd, bytes[index] != ASCII.rightBracket {
+            if bytes[index] == ASCII.leftBracket { return nil }
+            index += 1
+        }
+        guard index < lineEnd, index > labelStart else { return nil }
+        let label = ByteRange(labelStart, index)
+        index += 1
+        guard index < lineEnd, bytes[index] == ASCII.colon else { return nil }
+        index += 1
+        while index < lineEnd, isSpaceOrTab(bytes[index]) { index += 1 }
+        return (label, index)
     }
 
     // MARK: - Tables

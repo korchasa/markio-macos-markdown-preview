@@ -48,6 +48,18 @@ here is `@MainActor` except the parts that deliberately are not.
 - **Images are decoded at draw width, never at natural size.** `ImageLoader`
   goes through `CGImageSourceCreateThumbnailAtIndex` with a byte budget; loading
   a full-size photo undoes the memory design in one line.
+- **Whether an inline picture is drawn depends on its destination alone.**
+  `InlineImage` decides, and it must not ask whether the file decodes: Find
+  projects the same text with no loader, and the two have to agree character
+  for character. An unreadable picture leaves an empty frame.
+- **A line's height comes from its runs, not from `CTLineGetTypographicBounds`.**
+  That call folds a baseline offset into the descent, so a single superscript
+  would make one line of a paragraph taller than its neighbours. Run bounds are
+  unshifted; a run delegate — an inline picture — still reports its full height,
+  which is what keeps room for pictures.
+- **A footnote's gutter is measured from its own label.** Labels are free text,
+  and a fixed indent either wastes space or lets `[^design-notes]` run into the
+  note.
 
 ## Tests
 

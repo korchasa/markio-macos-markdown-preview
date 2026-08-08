@@ -15,6 +15,10 @@ public struct Document: Sendable {
     /// Link reference definitions (`[label]: url "title"`), lowercased label →
     /// destination and title.
     public let references: [String: LinkReference]
+    /// Footnote definitions, normalized label → the block that holds the text.
+    /// A `[^label]` reference is only a footnote when its label is in here;
+    /// anything else stays the literal brackets the author typed.
+    public let footnotes: [String: Int32]
 
     public struct LinkReference: Sendable, Equatable {
         public var destination: ByteRange
@@ -43,13 +47,20 @@ public struct Document: Sendable {
         self.lines = lines
         self.references = references
         var leaves: [Int32] = []
+        var footnotes: [String: Int32] = [:]
         leaves.reserveCapacity(blocks.count / 2 + 1)
         for index in blocks.indices where blocks[index].kind.isLeaf {
             // A paragraph that held nothing but link definitions is gone.
             if blocks[index].lineCount <= 0, blocks[index].kind != .thematicBreak { continue }
+            if blocks[index].kind == .footnoteDefinition {
+                // First definition wins, the way link references do.
+                let label = LinkLabel.normalize(parsed.text(in: blocks[index].info))
+                if footnotes[label] == nil { footnotes[label] = Int32(index) }
+            }
             leaves.append(Int32(index))
         }
         self.leaves = leaves
+        self.footnotes = footnotes
     }
 
     public init(text: String) {

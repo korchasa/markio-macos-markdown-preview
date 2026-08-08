@@ -86,12 +86,8 @@ enum Typesetter {
                     if lineStart + count > paragraphEnd { count = paragraphEnd - lineStart }
                     let range = CFRange(location: lineStart, length: count)
                     let line = CTTypesetterCreateLine(typesetter, range)
-                    var ascent: CGFloat = 0
-                    var descent: CGFloat = 0
-                    var leading: CGFloat = 0
-                    let lineWidth = CGFloat(
-                        CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-                    )
+                    let (ascent, descent, leading) = metrics(of: line)
+                    let lineWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
                     let advance = (ascent + descent + leading) * lineHeightMultiple
                     let baseline = y + ascent + (advance - ascent - descent) / 2
                     let offsetX: CGFloat
@@ -119,6 +115,40 @@ enum Typesetter {
             paragraphStart = paragraphEnd + newline.length
         }
         return Result(lines: lines, height: y - startY, maxWidth: maxWidth)
+    }
+
+    /// A line's height, with baseline shifts taken back out.
+    ///
+    /// `CTLineGetTypographicBounds` folds a run's baseline offset straight into
+    /// the line's descent, so a single superscript makes exactly one line of a
+    /// paragraph taller and the leading around it visibly uneven. Each run
+    /// reports its own unshifted height, and a shift is sized to stay inside
+    /// what the base font's ascent and descent already allow — so the maximum
+    /// over the runs is the height the line really needs. An inline picture
+    /// carries no offset at all: its run delegate reports the room it reserved,
+    /// and the line still grows to hold it.
+    private static func metrics(of line: CTLine) -> (
+        ascent: CGFloat, descent: CGFloat, leading: CGFloat
+    ) {
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        var sawRun = false
+        for run in (CTLineGetGlyphRuns(line) as? [CTRun] ?? []) {
+            var runAscent: CGFloat = 0
+            var runDescent: CGFloat = 0
+            var runLeading: CGFloat = 0
+            _ = CTRunGetTypographicBounds(run, CFRange(), &runAscent, &runDescent, &runLeading)
+            ascent = max(ascent, runAscent)
+            descent = max(descent, runDescent)
+            leading = max(leading, runLeading)
+            sawRun = true
+        }
+        guard sawRun else {
+            _ = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+            return (ascent, descent, leading)
+        }
+        return (ascent, descent, leading)
     }
 
     /// One line placed at an exact baseline.

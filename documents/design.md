@@ -70,6 +70,15 @@ bug first:
 Link reference definitions are stripped by advancing the owning block's first
 line, so the definition never reaches the renderer.
 
+A footnote (`[^label]: text`) is a leaf of its own instead, because it has text
+to draw. The scanner opens one wherever a line starts that way, even in the
+middle of a run of definitions, which is how people write them: one per line,
+no blank line between. Its label goes in the block's `info` range, and
+`Document` collects label → block on the same pass that builds the leaf list.
+The label is shown as written rather than renumbered — numbering would need the
+whole document counted before any block could be drawn, which is the one thing
+this design refuses to do.
+
 ### Inline parsing
 
 Runs on one block's content, producing a **flat array of runs**, not a tree:
@@ -79,6 +88,11 @@ emphasis into cumulative flags is what lets the renderer walk runs in one pass.
 
 The pipeline is tokenize → resolve brackets → resolve emphasis (the CommonMark
 delimiter stack, with flanking rules and the rule of three) → flatten.
+
+A `[^label]` whose label the document defines is resolved before ordinary link
+matching and comes out as a link to the note's anchor, styled as a marker. The
+set of labels has to be handed in: a block knows only itself, and whether those
+brackets are a reference is a fact about the document.
 
 Every token carries the byte offset it was emitted from. Dropping the syntax of
 a link — `[text](url)`, `[text][ref]`, `<autolink>` — is done **by byte range**
@@ -113,8 +127,15 @@ Two details that are not obvious:
 - **Code blocks are built span by span** so byte offsets never have to be
   converted to UTF-16 positions. Highlighting is skipped above 128 KiB.
 - **A single line positioned by its line box sags**, because half the leading
-  is added twice; list markers and checkboxes go through a single-line path that
-  aligns to the first line's baseline instead.
+  is added twice; list markers, checkboxes and footnote labels go through a
+  single-line path that aligns to the first line's baseline instead.
+- **A line's height is taken from its runs, not from the line.**
+  `CTLineGetTypographicBounds` folds a baseline offset into the line's descent,
+  so one superscript would make exactly one line of a paragraph taller and the
+  leading around it visibly uneven. Each run reports its height unshifted, and
+  the shift is sized to fit inside the base font's own ascent and descent. An
+  inline picture carries no offset at all: its run delegate reports the room it
+  reserved, so the line still grows to hold it.
 
 `DocumentLayout` owns the boxes, keyed by ordinal, with a retain margin around
 the visible range. `prepare(range:anchor:)` lays out what is about to be drawn
@@ -152,6 +173,14 @@ decodes through Image I/O at the width the block is drawn at, so a 6000-pixel
 photo costs what an 1800-pixel one does, and holds a bounded cache that evicts
 oldest-first. Only local files beside the document are read — there is no
 network path, so a remote address falls back to the alt text.
+
+An image inside a sentence takes one object-replacement character with a
+CoreText run delegate reserving its box; the picture is drawn where the laid-out
+line put it. `InlineImage` owns the rule that decides which images work this
+way, and the rule looks at the destination **alone** — never at whether the file
+decodes. `FindEngine` projects the same text on a background queue with no
+loader and no window, so a picture that turns out to be unreadable draws an
+empty frame rather than changing the text under the reader's search.
 
 ### Comparing versions
 

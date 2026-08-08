@@ -29,6 +29,9 @@ public struct InlineStyle: OptionSet, Sendable, Hashable {
     public static let raised = InlineStyle(rawValue: 1 << 9)
     /// `<sub>` — drawn smaller and below it.
     public static let lowered = InlineStyle(rawValue: 1 << 10)
+    /// A footnote marker: a link, but set as a marker rather than underlined
+    /// like prose.
+    public static let footnote = InlineStyle(rawValue: 1 << 11)
 }
 
 public enum InlineRunKind: UInt8, Sendable {

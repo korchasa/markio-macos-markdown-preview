@@ -56,6 +56,18 @@ final class PlainTextParityTests: XCTestCase {
         )
     }
 
+    func testFootnotes() {
+        assertParity(
+            """
+            A claim.[^1] Another claim,[^long] and an undefined one.[^gone]
+
+            [^1]: The first note.
+            [^long]: A note with `code` in it, running onto
+                a second line.
+            """
+        )
+    }
+
     func testListsAndQuotes() {
         assertParity(
             """

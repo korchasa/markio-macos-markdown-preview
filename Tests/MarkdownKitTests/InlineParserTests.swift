@@ -113,6 +113,19 @@ final class InlineParserTests: XCTestCase {
         assertInline("costs $5 and $10", "costs $5 and $10")
     }
 
+    func testFootnoteReference() {
+        // The caret is syntax, so the marker reads as the label alone, raised
+        // and linked to the definition it names.
+        assertInline(
+            "A claim.[^1]\n\n[^1]: The note.",
+            "A claim.{l(#fn-1):{^:1}}"
+        )
+    }
+
+    func testAnUndefinedFootnoteStaysLiteral() {
+        assertInline("A claim.[^1]", "A claim.[^1]")
+    }
+
     func testTaskListMarker() {
         let document = Document(text: "- [x] done\n- [ ] todo")
         let checked = document.content(of: document.leaves[0])

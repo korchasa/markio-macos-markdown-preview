@@ -56,6 +56,11 @@ enum ReferenceCollector {
         let end = range.upperBound
         guard index < end, bytes[index] == ASCII.leftBracket else { return nil }
         index += 1
+        // `[^1]: one word` is a footnote, and the scanner has already made a
+        // block of it. Without this the label would be read as a link
+        // reference, and the line would be swallowed as a definition nobody
+        // ever refers to.
+        guard index < end, bytes[index] != ASCII.caret else { return nil }
         let labelStart = index
         while index < end, bytes[index] != ASCII.rightBracket {
             if bytes[index] == ASCII.leftBracket { return nil }

@@ -71,3 +71,13 @@ Inline math such as $e^{i\pi} + 1 = 0$ is kept as its source in a distinct
 style. A very long path like
 `/Users/someone/Library/Application Support/SomeApp/really/deep/path.json`
 wraps instead of pushing the column sideways.
+
+### Footnotes and shifted text
+
+A claim that needs a source keeps its marker in the text,[^native] and the note
+sits below with its label beside it. Water is H<sub>2</sub>O and the area of a
+circle is πr<sup>2</sup>; neither makes the line it sits on taller than the rest.
+
+[^native]: Drawn by CoreText, like every other line here.
+[^unused]: A note nobody refers to is still shown, because deleting text the
+    author wrote is not a viewer's job.

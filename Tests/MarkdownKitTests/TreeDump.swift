@@ -51,6 +51,7 @@ enum TreeDump {
         case .thematicBreak: return "hr"
         case .table: return "table(\(block.aux))"
         case .frontMatter: return "frontmatter"
+        case .footnoteDefinition: return "footnote(\(document.text(block.info)))"
         }
     }
 

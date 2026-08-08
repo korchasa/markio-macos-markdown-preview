@@ -11,17 +11,22 @@
 /// simplification of the interleaved reference algorithm that agrees with it on
 /// every construct that appears in real documents.
 public enum InlineParser {
+    /// - Parameter footnotes: the labels the document defines. A `[^label]`
+    ///   whose label is not among them is text, not a reference — which is why
+    ///   the set has to come from outside a block that knows only itself.
     public static func parse(
         content: [UInt8],
         references: [String: Document.LinkReference],
-        documentBytes: [UInt8]
+        documentBytes: [UInt8],
+        footnotes: [String: Int32] = [:]
     ) -> InlineContent {
         guard !content.isEmpty else { return .empty }
         return content.withUnsafeBufferPointer { buffer in
             var parser = Parser(
                 bytes: buffer,
                 references: references,
-                documentBytes: documentBytes
+                documentBytes: documentBytes,
+                footnotes: footnotes
             )
             parser.tokenize()
             parser.resolveBrackets()
@@ -82,6 +87,7 @@ public enum InlineParser {
         let bytes: UnsafeBufferPointer<UInt8>
         let references: [String: Document.LinkReference]
         let documentBytes: [UInt8]
+        let footnotes: [String: Int32]
         var tokens: [Token] = []
         var links: [InlineLink] = []
         var pendingTextStart = -1
@@ -89,11 +95,13 @@ public enum InlineParser {
         init(
             bytes: UnsafeBufferPointer<UInt8>,
             references: [String: Document.LinkReference],
-            documentBytes: [UInt8]
+            documentBytes: [UInt8],
+            footnotes: [String: Int32]
         ) {
             self.bytes = bytes
             self.references = references
             self.documentBytes = documentBytes
+            self.footnotes = footnotes
             tokens.reserveCapacity(bytes.count / 8 + 4)
         }
 
@@ -409,6 +417,10 @@ public enum InlineParser {
                         index += 1
                         continue
                     }
+                    if matchFootnote(openIndex: openIndex, closeIndex: index) {
+                        index += 1
+                        continue
+                    }
                     if let resolved = matchLink(openIndex: openIndex, closeIndex: index) {
                         index = resolved
                         continue
@@ -422,6 +434,41 @@ public enum InlineParser {
             }
             // Any bracket still open never closed; show it.
             for openIndex in stack { tokens[openIndex].kind = .text }
+        }
+
+        /// Turn `[^label]` into a reference to the footnote of that label.
+        ///
+        /// It becomes a link to the definition's anchor, raised and set small
+        /// the way a footnote marker is. The caret is syntax and is trimmed off
+        /// the text token, so what the reader sees — and what Find searches —
+        /// is the label alone.
+        mutating func matchFootnote(openIndex: Int, closeIndex: Int) -> Bool {
+            guard !tokens[openIndex].isImage, !footnotes.isEmpty else { return false }
+            let start = Int(tokens[openIndex].range.end)
+            let end = Int(tokens[closeIndex].range.start)
+            guard end > start + 1, bytes[start] == ASCII.caret else { return false }
+            let label = bytes.textSlice(ByteRange(start + 1, end))
+            guard footnotes[LinkLabel.normalize(label)] != nil else { return false }
+
+            links.append(
+                InlineLink(
+                    destination: Footnote.destination(label: label),
+                    title: "",
+                    isImage: false
+                )
+            )
+            let link = Int32(links.count - 1)
+            tokens[openIndex].kind = .linkOpen
+            tokens[openIndex].link = link
+            tokens[openIndex].style = [.raised, .footnote]
+            tokens[closeIndex].kind = .linkClose
+            tokens[closeIndex].link = link
+            tokens[closeIndex].style = [.raised, .footnote]
+            for cursor in (openIndex + 1)..<closeIndex
+            where tokens[cursor].kind == .text && Int(tokens[cursor].range.start) == start {
+                tokens[cursor].range.start += 1
+            }
+            return true
         }
 
         /// Turn a matched bracket pair into link tokens, or return nil when
@@ -768,8 +815,17 @@ public enum InlineParser {
                         )
                     }
                     linkStack.append(token.link)
+                    // A footnote marker carries its own style: the link is what
+                    // makes it clickable, the raised style is what makes it
+                    // look like a footnote.
+                    if !token.style.isEmpty { htmlStyles.append(token.style) }
                 case .linkClose:
                     if !linkStack.isEmpty { linkStack.removeLast() }
+                    if !token.style.isEmpty,
+                        let position = htmlStyles.lastIndex(of: token.style)
+                    {
+                        htmlStyles.remove(at: position)
+                    }
                 case .styleOpen:
                     htmlStyles.append(token.style)
                 case .styleClose:

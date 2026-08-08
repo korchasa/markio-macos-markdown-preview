@@ -30,7 +30,8 @@ public enum BlockPlainText {
             let inline = InlineParser.parse(
                 content: content,
                 references: document.references,
-                documentBytes: document.bytes
+                documentBytes: document.bytes,
+                footnotes: document.footnotes
             )
             return inlineText(content: content, inline: inline, skipBytes: skip)
         }
@@ -49,7 +50,8 @@ public enum BlockPlainText {
                 let inline = InlineParser.parse(
                     content: bytes,
                     references: document.references,
-                    documentBytes: document.bytes
+                    documentBytes: document.bytes,
+                    footnotes: document.footnotes
                 )
                 out += inlineText(content: bytes, inline: inline, skipBytes: 0)
                 out += column == columns - 1 ? "\n" : "\t"

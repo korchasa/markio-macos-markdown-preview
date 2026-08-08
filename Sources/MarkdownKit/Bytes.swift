@@ -35,6 +35,7 @@ enum ASCII {
     static let leftBracket: UInt8 = 0x5B
     static let backslash: UInt8 = 0x5C
     static let rightBracket: UInt8 = 0x5D
+    static let caret: UInt8 = 0x5E
     static let backtick: UInt8 = 0x60
     static let lowerA: UInt8 = 0x61
     static let lowerX: UInt8 = 0x78
