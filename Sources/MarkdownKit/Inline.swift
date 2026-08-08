@@ -25,6 +25,10 @@ public struct InlineStyle: OptionSet, Sendable, Hashable {
     public static let keyboard = InlineStyle(rawValue: 1 << 6)
     public static let highlight = InlineStyle(rawValue: 1 << 7)
     public static let underline = InlineStyle(rawValue: 1 << 8)
+    /// `<sup>` — drawn smaller and above the baseline.
+    public static let raised = InlineStyle(rawValue: 1 << 9)
+    /// `<sub>` — drawn smaller and below it.
+    public static let lowered = InlineStyle(rawValue: 1 << 10)
 }
 
 public enum InlineRunKind: UInt8, Sendable {

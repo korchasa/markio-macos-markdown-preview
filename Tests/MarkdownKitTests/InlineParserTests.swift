@@ -100,6 +100,8 @@ final class InlineParserTests: XCTestCase {
         assertInline("<mark>hit</mark>", "{h:hit}")
         assertInline("<b>x</b> <i>y</i> <u>z</u>", "{b:x} {i:y} {u:z}")
         assertInline("line<br>next", "line⏎next")
+        assertInline("E = mc<sup>2</sup>", "E = mc{^:2}")
+        assertInline("H<sub>2</sub>O", "H{v:2}O")
     }
 
     func testUnknownTagsAreDropped() {

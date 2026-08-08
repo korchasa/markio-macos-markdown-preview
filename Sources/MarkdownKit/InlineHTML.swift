@@ -2,9 +2,9 @@
 ///
 /// Markio 2 has no HTML engine, so a tag can only mean something if the native
 /// renderer already knows how to draw it. `<kbd>`, `<mark>`, `<b>`, `<i>`,
-/// `<u>`, `<s>`, `<code>` and `<br>` all have exact native equivalents and are
-/// honoured; every other well-formed tag is dropped, leaving its text content
-/// visible. Nothing is executed and nothing is fetched — there is no engine to
+/// `<u>`, `<s>`, `<code>`, `<sup>`, `<sub>` and `<br>` all have exact native
+/// equivalents and are honoured; every other well-formed tag is dropped,
+/// leaving its text content visible. Nothing is executed and nothing is fetched — there is no engine to
 /// do either.
 enum InlineHTML {
     struct Tag {
@@ -31,6 +31,8 @@ enum InlineHTML {
         "samp": .code,
         "tt": .code,
         "var": .emphasis,
+        "sup": .raised,
+        "sub": .lowered,
     ]
 
     /// Parse a well-formed tag starting at `<`. Returns nil when the text is

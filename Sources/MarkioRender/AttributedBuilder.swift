@@ -133,7 +133,14 @@ enum AttributedBuilder {
         {
             mask.insert(.monospaced)
         }
-        let font = mask.isEmpty ? base : styledFont(base: base, mask: mask, theme: theme)
+        var font = mask.isEmpty ? base : styledFont(base: base, mask: mask, theme: theme)
+        // A raised or lowered run is smaller text on a shifted baseline. The
+        // shift is a fraction of the *base* size, so `H₂O` in a heading moves
+        // as far as the heading is big.
+        let shift = baselineShift(style: run.style, size: CTFontGetSize(base))
+        if shift != 0 {
+            font = CTFontCreateCopyWithAttributes(font, CTFontGetSize(font) * 0.72, nil, nil)
+        }
         var foreground = color
         if run.style.contains(.link), !isImageAlt { foreground = theme.palette.link }
         if run.style.contains(.math) { foreground = theme.palette.secondaryText }
@@ -142,11 +149,26 @@ enum AttributedBuilder {
             fontKey: font,
             colorKey: foreground,
         ]
+        if shift != 0 {
+            attributes[NSAttributedString.Key(kCTBaselineOffsetAttributeName as String)] = shift
+        }
         if run.style.contains(.strikethrough) {
             attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
             attributes[.strikethroughColor] = NSColor(cgColor: foreground) ?? NSColor.labelColor
         }
         attributed.append(NSAttributedString(string: text, attributes: attributes))
+    }
+
+    /// How far off the baseline a `<sup>` or `<sub>` run sits, in points.
+    ///
+    /// A raised run takes a negative offset because the text matrix is flipped
+    /// — the same flip that lets block offsets be read straight out of the
+    /// height index. Get the sign the intuitive way round and superscripts come
+    /// out as subscripts, which is exactly how it looked the first time.
+    private static func baselineShift(style: InlineStyle, size: CGFloat) -> CGFloat {
+        if style.contains(.raised) { return -size * 0.33 }
+        if style.contains(.lowered) { return size * 0.15 }
+        return 0
     }
 
     /// Derive a styled font from the block's base font, so a bold run inside a

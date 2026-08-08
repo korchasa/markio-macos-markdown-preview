@@ -5,6 +5,7 @@ import MarkdownKit
 ///
 /// `{b:…}` strong, `{i:…}` emphasis, `{s:…}` strikethrough, `{c:…}` code,
 /// `{m:…}` math, `{k:…}` keyboard, `{h:…}` highlight, `{u:…}` underline,
+/// `{^:…}` superscript, `{v:…}` subscript,
 /// `{l(dest):…}` link, `{img(dest):alt}` image, `↵` soft break, `⏎` hard break.
 enum InlineDump {
     static func dump(_ markdown: String) -> String {
@@ -47,6 +48,8 @@ enum InlineDump {
             if run.style.contains(.keyboard) { wrapped = "{k:\(wrapped)}" }
             if run.style.contains(.highlight) { wrapped = "{h:\(wrapped)}" }
             if run.style.contains(.underline) { wrapped = "{u:\(wrapped)}" }
+            if run.style.contains(.raised) { wrapped = "{^:\(wrapped)}" }
+            if run.style.contains(.lowered) { wrapped = "{v:\(wrapped)}" }
             if run.style.contains(.strikethrough) { wrapped = "{s:\(wrapped)}" }
             if run.style.contains(.emphasis) { wrapped = "{i:\(wrapped)}" }
             if run.style.contains(.strong) { wrapped = "{b:\(wrapped)}" }
