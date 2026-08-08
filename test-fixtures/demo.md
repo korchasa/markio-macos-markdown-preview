@@ -72,9 +72,17 @@ formula with a fraction and a root in it:
 
 $$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
 
-Sums keep their limits, $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$, and anything
-outside the subset — $\begin{matrix} a & b \end{matrix}$ — keeps its source
-instead of being guessed at. A very long path like
+Inline, a sum keeps its limits beside it, $\sum_{i=1}^{n} i$; written out, they
+move over and under the sign, beside a matrix and a case split:
+
+$$\sum_{i=1}^{n} i^2 = \frac{n(n+1)(2n+1)}{6}
+\quad \begin{pmatrix} a & b \\ c & d \end{pmatrix}
+\quad f(x) = \begin{cases} x^2 & x \geq 0 \\ -x & x < 0 \end{cases}$$
+
+Vectors and sets get their own letters: $\hat{v} \in \mathbb{R}^n$ and
+$\sqrt[3]{8} = 2$. What the subset does not cover keeps its source instead of
+being guessed at, as $\begin{array}{cc} a \end{array}$ does here. A long path
+like
 `/Users/someone/Library/Application Support/SomeApp/really/deep/path.json`
 wraps instead of pushing the column sideways.
 

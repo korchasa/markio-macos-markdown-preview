@@ -5,10 +5,12 @@ import CoreText
 ///
 /// This is a small typesetter for the LaTeX people actually write in prose:
 /// letters and numbers, Greek, the common operators and relations, scripts,
-/// fractions and roots. It is deliberately not a LaTeX engine — there are no
-/// macros, no environments, no alignment. Anything it does not understand makes
-/// `parse` return nil, and the caller falls back to showing the source, which is
-/// what the viewer did before this existed and is never wrong, only unhelpful.
+/// fractions, roots, accents, the alternative alphabets, and the handful of
+/// environments a README uses — matrices, `cases`, `aligned`. It is deliberately
+/// not a LaTeX engine: there are no macros, no counters, no page layout. Anything
+/// it does not understand makes `parse` return nil, and the caller falls back to
+/// showing the source, which is what the viewer did before this existed and is
+/// never wrong, only unhelpful.
 ///
 /// Everything here is measured in the base font's size, so a formula grows and
 /// shrinks with the text around it and sits on the same baseline.
@@ -29,10 +31,14 @@ enum MathFormula {
     /// Lay a formula out around the baseline, or say it cannot be done.
     ///
     /// Fails only where `canTypeset` fails: once the source parses, laying it out
-    /// always succeeds.
-    static func box(source: String, base: CTFont, color: CGColor) -> MathBox? {
+    /// always succeeds. `display` is what the author wrote: `$$…$$` puts the
+    /// limits of a sum above and below its sign, `$…$` keeps them beside it so
+    /// the line does not grow around one formula.
+    static func box(source: String, base: CTFont, color: CGColor, display: Bool = false)
+        -> MathBox?
+    {
         guard let node = MathParser.parse(source) else { return nil }
-        return MathLayout.box(node, size: CTFontGetSize(base), color: color)
+        return MathLayout.box(node, size: CTFontGetSize(base), color: color, display: display)
     }
 
     /// A delegate that makes CoreText leave exactly the formula's room on the
@@ -130,12 +136,61 @@ enum MathClass {
     case text
 }
 
+/// A mark over or under a symbol. Anything a font already has is a glyph; a
+/// bar is a rule, because a font's macron is the width of one letter and a bar
+/// has to cover whatever it is put over.
+enum MathAccent {
+    case hat
+    case tilde
+    case dot
+    case arrow
+    case bar
+    case underline
+}
+
+/// A face a run of a formula can be set in. Blackboard, script and fraktur are
+/// not faces but characters — a font has one ℝ and no way to make another — so
+/// they are handled by substituting the letters, not here.
+enum MathVariant {
+    case normal
+    case bold
+    case upright
+    case italic
+    case sansSerif
+    case monospace
+}
+
+/// Rows and columns of formulas: a matrix, a `cases` brace, an aligned block.
+struct MathGrid {
+    enum Style {
+        /// A matrix: every column centred.
+        case centred
+        /// `cases`: everything against the left.
+        case left
+        /// `aligned`: columns take turns, right then left, so the `=` of every
+        /// line stands under the one above it.
+        case alternating
+    }
+
+    var rows: [[MathNode]]
+    var style: Style
+    /// Brackets drawn around the whole block, grown to its height.
+    var left: String?
+    var right: String?
+}
+
 indirect enum MathNode {
     case row([MathNode])
     case atom(String, MathClass)
     case scripted(base: MathNode, sup: MathNode?, sub: MathNode?)
     case fraction(MathNode, MathNode)
-    case radical(MathNode)
+    /// A root, with the degree written into its crook when there is one.
+    case radical(MathNode, degree: MathNode?)
+    /// A mark drawn over or under what it belongs to.
+    case accented(MathNode, MathAccent)
+    /// A run set in another face: bold, upright, sans, monospace.
+    case styled(MathNode, MathVariant)
+    case grid(MathGrid)
     /// Explicit space, in ems.
     case space(CGFloat)
     case empty
@@ -271,13 +326,46 @@ struct MathParser {
             return .fraction(numerator, denominator)
         case "sqrt":
             skipSpaces()
-            // `\sqrt[3]{x}` needs the index drawn into the radical's crook.
-            guard index < chars.count, chars[index] != "[" else { return nil }
+            var degree: MathNode?
+            if index < chars.count, chars[index] == "[" {
+                index += 1
+                guard let inner = parseRow(until: "]") else { return nil }
+                degree = inner
+            }
             guard let body = parseAtom() else { return nil }
-            return .radical(body)
+            return .radical(body, degree: degree)
         case "text", "mathrm", "operatorname":
             guard let body = readBraced() else { return nil }
             return .atom(body, .text)
+        case "mathbb", "mathcal", "mathfrak", "mathscr":
+            // These are not faces a font can be asked for; they are their own
+            // characters, and a letter without one falls back to itself.
+            guard let body = readBraced() else { return nil }
+            return .atom(MathSymbols.lettering(body, style: name), .ordinary)
+        case "mathbf", "boldsymbol":
+            guard let body = readGroup() else { return nil }
+            return .styled(body, .bold)
+        case "mathit":
+            guard let body = readGroup() else { return nil }
+            return .styled(body, .italic)
+        case "mathsf", "textsf":
+            guard let body = readGroup() else { return nil }
+            return .styled(body, .sansSerif)
+        case "mathtt", "texttt":
+            guard let body = readGroup() else { return nil }
+            return .styled(body, .monospace)
+        case "hat", "widehat":
+            return accent(.hat)
+        case "tilde", "widetilde":
+            return accent(.tilde)
+        case "dot":
+            return accent(.dot)
+        case "vec":
+            return accent(.arrow)
+        case "bar", "overline":
+            return accent(.bar)
+        case "underline":
+            return accent(.underline)
         case "left", "right", "bigl", "bigr", "big", "Big", "biggl", "biggr":
             skipSpaces()
             guard index < chars.count else { return nil }
@@ -293,11 +381,139 @@ struct MathParser {
             let delimiter = chars[index]
             index += 1
             return .atom(MathSymbols.character(delimiter), .delimiter)
+        case "begin":
+            guard let name = readBraced(), let grid = environment(named: name) else { return nil }
+            return grid
         case "quad": return .space(1)
         case "qquad": return .space(2)
         default:
             guard let symbol = MathSymbols.table[name] else { return nil }
             return .atom(symbol.text, symbol.kind)
+        }
+    }
+
+    /// The brackets and the alignment each environment is drawn with. A name
+    /// that is not here is not read at all — an `array` needs a column
+    /// specification this does not parse, and a `gather` needs page-wide
+    /// centring the line it sits on cannot give it.
+    private static let environments:
+        [String: (left: String?, right: String?, style: MathGrid.Style)] = [
+            "matrix": (nil, nil, .centred),
+            "pmatrix": ("(", ")", .centred),
+            "bmatrix": ("[", "]", .centred),
+            "Bmatrix": ("{", "}", .centred),
+            "vmatrix": ("|", "|", .centred),
+            "Vmatrix": ("\u{2016}", "\u{2016}", .centred),
+            "smallmatrix": (nil, nil, .centred),
+            "cases": ("{", nil, .left),
+            "aligned": (nil, nil, .alternating),
+            "align": (nil, nil, .alternating),
+            "alignedat": (nil, nil, .alternating),
+            "split": (nil, nil, .alternating),
+        ]
+
+    /// Rows of cells up to `\end{name}`.
+    private mutating func environment(named name: String) -> MathNode? {
+        guard let shape = MathParser.environments[name] else { return nil }
+        var rows: [[MathNode]] = [[]]
+        var cell: [MathNode] = []
+        while true {
+            skipSpaces()
+            guard index < chars.count else { return nil }
+            if chars[index] == "&" {
+                index += 1
+                rows[rows.count - 1].append(.row(cell))
+                cell = []
+                continue
+            }
+            if chars[index] == "\\" {
+                if peekCommand() == "end" {
+                    // `\end{other}` closes something this never opened.
+                    index += 1
+                    _ = readCommandName()
+                    guard readBraced() == name else { return nil }
+                    rows[rows.count - 1].append(.row(cell))
+                    return .grid(
+                        MathGrid(
+                            rows: rows.filter { !$0.isEmpty },
+                            style: shape.style,
+                            left: shape.left,
+                            right: shape.right
+                        )
+                    )
+                }
+                if index + 1 < chars.count, chars[index + 1] == "\\" {
+                    index += 2
+                    rows[rows.count - 1].append(.row(cell))
+                    cell = []
+                    rows.append([])
+                    continue
+                }
+            }
+            // A cell is a formula in its own right, scripts and all.
+            if chars[index] == "^" || chars[index] == "_" {
+                let raised = chars[index] == "^"
+                index += 1
+                guard let argument = parseAtom() else { return nil }
+                let base = cell.popLast() ?? .empty
+                guard let scripted = attach(argument, to: base, raised: raised) else { return nil }
+                cell.append(scripted)
+                continue
+            }
+            guard let atom = parseAtom() else { return nil }
+            cell.append(atom)
+        }
+    }
+
+    /// The command name after the backslash at the cursor, without moving it.
+    private func peekCommand() -> String {
+        var cursor = index + 1
+        var name = ""
+        while cursor < chars.count, chars[cursor].isLetter {
+            name.append(chars[cursor])
+            cursor += 1
+        }
+        return name
+    }
+
+    private mutating func readCommandName() -> String {
+        var name = ""
+        while index < chars.count, chars[index].isLetter {
+            name.append(chars[index])
+            index += 1
+        }
+        return name
+    }
+
+    private mutating func accent(_ mark: MathAccent) -> MathNode? {
+        guard let body = parseAtom() else { return nil }
+        return .accented(body, mark)
+    }
+
+    /// A braced group parsed as a formula rather than read as plain text.
+    private mutating func readGroup() -> MathNode? {
+        skipSpaces()
+        guard index < chars.count, chars[index] == "{" else { return nil }
+        index += 1
+        guard let row = parseRow(insideGroup: true) else { return nil }
+        guard index < chars.count, chars[index] == "}" else { return nil }
+        index += 1
+        return row
+    }
+
+    /// A formula up to a closing character that is not a brace — the `]` of a
+    /// root's degree.
+    private mutating func parseRow(until terminator: Character) -> MathNode? {
+        var items: [MathNode] = []
+        while true {
+            skipSpaces()
+            guard index < chars.count else { return nil }
+            if chars[index] == terminator {
+                index += 1
+                return .row(items)
+            }
+            guard let atom = parseAtom() else { return nil }
+            items.append(atom)
         }
     }
 

@@ -72,6 +72,80 @@ enum MathSymbols {
         "gcd", "arg", "mod", "bmod",
     ]
 
+    /// `\mathbb{R}` and its neighbours, letter by letter.
+    ///
+    /// These alphabets are characters, not faces: Unicode has one ℝ and a font
+    /// cannot be asked to make another. Most of each alphabet sits in one block,
+    /// with the letters that were encoded earlier — ℝ, ℕ, ℒ and the rest —
+    /// scattered outside it. A letter with no such character is left as it is,
+    /// which reads as plain but never as wrong.
+    static func lettering(_ text: String, style: String) -> String {
+        let table: [Character: UnicodeScalar]
+        let upper: UInt32
+        let lower: UInt32
+        switch style {
+        case "mathbb":
+            table = doubleStruck
+            (upper, lower) = (0x1D538, 0x1D552)
+        case "mathfrak":
+            table = fraktur
+            (upper, lower) = (0x1D504, 0x1D51E)
+        default:
+            table = script
+            (upper, lower) = (0x1D49C, 0x1D4B6)
+        }
+        var out = ""
+        for char in text {
+            if let special = table[char] {
+                out.unicodeScalars.append(special)
+                continue
+            }
+            guard let ascii = char.asciiValue else {
+                out.append(char)
+                continue
+            }
+            if char.isUppercase, let scalar = UnicodeScalar(upper + UInt32(ascii - 65)) {
+                out.unicodeScalars.append(scalar)
+            } else if char.isLowercase, let scalar = UnicodeScalar(lower + UInt32(ascii - 97)) {
+                out.unicodeScalars.append(scalar)
+            } else if style == "mathbb", char.isNumber,
+                let scalar = UnicodeScalar(0x1D7D8 + UInt32(ascii - 48))
+            {
+                out.unicodeScalars.append(scalar)
+            } else {
+                out.append(char)
+            }
+        }
+        return out
+    }
+
+    private static let doubleStruck: [Character: UnicodeScalar] = [
+        "C": "\u{2102}", "H": "\u{210D}", "N": "\u{2115}", "P": "\u{2119}",
+        "Q": "\u{211A}", "R": "\u{211D}", "Z": "\u{2124}",
+    ]
+
+    private static let script: [Character: UnicodeScalar] = [
+        "B": "\u{212C}", "E": "\u{2130}", "F": "\u{2131}", "H": "\u{210B}",
+        "I": "\u{2110}", "L": "\u{2112}", "M": "\u{2133}", "R": "\u{211B}",
+        "e": "\u{212F}", "g": "\u{210A}", "o": "\u{2134}",
+    ]
+
+    private static let fraktur: [Character: UnicodeScalar] = [
+        "C": "\u{212D}", "H": "\u{210C}", "I": "\u{2111}", "R": "\u{211C}",
+        "Z": "\u{2128}",
+    ]
+
+    /// The mark drawn over or under an accented symbol.
+    static func accent(_ mark: MathAccent) -> String {
+        switch mark {
+        case .hat: return "\u{02C6}"
+        case .tilde: return "\u{02DC}"
+        case .dot: return "\u{02D9}"
+        case .arrow: return "\u{2192}"
+        case .bar, .underline: return ""
+        }
+    }
+
     /// The character to draw for a plain source character. Only the ones whose
     /// mathematical shape differs from the ASCII the author typed are changed.
     static func character(_ char: Character) -> String {

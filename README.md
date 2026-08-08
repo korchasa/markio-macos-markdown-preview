@@ -28,8 +28,10 @@ Markio 2 reads. It never writes a file it opens.
   mapped straight to text styles. There is no HTML engine; anything else is
   dropped rather than shown
 - Formulas between dollars, set with real glyphs: Greek, scripts, stacked
-  fractions, roots and the usual operators and relations. What the subset does
-  not cover keeps its source rather than being guessed at
+  fractions, roots, accents, the blackboard and script alphabets, matrices,
+  `cases` and `aligned`, and a display formula's limits above and below its sum
+  sign. What the subset does not cover keeps its source rather than being
+  guessed at
 - Syntax highlighting for Swift, Python, Go, Rust, shell, SQL, JSON, YAML and
   the C family, in light and dark
 - A pasted terminal log in its own colours: the sixteen basic colours, the

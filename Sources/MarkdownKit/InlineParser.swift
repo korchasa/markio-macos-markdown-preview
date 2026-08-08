@@ -266,8 +266,9 @@ public enum InlineParser {
             return nil
         }
 
-        /// `$…$` and `$$…$$`. Markio 2 has no LaTeX typesetter, so math is kept
-        /// as its source text in a distinct style rather than silently dropped.
+        /// `$…$` and `$$…$$`. The parser only marks the run as a formula and
+        /// says whether it was written in display form; reading the LaTeX is the
+        /// renderer's job, and a formula it cannot read keeps this source.
         mutating func scanMath(at start: Int, end: Int) -> Int? {
             let display = start + 1 < end && bytes[start + 1] == ASCII.dollar
             let width = display ? 2 : 1
@@ -291,7 +292,7 @@ public enum InlineParser {
                     if !display, runEnd < end, isDigit(bytes[runEnd]) { return nil }
                     flushText(upTo: start)
                     var token = Token(kind: .code, range: ByteRange(contentStart, index))
-                    token.style = .math
+                    token.style = display ? [.math, .displayMath] : .math
                     emit(token, at: start)
                     return runEnd
                 }

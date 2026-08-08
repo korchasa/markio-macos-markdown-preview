@@ -218,10 +218,16 @@ merged cell has no other way to write one.
 ### Formulas
 
 `MathParser` reads the source between the dollars into a small tree — rows,
-atoms, scripts, fractions, roots — and returns nil the moment it meets anything
-it does not know. That nil is the whole safety story: there is no partial
-formula, no guessed macro, and a document full of LaTeX this cannot set looks
-exactly as it did before the typesetter existed.
+atoms, scripts, fractions, roots, accents, faces and the grid environments
+(`pmatrix` and its family, `cases`, `aligned`) — and returns nil the moment it
+meets anything it does not know. That nil is the whole safety story: there is no
+partial formula, no guessed macro, and a document full of LaTeX this cannot set
+looks exactly as it did before the typesetter existed.
+
+`\mathbb`, `\mathcal` and `\mathfrak` are handled by substituting characters
+rather than by asking for a face, because a font has one ℝ and no way to make
+another; `\mathbf`, `\mathit`, `\mathsf` and `\mathtt` are real faces and travel
+down the layout as a variant on the context.
 
 `MathLayout` turns the tree into a `MathBox`: glyph runs and rules positioned
 around the formula's own baseline, in the renderer's y-down space. Every
@@ -232,7 +238,14 @@ does not, without the author typing a single space. Two details cost a
 correction each: the radical is measured from the glyph's *ink* rather than from
 the font's ascent, or the bar floats above the arm it is supposed to continue;
 and a leading `-` is a sign rather than a subtraction, or `-b` comes out spaced
-like an equation.
+like an equation. Accents and the limits over a sum are placed against the ink
+for the same reason, and by the same helpers.
+
+`$$…$$` carries one extra bit from the parser, `InlineStyle.displayMath`, and it
+decides one thing: whether a sum writes its range above and below its sign or
+beside it. Display style stops at the first script, the way it does in TeX, and
+an integral keeps its limits beside it either way, because they are read along
+its slope.
 
 Getting the box onto the line reuses the inline-picture machinery exactly: one
 placeholder character carrying a run delegate with the formula's width, ascent

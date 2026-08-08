@@ -48,10 +48,13 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   mapping.
 - **PARSE-6** Math between `$…$` or `$$…$$` is read as a formula. The subset is
   the LaTeX that turns up in prose: letters and numbers, Greek, the common
-  operators, relations and arrows, scripts, fractions, roots, bracket sizing,
-  `\text{…}` and the upright function names. Anything outside it — an
-  environment, an unknown command, an unbalanced brace — is not read at all,
-  and the source stands as written.
+  operators, relations and arrows, scripts, fractions, roots of any degree,
+  bracket sizing, accents, the blackboard, script and fraktur alphabets, the
+  bold, italic, sans and monospace faces, the matrix environments, `cases` and
+  `aligned`, `\text{…}` and the upright function names. `$$…$$` also says the
+  formula is written in display style. Anything outside the subset — an unknown
+  command, an environment with no layout here, an unbalanced brace — is not
+  read at all, and the source stands as written.
 - **PARSE-7** Malformed UTF-8 is displayed, not rejected: a viewer must show
   whatever it was handed.
 - **PARSE-8** Parsing never depends on the theme, the window, or AppKit.
@@ -135,10 +138,13 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   blocks are hidden, not dropped: find and copy still see them.
 - **VIEW-24** A formula the parser understands is set with real glyphs — serif,
   variables in italic, fractions stacked over a rule, roots under a bar, scripts
-  above and below — at the size of the text around it, sitting on its baseline.
-  It occupies one placeholder character in find and copy, the way an inline
-  picture does. A formula the parser does not understand keeps its source, and
-  that source stays searchable.
+  beside, accents on the letter's ink, matrices inside brackets grown to their
+  height — at the size of the text around it, sitting on its baseline. A
+  display formula writes the range of a sum above and below its sign; an inline
+  one keeps it beside, so a paragraph does not grow around one formula. It
+  occupies one placeholder character in find and copy, the way an inline picture
+  does. A formula the parser does not understand keeps its source, and that
+  source stays searchable.
 
 - **VIEW-25** A diagram is drawn in place of its fence — boxes on ranks with
   arrows between them, or participants with messages across them — centred in

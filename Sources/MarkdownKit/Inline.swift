@@ -32,6 +32,9 @@ public struct InlineStyle: OptionSet, Sendable, Hashable {
     /// A footnote marker: a link, but set as a marker rather than underlined
     /// like prose.
     public static let footnote = InlineStyle(rawValue: 1 << 11)
+    /// `$$…$$` — a formula set in display style, where the limits of a sum are
+    /// written above and below its sign rather than beside it.
+    public static let displayMath = InlineStyle(rawValue: 1 << 12)
 }
 
 public enum InlineRunKind: UInt8, Sendable {

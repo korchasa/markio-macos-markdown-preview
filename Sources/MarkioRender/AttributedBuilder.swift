@@ -70,7 +70,12 @@ enum AttributedBuilder {
                 // cannot keeps its source, and the plain-text projection makes
                 // the same choice from the same source.
                 if run.style.contains(.math),
-                    let formula = MathFormula.box(source: text, base: baseFont, color: baseColor)
+                    let formula = MathFormula.box(
+                        source: text,
+                        base: baseFont,
+                        color: baseColor,
+                        display: run.style.contains(.displayMath)
+                    )
                 {
                     appendFormula(formula, to: attributed, base: baseFont)
                     break

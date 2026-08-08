@@ -67,10 +67,17 @@ here is `@MainActor` except the parts that deliberately are not.
   decides what Find sees, the other what is drawn, and a disagreement moves
   every match offset in the block. Keep the decision in the parser, which needs
   no font, and let the layout be total.
-- **The radical is measured from the glyph's ink**
+- **Anything placed against another glyph is measured from its ink**
   (`CTLineGetBoundsWithOptions(.useGlyphPathBounds)`), not from the font's
-  ascent. A font leaves room above its tallest glyph; measure that instead and
-  the bar floats above the arm it is meant to continue.
+  ascent — the radical's bar, an accent, the limits over a sum, a bracket grown
+  to a matrix. A font leaves room above its tallest glyph; measure that instead
+  and the mark floats a whole x-height clear of what it belongs to. This has
+  cost a correction once per new user of it, so use `inkTop`/`inkBottom`.
+- **Display style is one bit and it moves one thing.** `$$…$$` sets
+  `InlineStyle.displayMath`, and the layout reads it in a single place: a sum
+  writes its range above and below its sign instead of beside it. It stops at
+  the first script, the way it does in TeX, and an integral ignores it, because
+  its limits are read along its own slope.
 - **A formula's glyphs are drawn after the highlights.** They are decorations,
   and decorations are painted first — a selection would cover the formula
   instead of tinting it.

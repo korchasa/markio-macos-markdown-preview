@@ -15,6 +15,28 @@ final class MathTests: XCTestCase {
         MathFormula.box(source: source, base: font, color: color)
     }
 
+    private func displayed(_ source: String) -> MathBox? {
+        MathFormula.box(source: source, base: font, color: color, display: true)
+    }
+
+    private func rules(_ box: MathBox) -> [CGRect] {
+        box.items.compactMap { item in
+            guard case .rule(let rect) = item else { return nil }
+            return rect
+        }
+    }
+
+    private func glyphs(_ box: MathBox) -> [(line: CTLine, origin: CGPoint)] {
+        box.items.compactMap { item in
+            guard case .glyphs(let line, let origin) = item else { return nil }
+            return (line, origin)
+        }
+    }
+
+    private func ink(_ line: CTLine) -> CGRect {
+        CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
+    }
+
     func testTheFormulasPeopleActuallyWrite() {
         for source in [
             "e^{i\\pi} + 1 = 0",
@@ -37,10 +59,14 @@ final class MathTests: XCTestCase {
         // formula drawn as something the author did not write. Refusing shows
         // the source instead, which is always at least true.
         for source in [
-            "\\begin{matrix} a & b \\end{matrix}",
+            // `array` needs a column specification this does not read, and
+            // `gather` needs page-wide centring the line cannot give it.
+            "\\begin{array}{cc} a & b \\end{array}",
+            "\\begin{gather} a \\end{gather}",
+            "\\begin{pmatrix} a & b",
+            "\\begin{pmatrix} a \\end{bmatrix}",
             "\\unknowncommand{x}",
-            "\\mathbb{R}",
-            "\\sqrt[3]{x}",
+            // A row separator outside an environment has no line to end.
             "a \\\\ b",
             "{a",
             "a}",
@@ -132,10 +158,127 @@ final class MathTests: XCTestCase {
     }
 
     func testAFormulaThatCannotBeSetKeepsItsSourceInTheText() throws {
-        let document = Document(text: "Matrices: $\\begin{matrix} a \\end{matrix}$.")
+        let document = Document(text: "Arrays: $\\begin{array}{cc} a \\end{array}$.")
         let layout = DocumentLayout(
             document: document, theme: Theme(isDark: false), columnWidth: 520)
         let box = try XCTUnwrap(layout.box(at: 0))
-        XCTAssertEqual(box.plainText, "Matrices: \\begin{matrix} a \\end{matrix}.")
+        XCTAssertEqual(box.plainText, "Arrays: \\begin{array}{cc} a \\end{array}.")
+    }
+
+    func testTheWiderSubsetIsRead() {
+        for source in [
+            "\\sqrt[3]{8}",
+            "\\mathbb{R}^n \\subset \\mathbb{C}",
+            "\\mathcal{L}(\\mathfrak{g})",
+            "\\mathbf{v} + \\mathit{w} + \\mathsf{s} + \\mathtt{t}",
+            "\\hat{x} \\tilde{y} \\dot{z} \\vec{v} \\bar{u} \\overline{AB}",
+            "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+            "\\begin{vmatrix} 1 & 0 \\\\ 0 & 1 \\end{vmatrix}",
+            "f(x) = \\begin{cases} x^2 & x \\geq 0 \\\\ -x & x < 0 \\end{cases}",
+            "\\begin{aligned} a + b &= c \\\\ x &= \\frac{y}{z} \\end{aligned}",
+        ] {
+            XCTAssertTrue(MathFormula.canTypeset(source), source)
+            XCTAssertNotNil(box(source), source)
+        }
+    }
+
+    /// A blackboard `R` is a character of its own, not a face a font can be
+    /// asked for, so the substitution has to happen before layout.
+    func testTheAlphabetsBecomeTheirOwnCharacters() {
+        XCTAssertEqual(MathSymbols.lettering("RNQZ", style: "mathbb"), "ℝℕℚℤ")
+        XCTAssertEqual(MathSymbols.lettering("A", style: "mathbb"), "𝔸")
+        XCTAssertEqual(MathSymbols.lettering("L", style: "mathcal"), "ℒ")
+        XCTAssertEqual(MathSymbols.lettering("R", style: "mathfrak"), "ℜ")
+        // A letter with no such character stays itself rather than becoming
+        // something else.
+        XCTAssertEqual(MathSymbols.lettering("Ж", style: "mathbb"), "Ж")
+    }
+
+    /// A single digit fits in the sign's crook and costs nothing; a wider degree
+    /// has nowhere to go but left, and pushes the whole root right.
+    func testARootsDegreeSitsInItsCrookUntilItIsTooWide() throws {
+        let plain = try XCTUnwrap(box("\\sqrt{8}"))
+        let cube = try XCTUnwrap(box("\\sqrt[3]{8}"))
+        let tenth = try XCTUnwrap(box("\\sqrt[10]{8}"))
+        XCTAssertEqual(cube.width, plain.width, accuracy: 0.01)
+        XCTAssertEqual(glyphs(cube).count, glyphs(plain).count + 1)
+        XCTAssertGreaterThan(tenth.width, plain.width)
+    }
+
+    /// A hat has to sit on the letter's ink. Measuring the font's ascent instead
+    /// floats it an x-height clear of what it belongs to.
+    func testAnAccentSitsCloseAboveItsLetter() throws {
+        let plain = try XCTUnwrap(box("x"))
+        let hatted = try XCTUnwrap(box("\\hat{x}"))
+        let drawn = glyphs(hatted)
+        XCTAssertEqual(drawn.count, 2)
+        let letterTop = drawn[0].origin.y - ink(drawn[0].line).maxY
+        let markBottom = drawn[1].origin.y - ink(drawn[1].line).minY
+        XCTAssertLessThan(markBottom, letterTop)
+        XCTAssertGreaterThan(markBottom, letterTop - CTFontGetSize(font) * 0.4)
+        // The mark rides inside the line's own ascent, so a paragraph carrying
+        // one keeps the leading of a paragraph that does not.
+        XCTAssertEqual(hatted.ascent, plain.ascent, accuracy: 0.01)
+        XCTAssertEqual(hatted.width, plain.width, accuracy: 0.01)
+    }
+
+    /// A macron is one letter wide, so a bar over two letters is a rule.
+    func testABarCoversEverythingUnderIt() throws {
+        let bar = try XCTUnwrap(box("\\overline{AB}"))
+        let rule = try XCTUnwrap(rules(bar).first)
+        XCTAssertEqual(rule.width, bar.width, accuracy: 0.01)
+        XCTAssertLessThan(rule.maxY, 0)
+    }
+
+    func testAMatrixIsTallerThanItsCellsAndHangsEitherSideOfTheAxis() throws {
+        let cell = try XCTUnwrap(box("a"))
+        let matrix = try XCTUnwrap(box("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"))
+        XCTAssertGreaterThan(matrix.ascent, cell.ascent)
+        XCTAssertGreaterThan(matrix.descent, cell.descent)
+        XCTAssertGreaterThan(matrix.width, cell.width * 2)
+    }
+
+    /// `&` in an aligned block is where the lines meet, so the `=` of the second
+    /// line stands under the `=` of the first.
+    func testAnAlignedBlockLinesItsRowsUpAtTheAmpersand() throws {
+        let block = try XCTUnwrap(box("\\begin{aligned} a + b &= c \\\\ x &= y \\end{aligned}"))
+        let rows = Dictionary(grouping: glyphs(block).map(\.origin)) { $0.y }
+        XCTAssertEqual(rows.count, 2)
+        let lefts = rows.values.map { $0.map(\.x).max() ?? 0 }
+        // Both rows end at the same place, because both end with one short cell
+        // whose column starts at the alignment point.
+        XCTAssertEqual(lefts.min() ?? 0, lefts.max() ?? 1, accuracy: 0.01)
+    }
+
+    /// `$$\sum_{i=1}^{n}$$` writes its range over and under the sign; `$…$`
+    /// keeps it beside, so a paragraph does not grow around one formula.
+    func testDisplayStyleMovesTheLimitsOverTheSign() throws {
+        let inline = try XCTUnwrap(box("\\sum_{i=1}^{n} i"))
+        let display = try XCTUnwrap(displayed("\\sum_{i=1}^{n} i"))
+        XCTAssertLessThan(display.width, inline.width)
+        XCTAssertGreaterThan(display.ascent + display.descent, inline.ascent + inline.descent)
+    }
+
+    /// An integral reads its limits along its own slope, so a book leaves them
+    /// beside it even in display style.
+    func testAnIntegralKeepsItsLimitsBesideIt() throws {
+        let inline = try XCTUnwrap(box("\\int_0^1 x"))
+        let display = try XCTUnwrap(displayed("\\int_0^1 x"))
+        XCTAssertEqual(display.width, inline.width, accuracy: 0.01)
+    }
+
+    func testDisplayFormulasAreMarkedByTheParser() throws {
+        let document = Document(text: "$$a$$ and $a$")
+        let leaf = try XCTUnwrap(document.leaves.first)
+        let parsed = InlineParser.parse(
+            content: document.content(of: leaf),
+            references: document.references,
+            documentBytes: document.bytes,
+            footnotes: document.footnotes
+        )
+        let formulas = parsed.runs.filter { $0.style.contains(.math) }
+        XCTAssertEqual(formulas.count, 2)
+        XCTAssertTrue(formulas[0].style.contains(.displayMath))
+        XCTAssertFalse(formulas[1].style.contains(.displayMath))
     }
 }
