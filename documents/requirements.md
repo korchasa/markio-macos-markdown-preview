@@ -68,9 +68,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `colspan` included. Anything the reader cannot resolve into a grid stays raw
   HTML.
 - **PARSE-12** A ```mermaid fence is read as a diagram when it is a flowchart
-  (`flowchart`/`graph`, `TD` or `LR`) or a sequence diagram. Subgraphs,
-  styling, loops, notes and every other diagram kind are not read, and the
-  fence stays a fenced block.
+  (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs,
+  `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
+  (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
+  `autonumber`). Every other diagram kind, and every construct inside those two
+  the layout cannot draw — a nested subgraph, a tinted band, a click handler —
+  is not read, and the fence stays a fenced block.
 
 ## VIEW — What the reader sees
 
@@ -147,9 +150,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   source stays searchable.
 
 - **VIEW-25** A diagram is drawn in place of its fence — boxes on ranks with
-  arrows between them, or participants with messages across them — centred in
-  the reading column, in the current theme's colours. The block keeps the
-  fence's own text, so find and copy still work on the diagram's source.
+  arrows between them, subgraphs in titled frames, or participants with
+  messages, notes and framed blocks across them — centred in the reading column,
+  in the current theme's colours except where the diagram names its own. A
+  picture too wide for the column is drawn smaller rather than cut off. The
+  block keeps the fence's own text, so find and copy still work on the diagram's
+  source.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

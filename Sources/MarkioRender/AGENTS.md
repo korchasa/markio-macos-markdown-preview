@@ -82,10 +82,14 @@ here is `@MainActor` except the parts that deliberately are not.
   and decorations are painted first — a selection would cover the formula
   instead of tinting it.
 - **A diagram is drawn whole or not at all.** `MermaidDiagram.parse` returns nil
-  for every construct the layout cannot draw — a subgraph, a loop, a note — so
-  the fence falls back to a code block. Adding a keyword to the accepted list
-  without drawing it is how a graph starts asserting something its author did
-  not write.
+  for every construct the layout cannot draw — a nested subgraph, a tinted band,
+  a colour name it does not know — so the fence falls back to a code block.
+  Adding a keyword to the accepted list without drawing it is how a graph starts
+  asserting something its author did not write.
+- **A subgraph owns a strip of the cross axis.** Its frame is the bounding box
+  of its members, and that box is only honest because no node outside the group
+  is ever placed in the strip. Any change to flowchart placement has to keep
+  that property, or a frame starts enclosing nodes that do not belong to it.
 - **A drawn diagram types nothing**, so its block has no segments and its plain
   text is the fence's own source. That is deliberate: find still locates the
   diagram, copy still yields something useful, and there is no text to

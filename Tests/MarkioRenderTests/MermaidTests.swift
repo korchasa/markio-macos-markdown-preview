@@ -63,16 +63,105 @@ final class MermaidTests: XCTestCase {
         // Each of these has to come back nil, because drawing what is left after
         // ignoring the rest would be a different diagram.
         for source in [
-            "pie title Where the time goes\n  \"Parsing\" : 40",
-            "flowchart BT\n A --> B",
-            "flowchart TD\n subgraph one\n A --> B\n end",
             "flowchart TD\n A ~~~ B",
-            "classDiagram\n class A",
+            // A frame inside a frame, a subgraph left open, and one closed twice.
+            "flowchart TD\n subgraph a\n subgraph b\n A --> B\n end\n end",
+            "flowchart TD\n subgraph a\n A --> B",
+            "flowchart TD\n A --> B\n end",
+            // A direction inside a subgraph turns that frame's own contents.
+            "flowchart TD\n subgraph a\n direction LR\n A --> B\n end",
+            // A colour and a property this cannot draw.
+            "flowchart TD\n A --> B\n style A fill:chartreuse",
+            "flowchart TD\n A --> B\n style A opacity:0.5",
+            "flowchart TD\n A --> B\n class A missing",
+            "flowchart TD\n A:::missing --> B",
+            "flowchart TD\n A --> B\n click A \"https://example.com\"",
             "flowchart TD",
             "",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    func testTheOtherTwoDirections() throws {
+        XCTAssertEqual(try XCTUnwrap(flowchart("graph BT\n A --> B")).direction, .up)
+        XCTAssertEqual(try XCTUnwrap(flowchart("graph RL\n A --> B")).direction, .left)
+    }
+
+    func testTheRestOfTheShapes() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    A{{Hex}} --> B[[Call]]
+                    B --> C[(Store)]
+                    C --> D[/Slant/]
+                    D --> E[\\Other\\]
+                    E --> F[/Funnel\\]
+                    F --> G[\\Cup/]
+                    G --> H>Flag]
+                    H --> I(((Deep)))
+                """
+            )
+        )
+        XCTAssertEqual(
+            chart.nodes.map(\.shape),
+            [
+                .hexagon, .subroutine, .cylinder, .parallelogram, .parallelogramAlt,
+                .trapezoid, .trapezoidAlt, .flag, .doubleCircle,
+            ]
+        )
+        XCTAssertEqual(chart.nodes.map(\.label).first, "Hex")
+    }
+
+    /// `-- text -->` writes the words inside the arrow instead of after it.
+    func testALabelWrittenInsideTheArrow() throws {
+        let chart = try XCTUnwrap(
+            flowchart("flowchart LR\n A -- asks --> B\n B -. waits .-> C\n C == sends ==> D")
+        )
+        XCTAssertEqual(chart.edges.map(\.label), ["asks", "waits", "sends"])
+        XCTAssertEqual(chart.edges.map(\.stroke), [.solid, .dotted, .thick])
+        XCTAssertTrue(chart.edges.allSatisfy(\.arrow))
+    }
+
+    func testASubgraphKeepsTheNodesDeclaredInsideIt() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    Start --> Read
+                    subgraph work[Doing the work]
+                        Read --> Write
+                    end
+                    Write --> Done
+                """
+            )
+        )
+        XCTAssertEqual(chart.groups.count, 1)
+        XCTAssertEqual(chart.groups[0].title, "Doing the work")
+        // A node belongs to the frame it is first written in, and `Read` was
+        // already named on the line above.
+        XCTAssertEqual(chart.groups[0].members.map { chart.nodes[$0].id }, ["Write"])
+    }
+
+    func testStylesReachTheNodesTheyName() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    classDef warn fill:#fee,stroke:red
+                    A --> B
+                    B --> C:::warn
+                    class A warn
+                    style B fill:#fff,stroke-width:3
+                """
+            )
+        )
+        let pale = Flowchart.Colour(red: 1, green: 238 / 255, blue: 238 / 255)
+        XCTAssertEqual(chart.nodes[0].style.fill, pale)
+        XCTAssertEqual(chart.nodes[0].style.stroke, Flowchart.Colour(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(chart.nodes[1].style.strokeWidth, 3)
+        XCTAssertEqual(chart.nodes[2].style.fill, chart.nodes[0].style.fill)
     }
 
     func testParticipantsAndMessages() throws {
@@ -103,12 +192,82 @@ final class MermaidTests: XCTestCase {
 
     func testSequenceConstructsItCannotDraw() {
         for source in [
-            "sequenceDiagram\n loop every day\n A->>B: hi\n end",
             "sequenceDiagram\n Note right of A: thinking",
             "sequenceDiagram\n participant A",
             "sequenceDiagram\n A B C",
+            // A block left open, one closed twice, and a note with no placement.
+            "sequenceDiagram\n loop forever\n A->>B: hi",
+            "sequenceDiagram\n A->>B: hi\n end",
+            "sequenceDiagram\n A->>B: hi\n Note A: thinking",
+            // A tinted band and a participant box are frames this does not draw.
+            "sequenceDiagram\n rect rgb(0,0,0)\n A->>B: hi\n end",
+            "sequenceDiagram\n box Team\n participant A\n end\n A->>B: hi",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testBlocksNestAndKeepTheirArms() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                sequenceDiagram
+                    autonumber
+                    A->>B: ask
+                    alt found
+                        B-->>A: here
+                    else missing
+                        loop three times
+                            B->>B: look again
+                        end
+                        B-->>A: sorry
+                    end
+                """
+            )
+        )
+        XCTAssertTrue(diagram.autonumber)
+        XCTAssertEqual(diagram.items.count, 2)
+        guard case .block(let alt) = diagram.items[1] else {
+            return XCTFail("the second item is the alt block")
+        }
+        XCTAssertEqual(alt.kind, "alt")
+        XCTAssertEqual(alt.sections.map(\.title), ["found", "missing"])
+        guard case .block(let loop) = alt.sections[1].items[0] else {
+            return XCTFail("the else arm opens a loop")
+        }
+        XCTAssertEqual(loop.kind, "loop")
+        // Every message is still reachable, however deep it sits.
+        XCTAssertEqual(diagram.messages.map(\.text), ["ask", "here", "look again", "sorry"])
+    }
+
+    func testNotesAndActivationAndTheOtherArrowHeads() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                sequenceDiagram
+                    Note over A,B: two of them
+                    Note left of A: thinking
+                    A->>+B: work
+                    B--)A: eventually
+                    B-->>-A: done
+                    activate A
+                    A-xB: give up
+                    deactivate A
+                """
+            )
+        )
+        guard case .note(let over) = diagram.items[0], case .note(let left) = diagram.items[1]
+        else { return XCTFail("the diagram opens with two notes") }
+        XCTAssertEqual(over.placement, .over)
+        XCTAssertEqual(over.participants.count, 2)
+        XCTAssertEqual(left.placement, .leftOf)
+        XCTAssertEqual(diagram.messages.map(\.head), [.arrow, .open, .arrow, .cross])
+        XCTAssertTrue(diagram.messages[0].activates)
+        XCTAssertTrue(diagram.messages[2].deactivates)
+        if case .activate(let index) = diagram.items[5] {
+            XCTAssertEqual(diagram.participants[index].id, "A")
+        } else {
+            XCTFail("`activate A` is an item of its own")
         }
     }
 

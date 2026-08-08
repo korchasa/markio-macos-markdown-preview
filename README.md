@@ -40,9 +40,10 @@ Markio 2 reads. It never writes a file it opens.
   of their own, or inside a sentence
 - Footnotes: a raised label in the text, the note itself set smaller below
 - `<details>` sections, folded away until you click their summary
-- Mermaid flowcharts and sequence diagrams, drawn with paths and glyphs — no
-  web view, no diagram library. What the subset does not cover stays a fenced
-  block
+- Mermaid flowcharts — every shape, all four directions, subgraphs in their own
+  frames, `classDef` colours — and sequence diagrams with loops, alternatives,
+  notes and activation bars, drawn with paths and glyphs. No web view, no
+  diagram library. What the subset does not cover stays a fenced block
 
 ## Reading it
 

@@ -261,17 +261,32 @@ both.
 
 `MermaidDiagram.parse` reads a fence into a flowchart or a sequence diagram and
 returns nil for everything else, including the constructs inside those two that
-the layout cannot draw — a subgraph, a loop, a note. The rule is the same one
-the formula typesetter follows: a diagram is drawn whole or shown as source,
-because half a graph asserts something its author did not write.
+the layout cannot draw — a subgraph inside a subgraph, a tinted band, a click
+handler, a colour it does not know. The rule is the same one the formula
+typesetter follows: a diagram is drawn whole or shown as source, because half a
+graph asserts something its author did not write.
 
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
 — then each rank is measured, centred against the widest, and laid along the
-rank axis. `TD` and `LR` are the same routine with the axes swapped. Edges are
+rank axis. All four directions are the same routine: `TD` and `LR` swap the
+axes, `BT` and `RL` turn the rank axis over once every box is placed. Edges are
 drawn between box centres and clipped to the boxes, so an edge across a rank or
-back up the graph needs no special case. A sequence diagram is columns with
-dashed lifelines and one arrow per message.
+back up the graph needs no special case; their words are written last, over the
+nodes, because an edge that skips a rank passes over whatever stands between.
+
+A subgraph is given a strip of the cross axis to itself — the same strip on
+every rank — and that is what makes its frame enclose its own members and
+nothing else: no node outside the group is ever placed in the strip. The strips
+are ordered by the rank their contents first appear on, so the graph still reads
+from its first node onwards.
+
+A sequence diagram is columns with dashed lifelines, walked in document order.
+The walk hands back three lists — block frames, activation bars and the
+messages and notes themselves — because they are painted in that order: a frame
+is behind its contents, and a bar is behind the arrows that start and end it. A
+block's frame cannot be drawn until its contents have been placed, which is why
+the whole body is laid out before anything below the participant boxes appears.
 
 Everything it produces is `BlockBox.Decoration` — filled and stroked paths, and
 the glyph runs added for formulas — so the diagram draws in the window and in

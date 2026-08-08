@@ -119,13 +119,31 @@ block goes here as it would anywhere else.
 the tags are read.</td></tr>
 </table>
 
-### A diagram
+### Diagrams
 
 ```mermaid
 flowchart LR
-    Source[Bytes on disk] --> Scan{Larger than 32 MB?}
-    Scan -->|yes| Background(Scan in the background)
+    classDef slow fill:#fff4e5,stroke:#c80
+    Source[(Bytes on disk)] -- read --> Scan{Larger than 32 MB?}
+    Scan -->|yes| Background(Scan in the background):::slow
     Scan -->|no| Once(Scan at once)
-    Background --> Screen([First screen])
-    Once --> Screen
+    subgraph Drawing
+        Background --> Screen([First screen])
+        Once --> Screen
+    end
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant V as View
+    participant L as Layout
+    V->>+L: box(at:)
+    alt already measured
+        L-->>V: the block
+    else first time
+        L->>L: typeset
+        L-->>-V: the block
+    end
+    Note right of V: nothing else is laid out
 ```
