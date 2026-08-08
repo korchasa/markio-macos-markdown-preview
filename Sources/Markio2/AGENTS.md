@@ -38,4 +38,5 @@ anything expensive belongs in MarkioRender or MarkdownKit.
 `--capture=<path>` draws the visible window into a PNG and quits. It draws the
 view hierarchy, so it needs no screen recording permission and works with the
 window behind another app. Use it to check rendering instead of asking someone
-to look.
+to look. `--capture-after=<seconds>` delays the shot so a change made to the
+file meanwhile shows up in it — that is how live reload is verified.

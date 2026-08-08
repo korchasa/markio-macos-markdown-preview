@@ -52,6 +52,10 @@ quits. The bench `snapshot` renders a document offscreen at a given width,
 height, appearance and scroll offset. Neither needs screen recording
 permission; `screencapture` does, and does not have it.
 
+`--capture-after=<seconds>` delays the shot, which is how live reload is
+checked: launch with a delay, rewrite the file meanwhile, and see whether the
+window followed.
+
 Performance claims come from `deno task bench` on a **release** build. Do not
 quote a debug number.
 

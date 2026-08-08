@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// all — can be checked from a script. It draws the view hierarchy itself
     /// rather than reading the screen, so it needs no recording permission and
     /// works with the window off-screen or behind another app.
+    ///
+    /// `--capture-after=<seconds>` delays the shot. That is how live reload is
+    /// checked: launch with a delay, rewrite the file meanwhile, and the PNG
+    /// shows whether the view followed.
     private func captureTarget() -> URL? {
         guard
             let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--capture=") })
@@ -54,10 +58,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return URL(fileURLWithPath: String(argument.dropFirst("--capture=".count)))
     }
 
+    private func captureDelay() -> TimeInterval {
+        let prefix = "--capture-after="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) }),
+            let seconds = TimeInterval(argument.dropFirst(prefix.count))
+        else { return 0.4 }
+        return seconds
+    }
+
     private func capture(to url: URL) {
-        // One turn of the run loop, so the document window has laid out and the
-        // first visible blocks have been measured.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        // At least one turn of the run loop, so the document window has laid
+        // out and the first visible blocks have been measured.
+        DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay()) {
             guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
                 let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
             else {
