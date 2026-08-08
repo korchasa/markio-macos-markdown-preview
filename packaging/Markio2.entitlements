@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Markio 2 opens files the reader chooses, one window per document, and
+      does nothing else with the system. The sandbox therefore needs exactly
+      one grant: read access to user-selected files.
+
+      There is deliberately no network entitlement. A sandboxed WKWebView needs
+      com.apple.security.network.client to bring up its content process even
+      when it never loads anything — Markio 2 has no web view at all, so the
+      grant has nothing to enable and stays out.
+
+      This repository only declares these entitlements. Signing with them
+      happens outside it.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+</dict>
+</plist>
