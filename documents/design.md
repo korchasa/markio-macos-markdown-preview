@@ -197,6 +197,24 @@ decodes. `FindEngine` projects the same text on a background queue with no
 loader and no window, so a picture that turns out to be unreadable draws an
 empty frame rather than changing the text under the reader's search.
 
+### Tables
+
+Both kinds go through one layout. Markdown's syntax cannot merge cells, so the
+grid it describes is the special case of one that can — every cell one row and
+one column wide — and `HTMLTable` is the shape both are expressed in. Column
+widths come from the natural width of each column's widest cell, with a spanning
+cell sharing its width between the columns it covers; row heights come from the
+tallest cell in each row, and a cell spanning rows only has to fit inside all of
+them together. Borders are one stroke per cell rather than a grid of lines,
+which is what gives a merged cell exactly the border it should have.
+
+`HTMLTable.parse` reads only the tags that describe a grid — `table`, `tr`,
+`td`, `th`, and the `rowspan`, `colspan` and alignment attributes — and returns
+nil for everything else, including a nested table or one split by a blank line.
+The caller then shows the source, which is never wrong, only unhelpful. This is
+not a step towards an HTML engine: it exists because an author who needs a
+merged cell has no other way to write one.
+
 ### Comparing versions
 
 `CompareEngine` diffs the two versions line by line — hashes, not slices, with

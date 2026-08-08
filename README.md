@@ -18,6 +18,8 @@ Markio 2 reads. It never writes a file it opens.
   thematic breaks
 - GitHub extensions: tables with per-column alignment, task lists,
   strikethrough, autolinks
+- Tables written with HTML tags, merged cells included — the one thing
+  Markdown's own table syntax cannot express
 - YAML front matter, shown as a highlighted metadata block
 - Inline: emphasis, strong, code spans, links (inline, reference, autolink),
   entities, hard and soft breaks

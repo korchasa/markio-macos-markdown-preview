@@ -94,3 +94,13 @@ block goes here as it would anywhere else.
 - and back again on the second click
 
 </details>
+
+### A table with merged cells
+
+<table>
+<tr><th rowspan="2">Stage</th><th colspan="2">Cost</th></tr>
+<tr><th>Time</th><th align="right">Memory</th></tr>
+<tr><td>Parse</td><td>69 ms</td><td align="right">12.2 MB</td></tr>
+<tr><td colspan="3">Markdown's own table syntax cannot merge cells; this is why
+the tags are read.</td></tr>
+</table>

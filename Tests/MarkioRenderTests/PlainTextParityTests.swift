@@ -56,6 +56,18 @@ final class PlainTextParityTests: XCTestCase {
         )
     }
 
+    func testHTMLTable() {
+        assertParity(
+            """
+            <table>
+            <tr><th rowspan="2">Stage</th><th colspan="2">Cost</th></tr>
+            <tr><th>Time</th><th>Memory</th></tr>
+            <tr><td>Parse</td><td>69 ms</td><td>12.2 MB</td></tr>
+            </table>
+            """
+        )
+    }
+
     func testFootnotes() {
         assertParity(
             """

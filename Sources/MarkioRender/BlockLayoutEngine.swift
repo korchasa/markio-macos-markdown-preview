@@ -111,7 +111,16 @@ struct BlockLayoutEngine {
         case .codeBlock:
             builder.layoutCode(block, language: document.text(block.info))
         case .htmlBlock:
-            builder.layoutCode(block, language: "html", dimmed: true)
+            // A table written with tags is the one piece of HTML worth drawing
+            // rather than showing: Markdown's own syntax cannot merge cells, so
+            // an author who needs one has no other way to write it. Anything
+            // this cannot read falls back to the source, which is never wrong —
+            // only unhelpful.
+            if let table = HTMLTable.parse(document.content(of: leaf)) {
+                builder.layoutGrid(table)
+            } else {
+                builder.layoutCode(block, language: "html", dimmed: true)
+            }
         case .frontMatter:
             builder.layoutCode(block, language: "yaml", dimmed: true)
         case .thematicBreak:
@@ -553,82 +562,128 @@ struct BlockLayoutEngine {
 
         // MARK: Tables
 
+        /// Both kinds of table take the same path.
+        ///
+        /// Markdown's own syntax cannot merge cells, so the grid it describes
+        /// is the special case of one that can — every cell one row and one
+        /// column wide. Writing the general layout once means a merged cell and
+        /// a plain one are drawn, measured and copied by the same code.
         mutating func layoutTable(leaf: Int32) {
-            let table = document.table(at: leaf)
-            let columns = max(1, table.columnCount)
-            let padding = theme.metrics.tableCellPadding
-            let widths = columnWidths(table, total: available, padding: padding)
+            layoutGrid(HTMLTable(gfm: document.table(at: leaf), document: document))
+        }
 
-            var rows: [[ByteRange]] = [table.header]
-            rows.append(contentsOf: table.rows)
+        mutating func layoutGrid(_ table: HTMLTable) {
+            let padding = theme.metrics.tableCellPadding
+            let columns = max(1, table.columnCount)
+            let rows = max(1, table.rowCount)
+            let widths = columnWidths(table, total: available, padding: padding)
+            var edges = [CGFloat](repeating: indent, count: columns + 1)
+            for column in 0..<columns { edges[column + 1] = edges[column] + widths[column] }
+
+            // Build every cell's text once, and measure it at the width its
+            // span gives it. Heights have to be known for the whole grid before
+            // any cell can be placed, because a row is as tall as its tallest
+            // cell.
+            var texts: [StyledText] = []
+            var inlines: [InlineContent] = []
+            var heights: [CGFloat] = []
+            var rowHeights = [CGFloat](repeating: theme.lineHeight + padding * 2, count: rows)
+            for cell in table.cells {
+                let inline = parseInline(cell.content)
+                let styled = AttributedBuilder.build(
+                    content: cell.content,
+                    inline: inline,
+                    theme: theme,
+                    baseFont: cell.isHeader ? theme.bodyBold : theme.body,
+                    baseColor: theme.palette.text
+                )
+                let width = cellWidth(cell, edges: edges, columns: columns)
+                let measured =
+                    Typesetter.layout(
+                        styled.attributed,
+                        width: max(8, width - padding * 2),
+                        x: 0,
+                        y: 0,
+                        lineHeightMultiple: theme.metrics.lineHeightMultiple
+                    ).height + padding * 2
+                texts.append(styled)
+                inlines.append(inline)
+                heights.append(measured)
+                if cell.rowspan == 1, cell.row < rows {
+                    rowHeights[cell.row] = max(rowHeights[cell.row], measured)
+                }
+            }
+            // A cell spanning several rows only has to fit inside all of them
+            // together; the last row it covers takes whatever is missing.
+            for (index, cell) in table.cells.enumerated() where cell.rowspan > 1 {
+                let last = min(rows - 1, cell.row + cell.rowspan - 1)
+                guard cell.row <= last else { continue }
+                let have = (cell.row...last).reduce(0) { $0 + rowHeights[$1] }
+                if heights[index] > have { rowHeights[last] += heights[index] - have }
+            }
+
+            var tops = [CGFloat](repeating: y, count: rows + 1)
+            for row in 0..<rows { tops[row + 1] = tops[row] + rowHeights[row] }
             let tableTop = y
 
-            for (rowIndex, row) in rows.enumerated() {
-                let rowTop = y
-                var rowHeight: CGFloat = 0
-                var x = indent
-                for column in 0..<columns {
-                    let cell = column < row.count ? row[column] : .empty
-                    let cellBytes = Array(document.bytes[cell.lowerBound..<cell.upperBound])
-                    let inline = parseInline(cellBytes)
-                    let styled = AttributedBuilder.build(
-                        content: cellBytes,
-                        inline: inline,
-                        theme: theme,
-                        baseFont: rowIndex == 0 ? theme.bodyBold : theme.body,
-                        baseColor: theme.palette.text
-                    )
-                    let alignment: LineAlignment
-                    switch table.alignments[min(column, table.alignments.count - 1)] {
-                    case .right: alignment = .right
-                    case .center: alignment = .center
-                    default: alignment = .left
-                    }
-                    let result = Typesetter.layout(
-                        styled.attributed,
-                        width: widths[column] - padding * 2,
-                        x: x + padding,
-                        y: rowTop + padding,
-                        lineHeightMultiple: theme.metrics.lineHeightMultiple,
-                        alignment: alignment
-                    )
-                    let offset = plainText.utf16.count
-                    segments.append(
-                        BlockBox.Segment(
-                            attributed: styled.attributed,
-                            lines: result.lines,
-                            textOffset: offset
-                        )
-                    )
-                    plainText += styled.attributed.string
-                    plainText += column == columns - 1 ? "\n" : "\t"
-                    recordSpans(
-                        styled, result: result, inline: inline, segmentIndex: segments.count - 1)
-                    rowHeight = max(rowHeight, result.height + padding * 2)
-                    x += widths[column]
-                }
-                rowHeight = max(rowHeight, theme.lineHeight + padding * 2)
-                if rowIndex == 0 {
+            for (index, cell) in table.cells.enumerated() {
+                let last = min(rows - 1, cell.row + cell.rowspan - 1)
+                let frame = CGRect(
+                    x: edges[min(columns, cell.column)],
+                    y: tops[min(rows, cell.row)],
+                    width: cellWidth(cell, edges: edges, columns: columns),
+                    height: tops[last + 1] - tops[min(rows, cell.row)]
+                )
+                if cell.isHeader {
                     decorations.insert(
                         .fill(
-                            rect: CGRect(x: indent, y: rowTop, width: available, height: rowHeight),
+                            rect: frame,
                             color: theme.palette.tableHeaderBackground,
                             cornerRadius: 0
                         ),
                         at: 0
                     )
                 }
-                y = rowTop + rowHeight
-                if rowIndex < rows.count - 1 {
-                    decorations.append(
-                        .fill(
-                            rect: CGRect(x: indent, y: y, width: available, height: 1),
-                            color: theme.palette.tableBorder,
-                            cornerRadius: 0
-                        ),
-                    )
+                let alignment: LineAlignment
+                switch cell.alignment {
+                case .right: alignment = .right
+                case .center: alignment = .center
+                default: alignment = .left
                 }
+                let result = Typesetter.layout(
+                    texts[index].attributed,
+                    width: max(8, frame.width - padding * 2),
+                    x: frame.minX + padding,
+                    y: frame.minY + padding,
+                    lineHeightMultiple: theme.metrics.lineHeightMultiple,
+                    alignment: alignment
+                )
+                let offset = plainText.utf16.count
+                segments.append(
+                    BlockBox.Segment(
+                        attributed: texts[index].attributed,
+                        lines: result.lines,
+                        textOffset: offset
+                    )
+                )
+                plainText += texts[index].attributed.string
+                let endsRow =
+                    index == table.cells.count - 1 || table.cells[index + 1].row != cell.row
+                plainText += endsRow ? "\n" : "\t"
+                recordSpans(
+                    texts[index],
+                    result: result,
+                    inline: inlines[index],
+                    segmentIndex: segments.count - 1
+                )
+                // One stroke per cell rather than a grid of lines: a merged cell
+                // then has exactly the border it should have, with no line
+                // running through the middle of it.
+                decorations.append(
+                    .stroke(rect: frame, color: theme.palette.tableBorder, width: 1)
+                )
             }
+            y = tops[rows]
             decorations.append(
                 .stroke(
                     rect: CGRect(x: indent, y: tableTop, width: available, height: y - tableTop),
@@ -636,39 +691,37 @@ struct BlockLayoutEngine {
                     width: 1
                 )
             )
-            var x = indent
-            for column in 0..<(columns - 1) {
-                x += widths[column]
-                decorations.append(
-                    .fill(
-                        rect: CGRect(x: x, y: tableTop, width: 1, height: y - tableTop),
-                        color: theme.palette.tableBorder,
-                        cornerRadius: 0
-                    )
-                )
-            }
+        }
+
+        private func cellWidth(
+            _ cell: HTMLTable.Cell,
+            edges: [CGFloat],
+            columns: Int
+        ) -> CGFloat {
+            let start = min(columns, cell.column)
+            let end = min(columns, cell.column + cell.columnspan)
+            return max(theme.metrics.bodySize * 3, edges[end] - edges[start])
         }
 
         /// Column widths from the natural width of each column's widest cell,
         /// scaled to the available width. Narrow columns keep their size; wide
         /// ones give up the difference, which is what keeps a table of short
-        /// numbers from stretching across the page.
+        /// numbers from stretching across the page. A cell that spans several
+        /// columns shares its width between them, so one wide merged heading
+        /// does not decide the whole grid.
         private func columnWidths(
-            _ table: Table,
+            _ table: HTMLTable,
             total: CGFloat,
             padding: CGFloat
         ) -> [CGFloat] {
             let columns = max(1, table.columnCount)
             var natural = [CGFloat](repeating: 0, count: columns)
-            var rows: [[ByteRange]] = [table.header]
-            rows.append(contentsOf: table.rows.prefix(50))
-            for row in rows {
-                for column in 0..<min(columns, row.count) {
-                    let bytes = row[column].count
-                    natural[column] = max(
-                        natural[column],
-                        CGFloat(bytes) * theme.metrics.bodySize * 0.55 + padding * 2
-                    )
+            for cell in table.cells.prefix(400) {
+                let width =
+                    CGFloat(cell.content.count) * theme.metrics.bodySize * 0.55 + padding * 2
+                let share = width / CGFloat(cell.columnspan)
+                for column in cell.column..<min(columns, cell.column + cell.columnspan) {
+                    natural[column] = max(natural[column], share)
                 }
             }
             let sum = natural.reduce(0, +)

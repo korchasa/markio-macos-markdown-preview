@@ -36,6 +36,10 @@ screen exists. Everything downstream depends on that staying true.
   definition.** `ReferenceCollector` refuses labels starting with a caret; drop
   that guard and a one-word note is swallowed as a definition, line and all, so
   the note simply disappears from the document.
+- **`HTMLTable.parse` returns nil rather than guessing.** Half a table is
+  worse than the source: every shape it does not understand — nested tables, a
+  table split by a blank line, a missing closing tag — has to come back nil so
+  the caller can fall back.
 - **`<details>` is recognised before the HTML-block branch**, or the section
   becomes one raw-HTML block ending at a blank line and the reader is shown the
   source of their own text. Only the whole-line spellings are taken: a

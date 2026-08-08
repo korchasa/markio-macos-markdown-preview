@@ -12,6 +12,11 @@ public enum BlockPlainText {
         let content = document.content(of: leaf)
         switch block.kind {
         case .codeBlock, .htmlBlock, .frontMatter:
+            // A `<table>` is drawn as a table, so its text is the cells, not
+            // the tags. Everything else raw stays raw.
+            if block.kind == .htmlBlock, let table = HTMLTable.parse(content) {
+                return gridText(document: document, table: table)
+            }
             // Terminal escapes are colour, not text: the renderer takes them
             // out, so Find must not see them either.
             guard AnsiText.containsEscapes(content) else {
@@ -34,7 +39,10 @@ public enum BlockPlainText {
             )
             return inlineText(content: summary, inline: inline, skipBytes: 0)
         case .table:
-            return tableText(document: document, leaf: leaf)
+            return gridText(
+                document: document,
+                table: HTMLTable(gfm: document.table(at: leaf), document: document)
+            )
         default:
             var skip = 0
             if let task = document.taskMarker(in: content, leaf: leaf) {
@@ -50,25 +58,20 @@ public enum BlockPlainText {
         }
     }
 
-    private static func tableText(document: Document, leaf: Int32) -> String {
-        let table = document.table(at: leaf)
-        let columns = max(1, table.columnCount)
-        var rows: [[ByteRange]] = [table.header]
-        rows.append(contentsOf: table.rows)
+    /// The text of a grid, cell by cell in reading order — the same order and
+    /// the same separators the layout puts in its own plain text.
+    private static func gridText(document: Document, table: HTMLTable) -> String {
         var out = ""
-        for row in rows {
-            for column in 0..<columns {
-                let cell = column < row.count ? row[column] : .empty
-                let bytes = Array(document.bytes[cell.lowerBound..<cell.upperBound])
-                let inline = InlineParser.parse(
-                    content: bytes,
-                    references: document.references,
-                    documentBytes: document.bytes,
-                    footnotes: document.footnotes
-                )
-                out += inlineText(content: bytes, inline: inline, skipBytes: 0)
-                out += column == columns - 1 ? "\n" : "\t"
-            }
+        for (index, cell) in table.cells.enumerated() {
+            let inline = InlineParser.parse(
+                content: cell.content,
+                references: document.references,
+                documentBytes: document.bytes,
+                footnotes: document.footnotes
+            )
+            out += inlineText(content: cell.content, inline: inline, skipBytes: 0)
+            let endsRow = index == table.cells.count - 1 || table.cells[index + 1].row != cell.row
+            out += endsRow ? "\n" : "\t"
         }
         return out
     }

@@ -57,6 +57,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **PARSE-10** `<details>`, `<summary>` and `</details>`, each on a line of its
   own, mark a collapsible section. What lies between them is ordinary Markdown,
   not raw HTML.
+- **PARSE-11** A `<table>` written with tags is read as a grid, `rowspan` and
+  `colspan` included. Anything the reader cannot resolve into a grid stays raw
+  HTML.
 
 ## VIEW — What the reader sees
 
@@ -115,7 +118,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-21** A footnote reference is a raised, clickable label; clicking it
   scrolls to the note. The note itself is set smaller, indented, with its label
   standing beside its first line.
-- **VIEW-22** A `<details>` section shows a summary row with a triangle;
+- **VIEW-22** A table written with HTML tags is drawn as a table, merged cells
+  and all, by the same layout that draws a Markdown table. One that cannot be
+  read as a grid is shown as source rather than as half a table.
+- **VIEW-23** A `<details>` section shows a summary row with a triangle;
   clicking it folds the section away or brings it back. `<details open>` starts
   open, `<details>` starts closed — what the author wrote. A folded section's
   blocks are hidden, not dropped: find and copy still see them.
