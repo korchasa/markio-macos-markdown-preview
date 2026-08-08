@@ -4,29 +4,31 @@ import MarkdownKit
 /// One open Markdown file.
 ///
 /// Read-only by construction: there is no writing path, so the document is
-/// never dirty, never prompts on close, and never offers Save. Parsing happens
-/// in `read(from:)`, which AppKit calls off the main thread, so opening a very
-/// large file does not freeze the app that is already running.
-@MainActor
+/// never dirty, never prompts on close, and never offers Save.
+///
+/// Documents deliberately do *not* opt into concurrent reading. AppKit would
+/// then construct the whole document on a background operation queue, which
+/// every `@MainActor` member of `NSDocument` traps on under Swift 6 isolation
+/// checking. The parse it would move off the main thread costs 69 ms for a
+/// 32 MB file — far below what a reader notices, and not worth taking the
+/// document out of the main actor to win.
 final class MarkdownDocument: NSDocument {
-    private(set) var parsed = MarkdownKit.Document(bytes: [])
-    /// Raw bytes, kept so a live reload can compare against what is on disk
-    /// without re-parsing an unchanged file.
-    private var sourceBytes: [UInt8] = []
+    /// Parsed content and the bytes it came from.
+    ///
+    /// Held behind a lock rather than in plain properties because
+    /// `read(from:)` is declared `nonisolated` by `NSDocument`, so the compiler
+    /// will not let it touch main-actor state directly.
+    private let storage = ParsedStorage()
     private var watcher: FileWatcher?
+
+    var parsed: MarkdownKit.Document { storage.document }
 
     override class var autosavesInPlace: Bool { false }
     override var isDocumentEdited: Bool { false }
 
-    override class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { true }
-
     override nonisolated func read(from data: Data, ofType typeName: String) throws {
         let bytes = [UInt8](data)
-        let document = MarkdownKit.Document(bytes: bytes)
-        MainActor.assumeIsolated {
-            self.sourceBytes = bytes
-            self.parsed = document
-        }
+        storage.set(bytes: bytes, document: MarkdownKit.Document(bytes: bytes))
     }
 
     override nonisolated func write(to url: URL, ofType typeName: String) throws {
@@ -57,14 +59,42 @@ final class MarkdownDocument: NSDocument {
     private func reloadFromDisk() {
         guard let url = fileURL, let data = try? Data(contentsOf: url) else { return }
         let bytes = [UInt8](data)
-        guard bytes != sourceBytes else { return }
-        sourceBytes = bytes
-        parsed = MarkdownKit.Document(bytes: bytes)
+        // An editor can touch a file without changing it; re-parsing then would
+        // throw away the reader's laid-out page for nothing.
+        guard bytes != storage.bytes else { return }
+        storage.set(bytes: bytes, document: MarkdownKit.Document(bytes: bytes))
         for controller in windowControllers {
             (controller as? DocumentWindowController)?.documentDidReload()
         }
         // An atomic save replaces the file, so the old watch is now pointing at
         // a vnode nobody will write to again.
         startWatching()
+    }
+}
+
+/// Lock-guarded parse result, written on the loading queue and read on the main
+/// thread.
+private final class ParsedStorage: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedBytes: [UInt8] = []
+    private var storedDocument = MarkdownKit.Document(bytes: [])
+
+    var bytes: [UInt8] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedBytes
+    }
+
+    var document: MarkdownKit.Document {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedDocument
+    }
+
+    func set(bytes: [UInt8], document: MarkdownKit.Document) {
+        lock.lock()
+        defer { lock.unlock() }
+        storedBytes = bytes
+        storedDocument = document
     }
 }

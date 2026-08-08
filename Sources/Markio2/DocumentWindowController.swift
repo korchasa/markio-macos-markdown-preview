@@ -69,6 +69,11 @@ final class DocumentWindowController: NSWindowController {
         scrollView.drawsBackground = true
         scrollView.backgroundColor =
             NSColor(cgColor: layout.theme.palette.background) ?? .textBackgroundColor
+        // The reading column is a fixed number of characters wide, so the view
+        // has to span the whole scroll area — otherwise there is nothing for
+        // `DocumentView.contentX` to centre the column inside and the text sits
+        // against the left edge.
+        documentView.autoresizingMask = [.width]
         scrollView.documentView = documentView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
@@ -106,6 +111,23 @@ final class DocumentWindowController: NSWindowController {
             bottomBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 30),
+        ])
+
+        // AppKit sizes a constraint-driven window to the fitting size of its
+        // content. Nothing above gives the reading area a height of its own —
+        // every edge is pinned to a neighbour — so without these the window
+        // opens as a bare title bar over the bottom strip. The floor keeps it
+        // from collapsing on resize; the preference is what the first window
+        // opens at, and it yields to the saved frame on every later launch.
+        let preferredWidth = scrollView.widthAnchor.constraint(equalToConstant: 900)
+        preferredWidth.priority = .defaultHigh
+        let preferredHeight = scrollView.heightAnchor.constraint(equalToConstant: 810)
+        preferredHeight.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            scrollView.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
+            scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            preferredWidth,
+            preferredHeight,
         ])
 
         setSidebarVisible(Preferences.outlineVisible, animated: false)

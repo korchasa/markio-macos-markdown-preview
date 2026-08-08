@@ -1,0 +1,113 @@
+import XCTest
+
+@testable import MarkdownKit
+@testable import MarkioRender
+
+/// Find and rendering must agree on what a block says.
+///
+/// `BlockPlainText` reproduces, without a font or a theme, the exact characters
+/// `AttributedBuilder` puts on screen — that is what lets a search run over a
+/// huge document without typesetting any of it. The two are written separately
+/// on purpose, so this test is what keeps them from drifting: a match offset
+/// from one is used to highlight a range in the other, and a one-character
+/// disagreement puts the highlight on the wrong word.
+@MainActor
+final class PlainTextParityTests: XCTestCase {
+    private func assertParity(
+        _ markdown: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let document = Document(text: markdown)
+        let layout = DocumentLayout(
+            document: document,
+            theme: Theme(isDark: false),
+            columnWidth: 520
+        )
+        XCTAssertGreaterThan(
+            layout.blockCount, 0, "fixture produced no blocks", file: file, line: line)
+        for ordinal in 0..<layout.blockCount {
+            guard let box = layout.box(at: ordinal) else {
+                XCTFail("no box for ordinal \(ordinal)", file: file, line: line)
+                continue
+            }
+            XCTAssertEqual(
+                BlockPlainText.text(document: document, leaf: document.leaves[ordinal]),
+                box.plainText,
+                "ordinal \(ordinal)",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    func testProse() {
+        assertParity(
+            """
+            # A heading with `code` in it
+
+            Ordinary prose with *emphasis*, **strong**, ~~struck~~ and a
+            soft-wrapped second line.
+
+            A paragraph with a [link](https://example.com), an ![image](a.png)
+            and an &amp; entity.
+
+            A line ending in two spaces\u{20}\u{20}
+            forces a hard break.
+            """
+        )
+    }
+
+    func testListsAndQuotes() {
+        assertParity(
+            """
+            - A bullet
+            - Another with **bold**
+              - Nested
+            - [ ] Unfinished
+            - [x] Finished
+
+            1. First
+            2. Second
+
+            > Quoted prose
+            >
+            > > Nested quote
+            """
+        )
+    }
+
+    func testCodeAndTables() {
+        assertParity(
+            """
+            ```swift
+            let x = 1  // a comment
+            print("hello")
+            ```
+
+                indented code
+
+            | Left | Centre | Right |
+            | :--- | :----: | ----: |
+            | a    | b      | c     |
+            | longer cell | x | y |
+
+            ---
+            """
+        )
+    }
+
+    func testFrontMatterAndHTML() {
+        assertParity(
+            """
+            ---
+            title: Something
+            ---
+
+            Text with <b>bold</b>, <kbd>⌘F</kbd> and a <br> break.
+
+            <div class="raw">
+            raw block
+            </div>
+            """
+        )
+    }
+}
