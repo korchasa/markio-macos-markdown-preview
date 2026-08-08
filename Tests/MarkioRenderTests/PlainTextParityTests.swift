@@ -95,6 +95,25 @@ final class PlainTextParityTests: XCTestCase {
         )
     }
 
+    func testTerminalOutputAndDiffs() {
+        let escape = "\u{1B}"
+        assertParity(
+            """
+            ```
+            \(escape)[32mok\(escape)[0m and \(escape)[1;31mfailed\(escape)[0m
+            \(escape)[38;5;208mextended\(escape)[0m
+            ```
+
+            ```diff
+            @@ -1,3 +1,3 @@
+             context line
+            -removed line
+            +added line
+            ```
+            """
+        )
+    }
+
     func testFrontMatterAndHTML() {
         assertParity(
             """

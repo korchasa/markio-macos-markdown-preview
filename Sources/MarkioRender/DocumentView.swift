@@ -28,6 +28,12 @@ public final class DocumentView: NSView {
     public var onVisibleRangeChange: ((Range<Int>) -> Void)?
     /// Called when the system switches between light and dark.
     public var onAppearanceChange: (() -> Void)?
+    /// Called when files are dropped on the view. The view does not open
+    /// anything itself, for the same reason it does not follow links.
+    public var onOpenFiles: (([URL]) -> Void)?
+    /// Whether a dropped file is one this app will open. Without it the view
+    /// would advertise a drop it cannot honour.
+    public var acceptsFile: ((URL) -> Bool)?
 
     public var verticalPadding: CGFloat = 28
     public var horizontalMargin: CGFloat = 24
@@ -57,6 +63,7 @@ public final class DocumentView: NSView {
         self.layout = layout
         super.init(frame: .zero)
         wantsLayer = true
+        registerForDraggedTypes([.fileURL])
     }
 
     @available(*, unavailable)
@@ -347,6 +354,34 @@ public final class DocumentView: NSView {
     }
 
     // MARK: - Mouse
+
+    // MARK: - Dropped files
+
+    public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        droppedFiles(from: sender).isEmpty ? [] : .copy
+    }
+
+    public override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        droppedFiles(from: sender).isEmpty ? [] : .copy
+    }
+
+    public override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let files = droppedFiles(from: sender)
+        guard !files.isEmpty else { return false }
+        onOpenFiles?(files)
+        return true
+    }
+
+    private func droppedFiles(from sender: any NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let objects = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: options
+        )
+        let urls = (objects as? [URL]) ?? []
+        guard let acceptsFile else { return urls }
+        return urls.filter(acceptsFile)
+    }
 
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()

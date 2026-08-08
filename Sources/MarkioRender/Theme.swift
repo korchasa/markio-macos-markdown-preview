@@ -45,6 +45,11 @@ public struct Theme {
         public var findCurrentMatch: CGColor
         public var selection: CGColor
         public var background: CGColor
+        /// Bands behind added and removed lines in a `diff` block.
+        public var diffAddedText: CGColor
+        public var diffAddedBackground: CGColor
+        public var diffRemovedText: CGColor
+        public var diffRemovedBackground: CGColor
     }
 
     public var metrics: Metrics
@@ -142,7 +147,11 @@ public struct Theme {
                 findMatch: color(140, 116, 30),
                 findCurrentMatch: color(214, 148, 20),
                 selection: color(38, 92, 158, 0.55),
-                background: color(22, 24, 28)
+                background: color(22, 24, 28),
+                diffAddedText: color(150, 226, 165),
+                diffAddedBackground: color(30, 74, 44, 0.55),
+                diffRemovedText: color(255, 160, 160),
+                diffRemovedBackground: color(84, 32, 36, 0.55)
             )
         }
         return Palette(
@@ -161,7 +170,11 @@ public struct Theme {
             findMatch: color(255, 226, 120),
             findCurrentMatch: color(255, 176, 40),
             selection: color(160, 200, 255, 0.75),
-            background: color(255, 255, 255)
+            background: color(255, 255, 255),
+            diffAddedText: color(20, 92, 44),
+            diffAddedBackground: color(198, 240, 208, 0.75),
+            diffRemovedText: color(140, 30, 34),
+            diffRemovedBackground: color(255, 210, 210, 0.75)
         )
     }
 }

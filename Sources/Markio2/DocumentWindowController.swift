@@ -16,6 +16,7 @@ final class DocumentWindowController: NSWindowController {
     private let scrollView = NSScrollView()
     private let outline = OutlineSidebar()
     private let findBar = FindBar()
+    private let findOverview = FindOverview()
     private let findEngine = FindEngine()
     private let widthSlider = NSSlider()
     private let widthLabel = NSTextField(labelWithString: "")
@@ -82,7 +83,9 @@ final class DocumentWindowController: NSWindowController {
 
         let bottomBar = buildBottomBar()
 
-        for view in [outline, separator, scrollView, findBar, bottomBar] as [NSView] {
+        for view in [outline, separator, scrollView, findOverview, findBar, bottomBar]
+            as [NSView]
+        {
             view.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(view)
         }
@@ -103,6 +106,11 @@ final class DocumentWindowController: NSWindowController {
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+
+            findOverview.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            findOverview.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            findOverview.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            findOverview.widthAnchor.constraint(equalToConstant: 12),
 
             findBar.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -18),
             findBar.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 14),
@@ -132,12 +140,21 @@ final class DocumentWindowController: NSWindowController {
 
         setSidebarVisible(Preferences.outlineVisible, animated: false)
         findBar.isHidden = true
+        findOverview.isHidden = true
 
         documentView.onActivateLink = { [weak self] link in self?.open(link: link) }
         documentView.onVisibleRangeChange = { [weak self] range in
             self?.visibleRangeChanged(range)
         }
         documentView.onAppearanceChange = { [weak self] in self?.appearanceChanged() }
+        documentView.acceptsFile = LinkResolver.isMarkdown
+        documentView.onOpenFiles = { urls in
+            for url in urls {
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) {
+                    _, _, _ in
+                }
+            }
+        }
 
         outline.onSelect = { [weak self] index in self?.jumpToHeading(index) }
 
@@ -145,6 +162,7 @@ final class DocumentWindowController: NSWindowController {
         findBar.onNext = { [weak self] in self?.step(by: 1) }
         findBar.onPrevious = { [weak self] in self?.step(by: -1) }
         findBar.onClose = { [weak self] in self?.closeFind() }
+        findOverview.onSelect = { [weak self] index in self?.jumpToMatch(index) }
 
         NotificationCenter.default.addObserver(
             self,
@@ -347,6 +365,7 @@ final class DocumentWindowController: NSWindowController {
         findMatches = []
         currentMatch = -1
         documentView.setFindMatches([], current: -1)
+        findOverview.setMarks([], current: -1)
         window?.makeFirstResponder(documentView)
     }
 
@@ -355,6 +374,7 @@ final class DocumentWindowController: NSWindowController {
             findMatches = []
             currentMatch = -1
             documentView.setFindMatches([], current: -1)
+            findOverview.setMarks([], current: -1)
             findBar.setCounter(current: 0, total: 0)
             return
         }
@@ -367,11 +387,39 @@ final class DocumentWindowController: NSWindowController {
                 self.documentView.reveal(ordinal: result.matches[0].ordinal)
             }
             self.documentView.setFindMatches(result.matches, current: self.currentMatch)
+            self.updateFindOverview()
             self.findBar.setCounter(
                 current: self.currentMatch + 1,
                 total: result.matches.count
             )
         }
+    }
+
+    /// Where each match sits in the document, as a fraction of its height.
+    ///
+    /// Heights above the viewport are still estimates, so these positions are
+    /// approximate until those blocks have been seen — good enough for a strip
+    /// whose job is to show clustering, and it is recomputed on every step.
+    private func updateFindOverview() {
+        guard !findMatches.isEmpty else {
+            findOverview.setMarks([], current: -1)
+            return
+        }
+        let total = max(1, layout.totalHeight)
+        let marks = findMatches.map { layout.offset(of: $0.ordinal) / total }
+        findOverview.setMarks(marks, current: currentMatch)
+    }
+
+    private func jumpToMatch(_ index: Int) {
+        guard index >= 0, index < findMatches.count else { return }
+        currentMatch = index
+        documentView.setFindMatches(findMatches, current: currentMatch)
+        documentView.reveal(ordinal: findMatches[currentMatch].ordinal)
+        findBar.setCounter(current: currentMatch + 1, total: findMatches.count)
+        findOverview.setMarks(
+            findMatches.map { layout.offset(of: $0.ordinal) / max(1, layout.totalHeight) },
+            current: currentMatch
+        )
     }
 
     private func rerunSearchIfActive() {
@@ -381,10 +429,7 @@ final class DocumentWindowController: NSWindowController {
 
     private func step(by delta: Int) {
         guard !findMatches.isEmpty else { return }
-        currentMatch = (currentMatch + delta + findMatches.count) % findMatches.count
-        documentView.setFindMatches(findMatches, current: currentMatch)
-        documentView.reveal(ordinal: findMatches[currentMatch].ordinal)
-        findBar.setCounter(current: currentMatch + 1, total: findMatches.count)
+        jumpToMatch((currentMatch + delta + findMatches.count) % findMatches.count)
     }
 
     @objc func findNext(_ sender: Any?) { step(by: 1) }

@@ -214,8 +214,14 @@ struct BlockLayoutEngine {
         /// box of monospaced text, wrapped rather than clipped so the reader
         /// never has to scroll sideways.
         mutating func layoutCode(_ block: Block, language: String, dimmed: Bool = false) {
-            let content = document.content(of: leaf)
-            let attributed = codeAttributedString(content, language: language, dimmed: dimmed)
+            let code = CodeText.build(
+                content: document.content(of: leaf),
+                language: language,
+                dimmed: dimmed,
+                theme: theme,
+                syntax: engine.syntax
+            )
+            let attributed = code.attributed
             let padding = theme.metrics.codePadding
             let boxTop = y
             let result = Typesetter.layout(
@@ -228,7 +234,7 @@ struct BlockLayoutEngine {
             segments.append(
                 BlockBox.Segment(attributed: attributed, lines: result.lines, textOffset: 0)
             )
-            plainText = attributed.string
+            plainText = code.text
             y += result.height + padding * 2
             decorations.insert(
                 .fill(
@@ -238,6 +244,39 @@ struct BlockLayoutEngine {
                 ),
                 at: 0
             )
+            addCodeTints(code.tints, lines: result.lines, padding: padding)
+        }
+
+        /// Paint the bands a diff or a terminal log carries.
+        ///
+        /// Inserted right after the block's own background so they sit under
+        /// the text: decorations are drawn in order, and a band painted after
+        /// the glyphs would erase them.
+        private mutating func addCodeTints(
+            _ tints: [CodeText.Tint],
+            lines: [TextLine],
+            padding: CGFloat
+        ) {
+            guard !tints.isEmpty else { return }
+            var insertAt = 1
+            for tint in tints {
+                for rect in SpanGeometry.rects(for: tint.range, lines: lines) {
+                    let band =
+                        tint.fullWidth
+                        ? CGRect(
+                            x: indent,
+                            y: rect.minY,
+                            width: available,
+                            height: rect.height
+                        )
+                        : rect.insetBy(dx: -1, dy: -1)
+                    decorations.insert(
+                        .fill(rect: band, color: tint.color, cornerRadius: 0),
+                        at: insertAt
+                    )
+                    insertAt += 1
+                }
+            }
         }
 
         mutating func layoutRule() {
@@ -619,44 +658,6 @@ struct BlockLayoutEngine {
         /// Build the attributed string of a code block, colouring the spans the
         /// highlighter found. Text is appended span by span so byte offsets
         /// never have to be converted into UTF-16 offsets.
-        private func codeAttributedString(
-            _ content: [UInt8],
-            language: String,
-            dimmed: Bool
-        ) -> NSAttributedString {
-            let base = dimmed ? theme.palette.secondaryText : theme.palette.codeText
-            let attributed = NSMutableAttributedString()
-            func append(_ range: Range<Int>, color: CGColor) {
-                guard !range.isEmpty else { return }
-                let text = String(decoding: content[range], as: UTF8.self)
-                attributed.append(
-                    NSAttributedString(
-                        string: text,
-                        attributes: [
-                            AttributedBuilder.fontKey: theme.mono,
-                            AttributedBuilder.colorKey: color,
-                        ]
-                    )
-                )
-            }
-            // Highlighting a very large block would cost more than it is worth;
-            // past this size the block is a log or a data dump, not code.
-            let spans =
-                content.count <= 128 * 1_024
-                ? SyntaxHighlighter.spans(code: content, language: language)
-                : []
-            var cursor = 0
-            for span in spans {
-                guard span.start >= cursor, span.end <= content.count else { continue }
-                append(cursor..<span.start, color: base)
-                append(
-                    span.start..<span.end,
-                    color: engine.syntax.color(for: span.token, fallback: base))
-                cursor = span.end
-            }
-            append(cursor..<content.count, color: base)
-            return attributed
-        }
     }
 }
 

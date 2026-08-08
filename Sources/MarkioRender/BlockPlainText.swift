@@ -12,7 +12,12 @@ public enum BlockPlainText {
         let content = document.content(of: leaf)
         switch block.kind {
         case .codeBlock, .htmlBlock, .frontMatter:
-            return String(decoding: content, as: UTF8.self)
+            // Terminal escapes are colour, not text: the renderer takes them
+            // out, so Find must not see them either.
+            guard AnsiText.containsEscapes(content) else {
+                return String(decoding: content, as: UTF8.self)
+            }
+            return String(decoding: AnsiText.strip(content), as: UTF8.self)
         case .thematicBreak:
             return ""
         case .table:

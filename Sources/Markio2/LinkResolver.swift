@@ -16,6 +16,12 @@ enum LinkResolver {
 
     private static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
 
+    /// Whether this app will open a file — the same rule for a dropped file as
+    /// for a link, so the two can never disagree about what is a document.
+    static func isMarkdown(_ url: URL) -> Bool {
+        markdownExtensions.contains(url.pathExtension.lowercased())
+    }
+
     static func resolve(destination: String, relativeTo base: URL?) -> Target? {
         let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -48,7 +54,7 @@ enum LinkResolver {
         guard !decoded.hasPrefix("/") else { return nil }
         let url = URL(fileURLWithPath: decoded, relativeTo: base.deletingLastPathComponent())
             .standardizedFileURL
-        guard markdownExtensions.contains(url.pathExtension.lowercased()) else { return nil }
+        guard isMarkdown(url) else { return nil }
         return .document(url, anchor: anchor)
     }
 
