@@ -26,7 +26,27 @@ public enum DocumentRenderer {
         highlights: [Highlight],
         in context: CGContext
     ) {
-        for decoration in box.decorations {
+        shapes(box.decorations, in: context)
+        for highlight in highlights {
+            context.setFillColor(highlight.color)
+            for rect in highlight.rects { context.fill(rect) }
+        }
+        for segment in box.segments {
+            for line in segment.lines {
+                context.textPosition = line.origin
+                CTLineDraw(line.line, context)
+            }
+        }
+        for case .glyphs(let line, let origin) in box.decorations {
+            context.textPosition = origin
+            CTLineDraw(line, context)
+        }
+    }
+
+    /// Everything in a list of decorations except its glyphs, which are drawn
+    /// last so a highlight tints them instead of covering them.
+    private static func shapes(_ decorations: [BlockBox.Decoration], in context: CGContext) {
+        for decoration in decorations {
             switch decoration {
             case .glyphs:
                 // Formula glyphs are drawn after the highlights, below.
@@ -74,20 +94,44 @@ public enum DocumentRenderer {
                 }
             }
         }
-        for highlight in highlights {
-            context.setFillColor(highlight.color)
-            for rect in highlight.rects { context.fill(rect) }
-        }
-        for segment in box.segments {
-            for line in segment.lines {
-                context.textPosition = line.origin
-                CTLineDraw(line.line, context)
-            }
-        }
-        for case .glyphs(let line, let origin) in box.decorations {
+    }
+
+    /// A Mermaid fence drawn on its own, at whatever width is asked for.
+    ///
+    /// The source is re-read rather than a drawing kept beside the block: a
+    /// diagram enlarged has to be laid out again anyway — its type does not
+    /// simply scale — and holding a second copy of every picture on screen
+    /// would cost exactly what this viewer refuses to spend.
+    @MainActor
+    public static func diagram(
+        source: String, theme: Theme, width: CGFloat, scale: CGFloat = 2
+    ) -> CGImage? {
+        guard let parsed = MermaidDiagram.parse(source) else { return nil }
+        let drawing = MermaidLayout.draw(parsed, theme: theme, width: width)
+        let size = CGSize(width: width, height: drawing.size.height)
+        guard size.width > 0, size.height > 0,
+            let context = CGContext(
+                data: nil,
+                width: Int(size.width * scale),
+                height: Int(size.height * scale),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+            )
+        else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        context.setFillColor(theme.palette.codeBackground)
+        context.fill(CGRect(origin: .zero, size: size))
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        shapes(drawing.decorations, in: context)
+        for case .glyphs(let line, let origin) in drawing.decorations {
             context.textPosition = origin
             CTLineDraw(line, context)
         }
+        return context.makeImage()
     }
 
     /// The band behind a block that changed between the compared versions.

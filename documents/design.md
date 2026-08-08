@@ -330,6 +330,14 @@ is behind its contents, and a bar is behind the arrows that start and end it. A
 block's frame cannot be drawn until its contents have been placed, which is why
 the whole body is laid out before anything below the participant boxes appears.
 
+A diagram in the reading column is as wide as the column, which is why clicking
+one opens `DiagramWindow`: the same source laid out again at the width of the
+window, not the same picture magnified — a diagram's type does not simply scale,
+and a graph drawn smaller to fit the column has ranks it could have spread out.
+Copy PNG goes through the same renderer. Neither keeps a drawing beside the
+block: re-reading the fence costs a parse of a few lines, and a second copy of
+every picture on screen would cost exactly what this viewer refuses to spend.
+
 Everything it produces is `BlockBox.Decoration` — filled and stroked paths, and
 the glyph runs added for formulas — so the diagram draws in the window and in
 the offscreen PNG by the same path as the text, and nothing about a diagram

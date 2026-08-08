@@ -40,6 +40,9 @@ public final class BlockBox {
     public struct CodeRegion {
         public var rect: CGRect
         public var language: String
+        /// Whether a picture was drawn in place of the fence. A diagram can be
+        /// enlarged and copied as an image; a fence of text cannot.
+        public var isDiagram: Bool = false
     }
 
     /// The header of a collapsible section: what a click on it toggles.

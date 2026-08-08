@@ -104,7 +104,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   clicking a mark jumps to that match.
 - **VIEW-13** A fenced block under the pointer offers its language and a Copy
   button. Copy writes the text as drawn — escapes removed — not the source
-  bytes.
+  bytes. A fence a diagram was drawn in place of offers Copy PNG as well, which
+  puts the picture itself on the clipboard.
 - **VIEW-14** A ```diff block reads as bands: added lines on one tint, removed
   on another, the rest plain.
 - **VIEW-15** Terminal escapes in a pasted log are drawn as colour — the
@@ -162,6 +163,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   or section where the diagram's own meaning is carried by colour. A picture too
   wide for the column is drawn smaller rather than cut off. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
+- **VIEW-27** Clicking a drawn diagram shows it large over the window, laid out
+  again at that width rather than magnified. Clicking it again, clicking the
+  enlarged picture, or pressing Escape puts it away.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

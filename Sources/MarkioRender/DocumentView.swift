@@ -50,12 +50,22 @@ public final class DocumentView: NSView {
     private var hoveredCode: CodeHover?
     /// The block whose Copy was last pressed, so the pill can say so.
     private var copiedOrdinal: Int?
+    /// Which pill was pressed, so "Copied" appears on that one and not the
+    /// other: a diagram has two of them.
+    private var copiedImage = false
+    /// The diagram shown enlarged, while it is shown.
+    private var enlarged: DiagramWindow?
 
     private struct CodeHover: Equatable {
         var ordinal: Int
         var copyRect: CGRect
         var badgeRect: CGRect
         var language: String
+        /// Where "Copy PNG" sits, for a fence a picture was drawn in place of.
+        var pngRect: CGRect?
+        /// The picture's own rectangle, so a click anywhere else on it enlarges
+        /// the diagram.
+        var diagramRect: CGRect?
     }
 
     public struct FindMatch: Sendable, Equatable {
@@ -208,12 +218,22 @@ public final class DocumentView: NSView {
             )
         }
         drawPill(
-            copied ? "Copied" : "Copy",
+            copied && !copiedImage ? "Copied" : "Copy",
             in: hover.copyRect,
             background: theme.palette.keyboardBackground,
-            foreground: copied ? theme.palette.link : theme.palette.secondaryText,
+            foreground: copied && !copiedImage ? theme.palette.link : theme.palette.secondaryText,
             context: context
         )
+        if let png = hover.pngRect {
+            drawPill(
+                copied && copiedImage ? "Copied" : "Copy PNG",
+                in: png,
+                background: theme.palette.keyboardBackground,
+                foreground: copied && copiedImage
+                    ? theme.palette.link : theme.palette.secondaryText,
+                context: context
+            )
+        }
     }
 
     private func drawPill(
@@ -261,9 +281,15 @@ public final class DocumentView: NSView {
             width: copyWidth,
             height: height
         )
+        // A picture can go on the clipboard as a picture, which is what anyone
+        // pasting a diagram into a message or a document actually wants.
+        var png: CGRect?
+        if region.isDiagram {
+            png = CGRect(x: copy.minX - 6 - 76, y: copy.minY, width: 76, height: height)
+        }
         let badgeWidth = max(34, CGFloat(region.language.count) * 7 + 14)
         let badge = CGRect(
-            x: copy.minX - 6 - badgeWidth,
+            x: (png ?? copy).minX - 6 - badgeWidth,
             y: copy.minY,
             width: badgeWidth,
             height: height
@@ -272,7 +298,9 @@ public final class DocumentView: NSView {
             ordinal: ordinal,
             copyRect: copy,
             badgeRect: badge,
-            language: region.language
+            language: region.language,
+            pngRect: png,
+            diagramRect: region.isDiagram ? frame : nil
         )
     }
 
@@ -294,11 +322,44 @@ public final class DocumentView: NSView {
         return true
     }
 
+    /// Put the diagram itself on the clipboard, as a picture.
+    private func copyDiagram(ordinal: Int) {
+        guard let box = layout.box(at: ordinal),
+            let image = DocumentRenderer.diagram(
+                source: box.plainText, theme: layout.theme, width: max(640, box.width))
+        else { return }
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        bitmap.size = CGSize(width: CGFloat(image.width) / 2, height: CGFloat(image.height) / 2)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(data, forType: .png)
+        markCopied(ordinal: ordinal, image: true)
+    }
+
+    /// Show the hovered diagram large, over the window. A second click on the
+    /// same one puts it away again.
+    private func enlargeDiagram(ordinal: Int) {
+        guard let box = layout.box(at: ordinal), let window else { return }
+        if let open = enlarged, open.isVisible, open.source == box.plainText {
+            open.close()
+            enlarged = nil
+            return
+        }
+        enlarged?.close()
+        enlarged = DiagramWindow.present(
+            source: box.plainText, theme: layout.theme, over: window)
+    }
+
     private func copyCode(ordinal: Int) {
         guard let box = layout.box(at: ordinal) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(box.plainText, forType: .string)
+        markCopied(ordinal: ordinal, image: false)
+    }
+
+    private func markCopied(ordinal: Int, image: Bool) {
         copiedOrdinal = ordinal
+        copiedImage = image
         needsDisplay = true
         // Long enough to read, short enough that a second copy still reads as
         // a second copy.
@@ -570,6 +631,16 @@ public final class DocumentView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if let hover = hoveredCode, hover.copyRect.contains(point) {
             copyCode(ordinal: hover.ordinal)
+            return
+        }
+        if let hover = hoveredCode, let png = hover.pngRect, png.contains(point) {
+            copyDiagram(ordinal: hover.ordinal)
+            return
+        }
+        // A diagram has no text to select, so a click on one can mean the one
+        // thing a picture in a column is always too small for.
+        if let hover = hoveredCode, let diagram = hover.diagramRect, diagram.contains(point) {
+            enlargeDiagram(ordinal: hover.ordinal)
             return
         }
         if event.clickCount == 1, let link = link(at: point) {

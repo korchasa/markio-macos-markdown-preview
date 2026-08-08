@@ -58,7 +58,8 @@ Markio 2 reads. It never writes a file it opens.
 - Drop a Markdown file on a window to open it
 - While searching, the strip at the right edge shows where the matches are;
   click one to go there
-- Hover a code block for its language and a Copy button
+- Hover a code block for its language and a Copy button; a diagram also offers
+  Copy PNG, and clicking one shows it large over the window
 - Click a footnote's marker to jump to the note
 - Click a `<details>` summary to fold its section away or bring it back
 - **File ▸ Compare…** shows the document against an older version of itself:

@@ -541,7 +541,7 @@ struct BlockLayoutEngine {
                 decorations.append(BlockBox.move(decoration, dx: indent, dy: y))
             }
             plainText = String(decoding: document.content(of: leaf), as: UTF8.self)
-            codeRegion = BlockBox.CodeRegion(rect: frame, language: language)
+            codeRegion = BlockBox.CodeRegion(rect: frame, language: language, isDiagram: true)
             y += drawing.size.height
         }
 
