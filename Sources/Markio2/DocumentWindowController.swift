@@ -1,5 +1,4 @@
 import AppKit
-import CoreText
 import MarkdownKit
 import MarkioRender
 
@@ -211,16 +210,9 @@ final class DocumentWindowController: NSWindowController {
 
     // MARK: - Reading width
 
-    /// Reading width in characters, converted to points using the advance of a
-    /// digit in the body font — the same unit CSS calls `ch`.
+    /// The reader's chosen width, in points.
     private static func columnWidth(for theme: Theme) -> CGFloat {
-        let sample = NSAttributedString(
-            string: "0",
-            attributes: [AttributedBuilderKey.font: theme.body]
-        )
-        let line = CTLineCreateWithAttributedString(sample)
-        let advance = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-        return CGFloat(Preferences.readingWidth) * max(advance, 6)
+        theme.columnWidth(characters: Preferences.readingWidth)
     }
 
     @objc private func widthChanged() {
@@ -489,10 +481,4 @@ extension NSAppearance {
     var isDark: Bool {
         bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
-}
-
-/// The CoreText attribute key, spelled once here so the app layer does not have
-/// to import CoreText just to measure a glyph.
-enum AttributedBuilderKey {
-    static let font = NSAttributedString.Key(kCTFontAttributeName as String)
 }

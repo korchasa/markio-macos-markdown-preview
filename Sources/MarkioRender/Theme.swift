@@ -87,6 +87,21 @@ public struct Theme {
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }
     }
 
+    /// The width of a reading column measured in characters, in points.
+    ///
+    /// The unit is the advance of a digit in the body font — what CSS calls
+    /// `ch`. It lives here because every host of the renderer needs it and none
+    /// of them should have to typeset a sample glyph to get it.
+    public func columnWidth(characters: Int) -> CGFloat {
+        let sample = NSAttributedString(
+            string: "0",
+            attributes: [NSAttributedString.Key(kCTFontAttributeName as String): body]
+        )
+        let line = CTLineCreateWithAttributedString(sample)
+        let advance = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        return CGFloat(characters) * max(advance, 6)
+    }
+
     public func heading(level: Int) -> CTFont {
         headings[max(0, min(headings.count - 1, level - 1))]
     }

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Markio2QuickLook</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.markio.two.quicklook</string>
+	<key>CFBundleName</key>
+	<string>Markio 2 Quick Look</string>
+	<key>CFBundleDisplayName</key>
+	<string>Markio 2 Quick Look</string>
+	<!-- An app extension is an XPC service in bundle-format terms. -->
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<!-- ExtensionFoundation reads the platform when it builds the XPC
+	     connection for an extension request and traps on a missing key. A
+	     hand-assembled bundle does not get these from Xcode, so they are
+	     written out here. -->
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>DTPlatformName</key>
+	<string>macosx</string>
+	<key>DTSDKName</key>
+	<string>macosx14.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<!-- Verbatim @objc name of the QLPreviewingController subclass. -->
+		<key>NSExtensionPrincipalClass</key>
+		<string>PreviewViewController</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!-- Markdown only. Deliberately not public.plain-text: the
+			     extension must never take over .txt previews. -->
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
+			</array>
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+		</dict>
+	</dict>
+	<!-- The Markdown type is not declared by the base system; importing it
+	     here makes .md and .markdown resolve to it even when no other app
+	     declares it. LaunchServices merges declarations across bundles. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Quick Look preview extension. An app extension has to be sandboxed to be
+	  loaded at all; Quick Look grants it read access to the previewed file.
+
+	  There is deliberately no com.apple.security.network.client here. A
+	  sandboxed WKWebView needs it — without it the WebContent helper never
+	  launches and the preview hangs on Finder's spinner forever. Markio 2 draws
+	  with CoreText and has no web view, so it needs no network entitlement at
+	  all, and the failure that requires one cannot happen.
+
+	  Ad-hoc signing with this file happens in `deno task app`, so the extension
+	  is loadable locally. Distribution signing happens outside this repository.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+</dict>
+</plist>

@@ -40,6 +40,22 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        // Quick Look preview extension: the same renderer, in Finder's preview
+        // panel. Linked with `_NSExtensionMain` as its entry point, the way
+        // Xcode links an app-extension product.
+        .executableTarget(
+            name: "Markio2QuickLook",
+            dependencies: ["MarkdownKit", "MarkioRender"],
+            path: "Sources/Markio2QuickLook",
+            exclude: ["AGENTS.md"],
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ],
+            linkerSettings: [
+                .linkedFramework("Quartz"),
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
+            ]
+        ),
         // Headless performance harness: parse/layout timings and peak memory on
         // generated documents. Kept out of the app so its cost never ships.
         .executableTarget(
