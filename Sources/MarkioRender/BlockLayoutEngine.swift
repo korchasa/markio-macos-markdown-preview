@@ -138,6 +138,7 @@ struct BlockLayoutEngine {
         var links: [BlockBox.LinkRegion] = []
         var linkTargets: [InlineLink] = []
         var plainText = ""
+        var codeRegion: BlockBox.CodeRegion?
 
         var theme: Theme { engine.theme }
         var document: Document { engine.document }
@@ -159,7 +160,8 @@ struct BlockLayoutEngine {
                 decorations: decorations,
                 links: links,
                 linkTargets: linkTargets,
-                plainText: plainText
+                plainText: plainText,
+                codeRegion: codeRegion
             )
         }
 
@@ -316,14 +318,16 @@ struct BlockLayoutEngine {
             )
             plainText = code.text
             y += result.height + padding * 2
+            let frame = CGRect(x: indent, y: boxTop, width: available, height: y - boxTop)
             decorations.insert(
                 .fill(
-                    rect: CGRect(x: indent, y: boxTop, width: available, height: y - boxTop),
+                    rect: frame,
                     color: theme.palette.codeBackground,
                     cornerRadius: theme.metrics.codeCornerRadius
                 ),
                 at: 0
             )
+            codeRegion = BlockBox.CodeRegion(rect: frame, language: language)
             addCodeTints(code.tints, lines: result.lines, padding: padding)
         }
 

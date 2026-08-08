@@ -30,6 +30,13 @@ public final class BlockBox {
         var link: Int32
     }
 
+    /// A fenced block's own rectangle and the language it declared, so the view
+    /// can offer Copy and name the language without re-reading the source.
+    public struct CodeRegion {
+        public var rect: CGRect
+        public var language: String
+    }
+
     let leaf: Int32
     let width: CGFloat
     let height: CGFloat
@@ -39,6 +46,7 @@ public final class BlockBox {
     let linkTargets: [InlineLink]
     /// The block's text with inline markup removed — what Copy and Find work on.
     let plainText: String
+    let codeRegion: CodeRegion?
 
     init(
         leaf: Int32,
@@ -48,7 +56,8 @@ public final class BlockBox {
         decorations: [Decoration],
         links: [LinkRegion],
         linkTargets: [InlineLink],
-        plainText: String
+        plainText: String,
+        codeRegion: CodeRegion? = nil
     ) {
         self.leaf = leaf
         self.width = width
@@ -58,6 +67,7 @@ public final class BlockBox {
         self.links = links
         self.linkTargets = linkTargets
         self.plainText = plainText
+        self.codeRegion = codeRegion
     }
 
     /// Rough memory cost, used to bound the box cache.

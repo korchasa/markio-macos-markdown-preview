@@ -66,11 +66,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return seconds
     }
 
+    /// `--capture-hover=<x>,<y>`: park the pointer before the shot.
+    ///
+    /// Controls that only appear under the pointer — the Copy pill on a fenced
+    /// block — are invisible to a plain capture. The coordinates are the
+    /// window's, with the origin at the bottom-left.
+    private func hoverPoint() -> CGPoint? {
+        let prefix = "--capture-hover="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+        else { return nil }
+        let parts = argument.dropFirst(prefix.count).split(separator: ",")
+        guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else {
+            return nil
+        }
+        return CGPoint(x: x, y: y)
+    }
+
+    /// A window hands a mouse-moved event to its first responder, not to the
+    /// view under the pointer, so a synthesized one has to be delivered to the
+    /// view the pointer would really be over.
+    private func sendHover(_ point: CGPoint, to window: NSWindow) {
+        guard
+            let target = window.contentView?.hitTest(point),
+            let event = NSEvent.mouseEvent(
+                with: .mouseMoved,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 0,
+                pressure: 0
+            )
+        else { return }
+        target.mouseMoved(with: event)
+    }
+
     private func capture(to url: URL) {
         // At least one turn of the run loop, so the document window has laid
         // out and the first visible blocks have been measured.
         DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay()) {
-            guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
+            let visible = NSApp.windows.first(where: { $0.isVisible })
+            if let point = self.hoverPoint(), let window = visible {
+                self.sendHover(point, to: window)
+                window.contentView?.displayIfNeeded()
+            }
+            guard let view = visible?.contentView,
                 let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
             else {
                 FileHandle.standardError.write(Data("capture: no visible window\n".utf8))

@@ -46,6 +46,17 @@ public final class DocumentView: NSView {
     /// Match ranges from the find bar, as (ordinal, utf16 range).
     private var findMatches: [FindMatch] = []
     private var currentMatch: Int = -1
+    /// The fenced block the pointer is over, and the pill it can click.
+    private var hoveredCode: CodeHover?
+    /// The block whose Copy was last pressed, so the pill can say so.
+    private var copiedOrdinal: Int?
+
+    private struct CodeHover: Equatable {
+        var ordinal: Int
+        var copyRect: CGRect
+        var badgeRect: CGRect
+        var language: String
+    }
 
     public struct FindMatch: Sendable, Equatable {
         public var ordinal: Int
@@ -164,6 +175,111 @@ public final class DocumentView: NSView {
             context.translateBy(x: originX, y: top)
             draw(box: box, ordinal: ordinal, selection: selection, in: context)
             context.restoreGState()
+        }
+        drawCodeControls(in: context)
+    }
+
+    // MARK: - Code block controls
+
+    /// The language badge and the Copy pill, drawn over the hovered block.
+    ///
+    /// They live in the view rather than in the box because they belong to the
+    /// pointer, not to the document: an offscreen render of the same block must
+    /// not have a button floating on it.
+    private func drawCodeControls(in context: CGContext) {
+        guard let hover = hoveredCode else { return }
+        let theme = layout.theme
+        let copied = copiedOrdinal == hover.ordinal
+        if !hover.language.isEmpty {
+            drawPill(
+                hover.language,
+                in: hover.badgeRect,
+                background: theme.palette.inlineCodeBackground,
+                foreground: theme.palette.secondaryText,
+                context: context
+            )
+        }
+        drawPill(
+            copied ? "Copied" : "Copy",
+            in: hover.copyRect,
+            background: theme.palette.keyboardBackground,
+            foreground: copied ? theme.palette.link : theme.palette.secondaryText,
+            context: context
+        )
+    }
+
+    private func drawPill(
+        _ text: String,
+        in rect: CGRect,
+        background: CGColor,
+        foreground: CGColor,
+        context: CGContext
+    ) {
+        context.setFillColor(background)
+        context.addPath(CGPath(roundedRect: rect, cornerWidth: 5, cornerHeight: 5, transform: nil))
+        context.fillPath()
+        let attributed = NSAttributedString(
+            string: text,
+            attributes: [
+                AttributedBuilder.fontKey: layout.theme.controlLabel,
+                AttributedBuilder.colorKey: foreground,
+            ]
+        )
+        let line = CTLineCreateWithAttributedString(attributed)
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+        context.textPosition = CGPoint(
+            x: rect.midX - width / 2,
+            y: rect.midY + (ascent - descent) / 2
+        )
+        CTLineDraw(line, context)
+    }
+
+    /// Where the badge and the pill sit for a code block under the pointer.
+    private func codeHover(at point: CGPoint) -> CodeHover? {
+        let ordinal = layout.index(atOffset: max(0, point.y - verticalPadding))
+        guard let box = layout.box(at: ordinal), let region = box.codeRegion else { return nil }
+        let top = layout.offset(of: ordinal) + verticalPadding
+        let frame = region.rect.offsetBy(dx: contentX, dy: top)
+        guard frame.insetBy(dx: -4, dy: -4).contains(point) else { return nil }
+
+        let height: CGFloat = 20
+        let inset: CGFloat = 6
+        let copyWidth: CGFloat = 54
+        let copy = CGRect(
+            x: frame.maxX - inset - copyWidth,
+            y: frame.minY + inset,
+            width: copyWidth,
+            height: height
+        )
+        let badgeWidth = max(34, CGFloat(region.language.count) * 7 + 14)
+        let badge = CGRect(
+            x: copy.minX - 6 - badgeWidth,
+            y: copy.minY,
+            width: badgeWidth,
+            height: height
+        )
+        return CodeHover(
+            ordinal: ordinal,
+            copyRect: copy,
+            badgeRect: badge,
+            language: region.language
+        )
+    }
+
+    private func copyCode(ordinal: Int) {
+        guard let box = layout.box(at: ordinal) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(box.plainText, forType: .string)
+        copiedOrdinal = ordinal
+        needsDisplay = true
+        // Long enough to read, short enough that a second copy still reads as
+        // a second copy.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, self.copiedOrdinal == ordinal else { return }
+            self.copiedOrdinal = nil
+            self.needsDisplay = true
         }
     }
 
@@ -397,6 +513,11 @@ public final class DocumentView: NSView {
 
     public override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+        let hover = codeHover(at: point)
+        if hover != hoveredCode {
+            hoveredCode = hover
+            needsDisplay = true
+        }
         let found = link(at: point)
         if found?.destination != hoveredLink?.destination {
             hoveredLink = found
@@ -410,6 +531,10 @@ public final class DocumentView: NSView {
     }
 
     public override func mouseExited(with event: NSEvent) {
+        if hoveredCode != nil {
+            hoveredCode = nil
+            needsDisplay = true
+        }
         hoveredLink = nil
         NSCursor.arrow.set()
     }
@@ -417,6 +542,10 @@ public final class DocumentView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
+        if let hover = hoveredCode, hover.copyRect.contains(point) {
+            copyCode(ordinal: hover.ordinal)
+            return
+        }
         if event.clickCount == 1, let link = link(at: point) {
             onActivateLink?(link)
             return
