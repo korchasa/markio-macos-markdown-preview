@@ -876,19 +876,37 @@ struct BlockLayoutEngine {
             )
             plainText += styled.attributed.string
             recordSpans(styled, result: result, inline: inline, segmentIndex: segments.count - 1)
-            recordInlineImages(result: result, inline: inline)
+            recordInlineObjects(result: result, inline: inline)
             y += result.height
         }
 
-        /// Find the pictures CoreText reserved room for, and say where they go.
+        /// Find the pictures and formulas CoreText reserved room for, and say
+        /// where they go.
         ///
-        /// The space is already there — the run delegate reserved it — so this
+        /// The space is already there — a run delegate reserved it — so this
         /// only has to read back where the line put it. A picture that failed to
         /// load leaves its frame empty rather than shifting the text around it.
-        private mutating func recordInlineImages(result: Typesetter.Result, inline: InlineContent) {
+        private mutating func recordInlineObjects(result: Typesetter.Result, inline: InlineContent)
+        {
             for line in result.lines {
                 for run in (CTLineGetGlyphRuns(line.line) as? [CTRun] ?? []) {
                     let attributes = CTRunGetAttributes(run) as NSDictionary
+                    if let formula = attributes[MathFormula.key] as? MathBox {
+                        let stringRange = CTRunGetStringRange(run)
+                        let x =
+                            line.origin.x
+                            + CTLineGetOffsetForStringIndex(line.line, stringRange.location, nil)
+                        for item in formula.moved(dx: x, dy: line.origin.y) {
+                            switch item {
+                            case .glyphs(let glyphs, let origin):
+                                decorations.append(.glyphs(glyphs, origin: origin))
+                            case .rule(let rect):
+                                decorations.append(
+                                    .fill(rect: rect, color: formula.color, cornerRadius: 0))
+                            }
+                        }
+                        continue
+                    }
                     guard let index = attributes[InlineImage.key] as? Int32,
                         index >= 0, Int(index) < inline.links.count
                     else { continue }

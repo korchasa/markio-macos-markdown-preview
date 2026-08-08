@@ -27,7 +27,9 @@ Markio 2 reads. It never writes a file it opens.
   `<u>`, `<del>`, `<code>`, `<sup>`, `<sub>`, `<br>` and their synonyms —
   mapped straight to text styles. There is no HTML engine; anything else is
   dropped rather than shown
-- Inline math kept as its source in a distinct style
+- Formulas between dollars, set with real glyphs: Greek, scripts, stacked
+  fractions, roots and the usual operators and relations. What the subset does
+  not cover keeps its source rather than being guessed at
 - Syntax highlighting for Swift, Python, Go, Rust, shell, SQL, JSON, YAML and
   the C family, in light and dark
 - A pasted terminal log in its own colours: the sixteen basic colours, the
@@ -37,8 +39,8 @@ Markio 2 reads. It never writes a file it opens.
 - Footnotes: a raised label in the text, the note itself set smaller below
 - `<details>` sections, folded away until you click their summary
 
-Not yet: diagrams and typeset mathematics. Both are separate engines, and
-neither is worth the weight in a viewer built to stay small.
+Not yet: diagrams. That is a separate engine, and it is not yet worth the
+weight in a viewer built to stay small.
 
 ## Reading it
 

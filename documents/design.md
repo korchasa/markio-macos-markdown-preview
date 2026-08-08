@@ -215,6 +215,35 @@ The caller then shows the source, which is never wrong, only unhelpful. This is
 not a step towards an HTML engine: it exists because an author who needs a
 merged cell has no other way to write one.
 
+### Formulas
+
+`MathParser` reads the source between the dollars into a small tree — rows,
+atoms, scripts, fractions, roots — and returns nil the moment it meets anything
+it does not know. That nil is the whole safety story: there is no partial
+formula, no guessed macro, and a document full of LaTeX this cannot set looks
+exactly as it did before the typesetter existed.
+
+`MathLayout` turns the tree into a `MathBox`: glyph runs and rules positioned
+around the formula's own baseline, in the renderer's y-down space. Every
+distance is a fraction of the base font's size, so a formula in a heading scales
+with the heading. The faces are the system serif, italic for variables, and the
+spacing comes from TeX's atom classes — which is why `a + b` breathes and `f(x)`
+does not, without the author typing a single space. Two details cost a
+correction each: the radical is measured from the glyph's *ink* rather than from
+the font's ascent, or the bar floats above the arm it is supposed to continue;
+and a leading `-` is a sign rather than a subtraction, or `-b` comes out spaced
+like an equation.
+
+Getting the box onto the line reuses the inline-picture machinery exactly: one
+placeholder character carrying a run delegate with the formula's width, ascent
+and descent, plus the box itself as an attribute. `BlockLayoutEngine` reads back
+where the line breaker put the placeholder and emits the glyphs as decorations,
+drawn after the highlights so a selection tints a formula instead of covering
+it. `BlockPlainText` asks `MathFormula.canTypeset` — parsing only, no fonts, so
+it is safe on the find queue — and emits the same placeholder for the same
+sources. That is what keeps a match offset landing on the same character in
+both.
+
 ### Comparing versions
 
 `CompareEngine` diffs the two versions line by line — hashes, not slices, with

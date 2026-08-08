@@ -46,8 +46,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `tt`, `var`, `sup`, `sub`, and `br`/`wbr` — becomes that style. Every other
   tag is dropped with its content kept. There is no HTML parser beyond this
   mapping.
-- **PARSE-6** Inline math (`$…$`) is preserved as its source text in a
-  distinct style. It is not typeset as mathematics.
+- **PARSE-6** Math between `$…$` or `$$…$$` is read as a formula. The subset is
+  the LaTeX that turns up in prose: letters and numbers, Greek, the common
+  operators, relations and arrows, scripts, fractions, roots, bracket sizing,
+  `\text{…}` and the upright function names. Anything outside it — an
+  environment, an unknown command, an unbalanced brace — is not read at all,
+  and the source stands as written.
 - **PARSE-7** Malformed UTF-8 is displayed, not rejected: a viewer must show
   whatever it was handed.
 - **PARSE-8** Parsing never depends on the theme, the window, or AppKit.
@@ -125,6 +129,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   clicking it folds the section away or brings it back. `<details open>` starts
   open, `<details>` starts closed — what the author wrote. A folded section's
   blocks are hidden, not dropped: find and copy still see them.
+- **VIEW-24** A formula the parser understands is set with real glyphs — serif,
+  variables in italic, fractions stacked over a rule, roots under a bar, scripts
+  above and below — at the size of the text around it, sitting on its baseline.
+  It occupies one placeholder character in find and copy, the way an inline
+  picture does. A formula the parser does not understand keeps its source, and
+  that source stays searchable.
 
 ## QL — Quick Look
 

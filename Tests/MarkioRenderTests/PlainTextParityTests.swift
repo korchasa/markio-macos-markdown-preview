@@ -56,6 +56,20 @@ final class PlainTextParityTests: XCTestCase {
         )
     }
 
+    /// A formula that is typeset occupies a placeholder; one that is not keeps
+    /// its source. Find has to make the same choice as the renderer for both.
+    func testMath() {
+        assertParity(
+            """
+            Euler wrote $e^{i\\pi} + 1 = 0$, and the quadratic root is
+            $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$.
+
+            This one is beyond it: $\\begin{matrix} a & b \\end{matrix}$, so it
+            stays as written.
+            """
+        )
+    }
+
     func testHTMLTable() {
         assertParity(
             """

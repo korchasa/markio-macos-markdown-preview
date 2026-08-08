@@ -67,8 +67,14 @@ struct HeightIndex {
 
 ### Math and long words
 
-Inline math such as $e^{i\pi} + 1 = 0$ is kept as its source in a distinct
-style. A very long path like
+Inline math such as $e^{i\pi} + 1 = 0$ is set with real glyphs, and so is a
+formula with a fraction and a root in it:
+
+$$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+
+Sums keep their limits, $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$, and anything
+outside the subset — $\begin{matrix} a & b \end{matrix}$ — keeps its source
+instead of being guessed at. A very long path like
 `/Users/someone/Library/Application Support/SomeApp/really/deep/path.json`
 wraps instead of pushing the column sideways.
 

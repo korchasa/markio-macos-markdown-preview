@@ -23,6 +23,11 @@ public final class BlockBox {
         case stroke(rect: CGRect, color: CGColor, width: CGFloat)
         case path(CGPath, color: CGColor, lineWidth: CGFloat, filled: Bool)
         case image(CGImage, rect: CGRect)
+        /// Glyphs placed by something other than the line breaker — today that
+        /// is a formula, whose pieces sit above and below their own baseline.
+        /// Drawn after the highlights, so a selection tints them instead of
+        /// covering them.
+        case glyphs(CTLine, origin: CGPoint)
     }
 
     public struct LinkRegion {

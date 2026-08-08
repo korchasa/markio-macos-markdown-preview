@@ -63,6 +63,17 @@ here is `@MainActor` except the parts that deliberately are not.
 - **A footnote's gutter is measured from its own label.** Labels are free text,
   and a fixed indent either wastes space or lets `[^design-notes]` run into the
   note.
+- **`MathFormula.canTypeset` and `MathFormula.box` must agree exactly.** One
+  decides what Find sees, the other what is drawn, and a disagreement moves
+  every match offset in the block. Keep the decision in the parser, which needs
+  no font, and let the layout be total.
+- **The radical is measured from the glyph's ink**
+  (`CTLineGetBoundsWithOptions(.useGlyphPathBounds)`), not from the font's
+  ascent. A font leaves room above its tallest glyph; measure that instead and
+  the bar floats above the arm it is meant to continue.
+- **A formula's glyphs are drawn after the highlights.** They are decorations,
+  and decorations are painted first — a selection would cover the formula
+  instead of tinting it.
 
 ## Tests
 

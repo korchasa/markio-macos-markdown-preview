@@ -88,7 +88,15 @@ public enum BlockPlainText {
                 guard !InlineImage.isHiddenAltText(run: run, inline: inline) else { continue }
                 var range = run.range
                 if Int(range.start) < skipBytes { range.start = Int32(skipBytes) }
-                out += content.text(in: range)
+                let text = content.text(in: range)
+                // A formula that gets typeset is drawn, not written, so it
+                // occupies one placeholder here exactly as a picture does. One
+                // that cannot be typeset keeps its source and stays searchable.
+                if !text.isEmpty, run.style.contains(.math), MathFormula.canTypeset(text) {
+                    out += InlineImage.placeholder
+                    continue
+                }
+                out += text
             case .entity:
                 guard let scalar = Unicode.Scalar(run.scalar) else { continue }
                 out.unicodeScalars.append(scalar)

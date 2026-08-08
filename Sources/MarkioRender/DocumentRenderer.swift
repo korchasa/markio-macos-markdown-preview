@@ -28,6 +28,9 @@ public enum DocumentRenderer {
     ) {
         for decoration in box.decorations {
             switch decoration {
+            case .glyphs:
+                // Formula glyphs are drawn after the highlights, below.
+                continue
             case .fill(let rect, let color, let radius):
                 context.setFillColor(color)
                 if radius > 0 {
@@ -80,6 +83,10 @@ public enum DocumentRenderer {
                 context.textPosition = line.origin
                 CTLineDraw(line.line, context)
             }
+        }
+        for case .glyphs(let line, let origin) in box.decorations {
+            context.textPosition = origin
+            CTLineDraw(line, context)
         }
     }
 

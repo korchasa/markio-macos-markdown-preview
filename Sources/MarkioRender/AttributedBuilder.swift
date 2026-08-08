@@ -66,6 +66,15 @@ enum AttributedBuilder {
                 if Int(range.start) < skipBytes { range.start = Int32(skipBytes) }
                 let text = content.text(in: range)
                 guard !text.isEmpty else { continue }
+                // A formula this can typeset becomes glyphs of its own; one it
+                // cannot keeps its source, and the plain-text projection makes
+                // the same choice from the same source.
+                if run.style.contains(.math),
+                    let formula = MathFormula.box(source: text, base: baseFont, color: baseColor)
+                {
+                    appendFormula(formula, to: attributed, base: baseFont)
+                    break
+                }
                 append(
                     text,
                     run: run,
@@ -201,6 +210,28 @@ enum AttributedBuilder {
             InlineImage.key: run.link,
         ]
         if let delegate = InlineImage.delegate(size: size) {
+            attributes[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = delegate
+        }
+        attributed.append(
+            NSAttributedString(string: InlineImage.placeholder, attributes: attributes)
+        )
+    }
+
+    /// Reserve room on the line for a typeset formula.
+    ///
+    /// Same shape as a picture: one placeholder character, a run delegate
+    /// holding the formula's own metrics, and the laid-out formula riding along
+    /// so the block can draw it where the line breaker ended up putting it.
+    private static func appendFormula(
+        _ formula: MathBox,
+        to attributed: NSMutableAttributedString,
+        base: CTFont
+    ) {
+        var attributes: [NSAttributedString.Key: Any] = [
+            fontKey: base,
+            MathFormula.key: formula,
+        ]
+        if let delegate = MathFormula.delegate(box: formula) {
             attributes[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = delegate
         }
         attributed.append(
