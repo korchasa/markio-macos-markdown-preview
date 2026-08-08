@@ -51,8 +51,23 @@ public final class DocumentLayout {
     public func index(atOffset y: CGFloat) -> Int { heights.index(atOffset: y) }
 
     /// The block whose ordinal owns a given leaf, for jumping to a heading.
+    ///
+    /// Binary search, not a scan: `leaves` is filled by walking the blocks in
+    /// order, so it is strictly increasing. The outline asks this once per
+    /// heading, and a 32 MB document holds ~159 000 headings among ~537 000
+    /// leaves — scanning turns building the outline into 39 seconds of
+    /// quadratic work before the first window appears.
     public func ordinal(ofLeaf leaf: Int32) -> Int? {
-        document.leaves.firstIndex(of: leaf)
+        let leaves = document.leaves
+        var low = 0
+        var high = leaves.count - 1
+        while low <= high {
+            let middle = (low + high) / 2
+            let value = leaves[middle]
+            if value == leaf { return middle }
+            if value < leaf { low = middle + 1 } else { high = middle - 1 }
+        }
+        return nil
     }
 
     // MARK: - Content changes

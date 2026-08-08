@@ -80,6 +80,11 @@ quote a debug number.
   loop forever. Launch with a path only.
 - **Reading a plist:** always `plutil -extract <key> raw -o - -- <file>`.
   Without `-o -` the value is written back into the file.
+- **A linear scan over `leaves` is quadratic in disguise.** A 32 MB document
+  has ~537 000 leaves and ~159 000 headings; the outline looks each heading up
+  once, and scanning cost 39 seconds before the first window appeared. `leaves`
+  is sorted — search it. The same applies to `outlineOrdinals`, which is
+  consulted on every scroll.
 
 ## Style
 

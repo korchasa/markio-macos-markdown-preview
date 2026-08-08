@@ -293,10 +293,22 @@ final class DocumentWindowController: NSWindowController {
 
     private func visibleRangeChanged(_ range: Range<Int>) {
         guard !outlineOrdinals.isEmpty else { return }
-        // The heading that owns the top of the view is the current section.
+        // The heading that owns the top of the view is the current section:
+        // the last one at or above it. Binary search, because this runs on
+        // every scroll notification and a large document has six figures of
+        // headings.
+        let top = range.lowerBound + 1
+        var low = 0
+        var high = outlineOrdinals.count - 1
         var current = -1
-        for (index, ordinal) in outlineOrdinals.enumerated() {
-            if ordinal <= range.lowerBound + 1 { current = index } else { break }
+        while low <= high {
+            let middle = (low + high) / 2
+            if outlineOrdinals[middle] <= top {
+                current = middle
+                low = middle + 1
+            } else {
+                high = middle - 1
+            }
         }
         outline.setCurrent(current)
     }
