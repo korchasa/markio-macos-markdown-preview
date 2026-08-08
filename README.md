@@ -69,6 +69,7 @@ Other verbs:
 - `deno task dev <file.md>` — build and open a document
 - `deno task test` — the test suite alone
 - `deno task bench` — parse cost and memory footprint at 1, 8 and 32 MB
+- `deno task icons` — redraw the app icon set from `Icon.swift`
 - `deno task dist` — the unsigned bundle; signing and upload happen outside
   this repository
 

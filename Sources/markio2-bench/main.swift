@@ -14,9 +14,13 @@ import MarkdownKit
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
-// `snapshot` renders a document to a PNG; everything else is a measurement.
+// `snapshot` renders a document to a PNG and `icon` draws the app icon;
+// everything else is a measurement.
 if arguments.first == "snapshot" {
     exit(Snapshot.run(arguments: Array(arguments.dropFirst())))
+}
+if arguments.first == "icon" {
+    exit(Icon.run(arguments: Array(arguments.dropFirst())))
 }
 
 func report(name: String, bytes: [UInt8]) {

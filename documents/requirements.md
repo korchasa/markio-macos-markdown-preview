@@ -105,6 +105,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **QL-3** The extension claims Markdown only, never plain text, and reads
   nothing from the app — it is sandboxed apart from it.
 
+- **VIEW-18** The app carries its own icon, drawn from code and compiled as an
+  asset catalog, so every size comes from one drawing.
+- **VIEW-19** Quitting with documents open and relaunching brings those windows
+  back, whatever the system's global "close windows when quitting" setting says.
+
 ## PERF — The reason it exists
 
 Measured on release builds over generated documents of realistic shape; the

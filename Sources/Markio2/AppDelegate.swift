@@ -11,6 +11,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         NSApp.mainMenu = MainMenu.build()
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Quitting always keeps the windows, so a relaunch brings back the
+        // documents that were open — a reader who quits mid-report finds it
+        // again. Written to the app's own defaults domain on purpose:
+        // `register(defaults:)` would lose to the user's global "Close windows
+        // when quitting an application", and this app's answer is not a default
+        // but a decision.
+        UserDefaults.standard.set(true, forKey: "NSQuitAlwaysKeepsWindows")
         launchFiles = filesFromCommandLine()
     }
 

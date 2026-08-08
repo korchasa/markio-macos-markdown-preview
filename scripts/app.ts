@@ -27,6 +27,30 @@ export async function app(): Promise<void> {
   await Deno.copyFile(RELEASE_BIN, `${APP_BUNDLE}/Contents/MacOS/${APP_NAME}`);
   await Deno.copyFile("packaging/Info.plist", `${APP_BUNDLE}/Contents/Info.plist`);
 
+  // The icon is compiled as an asset catalog and referenced by name
+  // (`CFBundleIconName`). The loose AppIcon.icns actool also emits is deleted:
+  // it caps at 256×256, and anything that prefers it over the catalog gets a
+  // blurry icon at large sizes. Redraw the catalog with `deno task icons`.
+  section("Compiling the asset catalog");
+  await run("xcrun", {
+    args: [
+      "actool",
+      "packaging/Assets.xcassets",
+      "--compile",
+      `${APP_BUNDLE}/Contents/Resources`,
+      "--platform",
+      "macosx",
+      "--minimum-deployment-target",
+      "14.0",
+      "--app-icon",
+      "AppIcon",
+      "--output-partial-info-plist",
+      ".build/assetcatalog-info.plist",
+    ],
+    capture: true,
+  });
+  await Deno.remove(`${APP_BUNDLE}/Contents/Resources/AppIcon.icns`).catch(() => {});
+
   // Quick Look preview extension: a hand-assembled .appex, no Xcode involved.
   // The binary is linked with `_NSExtensionMain` as its entry point (see
   // Package.swift) and carries no resources — the renderer is compiled in.

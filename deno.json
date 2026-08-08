@@ -11,6 +11,7 @@
     "fmt": "deno run -A scripts/fmt.ts",
     "app": "deno run -A scripts/app.ts",
     "bench": "deno run -A scripts/bench.ts",
+    "icons": "deno run -A scripts/icons.ts",
     "clean": "deno run -A scripts/clean.ts"
   },
   "fmt": {

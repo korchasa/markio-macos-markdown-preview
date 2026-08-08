@@ -212,6 +212,14 @@ completion handler on one turn. There is nothing to await, which is why the
 preview cannot hang — and why the extension needs no network entitlement, the
 one a sandboxed `WKWebView` must have or its helper never launches.
 
+## The icon
+
+Drawn in code (`markio2-bench icon`) into `packaging/Assets.xcassets`, compiled
+to `Assets.car` by `deno task app` and referenced by name. Every size is the
+same drawing scaled, expressed in fractions of the canvas, so the 16 px icon
+cannot drift from the 1024 px one. The loose `AppIcon.icns` actool emits is
+deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
+
 ## Verifying it
 
 - `deno task check` is the gate. Its web-engine scan is what keeps PROD-1 true.
