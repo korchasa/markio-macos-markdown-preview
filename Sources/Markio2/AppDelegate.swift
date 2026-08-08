@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let documentController = MarkdownDocumentController()
+    private var launchFiles: [URL] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Touching the controller registers it as the shared one, which has to
@@ -10,17 +11,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = documentController
         NSApp.mainMenu = MainMenu.build()
         NSWindow.allowsAutomaticWindowTabbing = false
+        launchFiles = filesFromCommandLine()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // A path on the command line is how `deno task dev` opens a file; the
-        // packaged app gets its documents through the normal Apple events.
-        let paths = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
-        for path in paths {
-            let url = URL(fileURLWithPath: path)
+        for url in launchFiles {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
         if let target = captureTarget() { capture(to: target) }
+    }
+
+    /// Files named on the command line — how `deno task dev` opens a document.
+    /// The packaged app gets its documents through the normal Apple events.
+    ///
+    /// A word that is not a file on disk is reported and skipped rather than
+    /// handed to AppKit: the value half of a launch argument
+    /// (`-AppleInterfaceStyle Dark`) would otherwise arrive as a document and
+    /// stop the app on a modal alert.
+    private func filesFromCommandLine() -> [URL] {
+        var files: [URL] = []
+        for path in CommandLine.arguments.dropFirst() where !path.hasPrefix("-") {
+            let url = URL(fileURLWithPath: path)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                FileHandle.standardError.write(Data("no such file: \(path)\n".utf8))
+                continue
+            }
+            files.append(url)
+        }
+        return files
     }
 
     /// `--capture=<path>`: draw the window that just opened into a PNG and quit.
@@ -58,8 +76,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A viewer has nothing to show without a document, so a launch with no
     /// file goes straight to the open panel.
+    ///
+    /// AppKit asks this before `applicationDidFinishLaunching` has opened the
+    /// files from the command line, so the answer comes from that list rather
+    /// than from the documents opened so far — otherwise a launch with a path
+    /// races into a modal open panel that nothing can dismiss.
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        NSDocumentController.shared.documents.isEmpty
+        launchFiles.isEmpty && NSDocumentController.shared.documents.isEmpty
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
