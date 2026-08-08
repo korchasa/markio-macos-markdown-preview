@@ -41,43 +41,96 @@ public enum CompareEngine {
         }
     }
 
+    /// The two versions kept apart rather than merged, each carrying only its
+    /// own changes: the baseline with what was taken out of it, the current file
+    /// with what was put in.
+    ///
+    /// This is what a side-by-side reading needs. The unchanged lines are in
+    /// both, which is what makes the two columns run level for as long as
+    /// nothing has changed.
+    public struct Sides: Sendable {
+        public var baseline: Result
+        public var current: Result
+
+        public var hasChanges: Bool { baseline.hasChanges || current.hasChanges }
+    }
+
     /// Merge `current` with `baseline`, marking what changed between them.
     public static func merge(current: [UInt8], baseline: [UInt8]) -> Result {
-        let currentLines = lines(of: current)
-        let baselineLines = lines(of: baseline)
-        let script = diff(
-            baseline: baselineLines.map { hash(baseline, $0) },
-            current: currentLines.map { hash(current, $0) }
-        )
+        let comparison = script(current: current, baseline: baseline)
+        var merged = Builder(capacity: current.count + baseline.count / 4)
+        for step in comparison.steps {
+            switch step {
+            case .same(let index):
+                merged.add(current, comparison.currentLines[index], mark: nil)
+            case .added(let index):
+                merged.add(current, comparison.currentLines[index], mark: .added)
+            case .removed(let index):
+                merged.add(baseline, comparison.baselineLines[index], mark: .removed)
+            }
+        }
+        return merged.result
+    }
 
+    /// The same comparison, kept in two documents instead of one.
+    public static func split(current: [UInt8], baseline: [UInt8]) -> Sides {
+        let comparison = script(current: current, baseline: baseline)
+        var left = Builder(capacity: baseline.count)
+        var right = Builder(capacity: current.count)
+        for step in comparison.steps {
+            switch step {
+            case .same(let index):
+                // The line is the same on both sides, so one copy of it serves
+                // for both columns.
+                left.add(current, comparison.currentLines[index], mark: nil)
+                right.add(current, comparison.currentLines[index], mark: nil)
+            case .added(let index):
+                right.add(current, comparison.currentLines[index], mark: .added)
+            case .removed(let index):
+                left.add(baseline, comparison.baselineLines[index], mark: .removed)
+            }
+        }
+        return Sides(baseline: left.result, current: right.result)
+    }
+
+    /// Accumulates one side of a comparison: the bytes and the marks over them.
+    private struct Builder {
         var bytes: [UInt8] = []
-        bytes.reserveCapacity(current.count + baseline.count / 4)
         var marks: [(range: Range<Int>, mark: Mark)] = []
+        /// The previous line's origin. Doubly optional on purpose: "no line yet"
+        /// and "an unchanged line" are different answers.
+        private var previous: Mark??
 
-        var previous: Mark??
-        for step in script {
+        init(capacity: Int) { bytes.reserveCapacity(capacity) }
+
+        mutating func add(_ source: [UInt8], _ range: Range<Int>, mark: Mark?) {
             // A removed line followed straight away by the line that replaced it
             // would be read as one paragraph, and the whole thing would take the
             // mark of its first byte. A blank line between runs of different
             // origin keeps them separate blocks. It belongs to neither side, so
             // it goes in before the mark's range starts.
-            let kind = step.mark
-            if previous != nil, previous! != kind { separate(&bytes) }
-            previous = kind
-
+            if previous != nil, previous! != mark { separate(&bytes) }
+            previous = mark
             let start = bytes.count
-            switch step {
-            case .same(let currentIndex):
-                appendLine(&bytes, current, currentLines[currentIndex])
-            case .added(let currentIndex):
-                appendLine(&bytes, current, currentLines[currentIndex])
-                append(&marks, start..<bytes.count, .added)
-            case .removed(let baselineIndex):
-                appendLine(&bytes, baseline, baselineLines[baselineIndex])
-                append(&marks, start..<bytes.count, .removed)
-            }
+            appendLine(&bytes, source, range)
+            if let mark { append(&marks, start..<bytes.count, mark) }
         }
-        return Result(bytes: bytes, marks: marks)
+
+        var result: Result { Result(bytes: bytes, marks: marks) }
+    }
+
+    /// The line ranges of both versions and the edit script between them, so
+    /// merging and splitting share one comparison.
+    private static func script(current: [UInt8], baseline: [UInt8]) -> (
+        steps: [Step], currentLines: [Range<Int>], baselineLines: [Range<Int>]
+    ) {
+        let currentLines = lines(of: current)
+        let baselineLines = lines(of: baseline)
+        let steps = diff(
+            baseline: baselineLines.map { hash(baseline, $0) },
+            current: currentLines.map { hash(current, $0) }
+        )
+        return (steps, currentLines, baselineLines)
     }
 
     /// End the current block, unless the source already ended one.

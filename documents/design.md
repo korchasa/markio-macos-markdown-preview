@@ -277,6 +277,14 @@ Markdown buffer containing both, plus the byte ranges that came from each side.
 A blank line goes in wherever the origin changes, or a replaced paragraph's old
 and new text would parse as a single block and take a single mark.
 
+Side by side takes the same edit script and builds two documents instead of one
+— the baseline with what it lost, the current file with what it gained — so the
+window can put a layout in each of two scroll views. The unchanged lines are in
+both, which is what makes the columns run level until a change pushes them
+apart. The offsets are copied rather than scaled for the same reason. Only the
+right-hand pane is the document: find, the outline and every command still work
+on it alone, so the second column adds a view and no state.
+
 The point of merging in the *source* is that nothing downstream has to know:
 the parser, the layout, the outline and find all see ordinary Markdown, so find
 covers the removed text for free. `DocumentLayout.mark(at:)` is the only new

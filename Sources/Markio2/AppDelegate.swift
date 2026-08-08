@@ -25,7 +25,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in launchFiles {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
+        if let baseline = baselineFromCommandLine() { startComparison(against: baseline) }
         if let target = captureTarget() { capture(to: target) }
+    }
+
+    /// `--compare=<path>`, with `--side-by-side` to give the baseline its own
+    /// column. The reader's way in is the Compare panel; this exists so a
+    /// comparison can be captured without a hand on the mouse.
+    private func baselineFromCommandLine() -> URL? {
+        let prefix = "--compare="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+        else { return nil }
+        let url = URL(fileURLWithPath: String(argument.dropFirst(prefix.count)))
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            FileHandle.standardError.write(Data("no such baseline: \(url.path)\n".utf8))
+            return nil
+        }
+        return url
+    }
+
+    private func startComparison(against baseline: URL) {
+        let sideBySide = CommandLine.arguments.contains("--side-by-side")
+        for window in NSApp.windows {
+            guard let controller = window.windowController as? DocumentWindowController else {
+                continue
+            }
+            controller.compare(with: baseline, sideBySide: sideBySide)
+        }
     }
 
     /// Files named on the command line — how `deno task dev` opens a document.

@@ -58,6 +58,7 @@ Markio 2 reads. It never writes a file it opens.
 - Click a `<details>` summary to fold its section away or bring it back
 - **File ▸ Compare…** shows the document against an older version of itself:
   what it gained on a green band, what it lost on a red one, in the same window
+  — or **Side by Side**, the old version in its own column, scrolling together
 - Edit the file in another app and the view reloads where you were reading
 - Press Space on a `.md` file in Finder for the same rendering in Quick Look
 
@@ -91,7 +92,9 @@ without a screen:
 ```
 
 Add `--capture-hover=<x>,<y>` to park the pointer first, for the controls that
-only appear under it, or `--capture-click=<x>,<y>` for what only a click shows. The bench harness renders offscreen, and takes a baseline
+only appear under it, or `--capture-click=<x>,<y>` for what only a click shows.
+`--compare=<path>` (with `--side-by-side`) captures a comparison without a hand
+on the mouse. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 
 ```bash

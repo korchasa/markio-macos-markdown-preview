@@ -76,6 +76,11 @@ enum MainMenu {
             keyEquivalent: ""
         )
         menu.addItem(
+            withTitle: "Side by Side",
+            action: #selector(DocumentWindowController.toggleSideBySide(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(
             withTitle: "Stop Comparing",
             action: #selector(DocumentWindowController.stopComparing(_:)),
             keyEquivalent: ""

@@ -13,6 +13,13 @@ final class DocumentWindowController: NSWindowController {
     private var layout: DocumentLayout
     private let documentView: DocumentView
     private let scrollView = NSScrollView()
+    /// The left column while reading two versions side by side. It shows the
+    /// baseline and nothing else: find, the outline and every command still work
+    /// on the document the window belongs to.
+    private let baselineScroll = NSScrollView()
+    private var baselineLayout: DocumentLayout
+    private let baselineView: DocumentView
+    private let paneDivider = NSBox()
     private let outline = OutlineSidebar()
     private let findBar = FindBar()
     private let findOverview = FindOverview()
@@ -34,6 +41,13 @@ final class DocumentWindowController: NSWindowController {
     private var baselineURL: URL?
 
     private var sidebarWidthConstraint: NSLayoutConstraint!
+    private var onePaneConstraint: NSLayoutConstraint!
+    private var twoPaneConstraints: [NSLayoutConstraint] = []
+    /// Whether the baseline gets a column of its own. Only meaningful while
+    /// comparing, and remembered for the session rather than saved.
+    private var sideBySide = false
+    /// Guards the two scroll views against answering each other for ever.
+    private var syncingScroll = false
 
     init(document: MarkdownDocument) {
         self.markdownDocument = document
@@ -46,6 +60,13 @@ final class DocumentWindowController: NSWindowController {
             baseURL: document.fileURL
         )
         self.documentView = DocumentView(layout: layout)
+        self.baselineLayout = DocumentLayout(
+            document: MarkdownKit.Document(text: ""),
+            theme: theme,
+            columnWidth: DocumentWindowController.columnWidth(for: theme),
+            baseURL: document.fileURL
+        )
+        self.baselineView = DocumentView(layout: baselineLayout)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 840),
@@ -85,14 +106,27 @@ final class DocumentWindowController: NSWindowController {
         scrollView.documentView = documentView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
+        baselineScroll.hasVerticalScroller = true
+        baselineScroll.hasHorizontalScroller = false
+        baselineScroll.autohidesScrollers = true
+        baselineScroll.drawsBackground = true
+        baselineScroll.backgroundColor = scrollView.backgroundColor
+        baselineView.autoresizingMask = [.width]
+        baselineScroll.documentView = baselineView
+        baselineScroll.contentView.postsBoundsChangedNotifications = true
+        baselineScroll.isHidden = true
+        paneDivider.isHidden = true
+
         let separator = NSBox()
         separator.boxType = .separator
+        paneDivider.boxType = .separator
 
         let bottomBar = buildBottomBar()
 
-        for view in [outline, separator, scrollView, findOverview, findBar, bottomBar]
-            as [NSView]
-        {
+        for view in [
+            outline, separator, baselineScroll, paneDivider, scrollView, findOverview, findBar,
+            bottomBar,
+        ] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(view)
         }
@@ -109,7 +143,6 @@ final class DocumentWindowController: NSWindowController {
             separator.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
             separator.widthAnchor.constraint(equalToConstant: 1),
 
-            scrollView.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
@@ -127,6 +160,23 @@ final class DocumentWindowController: NSWindowController {
             bottomBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 30),
         ])
+
+        // One reading column or two, switched by swapping which constraint holds
+        // the main pane's leading edge. Both sets are built once; toggling is
+        // then two calls and no view surgery.
+        onePaneConstraint = scrollView.leadingAnchor.constraint(equalTo: separator.trailingAnchor)
+        twoPaneConstraints = [
+            baselineScroll.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
+            baselineScroll.topAnchor.constraint(equalTo: container.topAnchor),
+            baselineScroll.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            baselineScroll.trailingAnchor.constraint(equalTo: paneDivider.leadingAnchor),
+            paneDivider.topAnchor.constraint(equalTo: container.topAnchor),
+            paneDivider.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            paneDivider.widthAnchor.constraint(equalToConstant: 1),
+            paneDivider.trailingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            baselineScroll.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+        ]
+        onePaneConstraint.isActive = true
 
         // AppKit sizes a constraint-driven window to the fitting size of its
         // content. Nothing above gives the reading area a height of its own —
@@ -176,6 +226,12 @@ final class DocumentWindowController: NSWindowController {
             selector: #selector(scrollDidChange),
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(baselineScrollDidChange),
+            name: NSView.boundsDidChangeNotification,
+            object: baselineScroll.contentView
         )
 
         updateTitle()
@@ -232,12 +288,24 @@ final class DocumentWindowController: NSWindowController {
 
     private func applyColumnWidth() {
         let anchorOrdinal = layout.index(atOffset: scrollView.contentView.bounds.minY)
-        layout.setColumnWidth(DocumentWindowController.columnWidth(for: layout.theme))
+        let preferred = DocumentWindowController.columnWidth(for: layout.theme)
+        layout.setColumnWidth(fitted(preferred, in: scrollView))
+        baselineLayout.setColumnWidth(fitted(preferred, in: baselineScroll))
+        baselineView.needsDisplay = true
         documentView.needsDisplay = true
         // A width change re-measures everything, so the old scroll offset means
         // nothing; the block that was at the top is what the reader tracks.
         documentView.reveal(ordinal: anchorOrdinal)
         rerunSearchIfActive()
+    }
+
+    /// A column never gets wider than the pane holding it. Half a window is
+    /// narrower than the reading width most people choose, and a column that does
+    /// not fit is a column with its right-hand words cut off.
+    private func fitted(_ preferred: CGFloat, in pane: NSScrollView) -> CGFloat {
+        let room = pane.contentView.bounds.width - 48
+        guard room > 200 else { return preferred }
+        return min(preferred, room)
     }
 
     @objc func widenColumn(_ sender: Any?) {
@@ -283,6 +351,16 @@ final class DocumentWindowController: NSWindowController {
         }
     }
 
+    /// Start a comparison against a known file, skipping the panel.
+    ///
+    /// The panel is how a reader grants access to the baseline, so this is only
+    /// for a run that already has it: the capture flags.
+    func compare(with url: URL, sideBySide: Bool) {
+        baselineURL = url
+        self.sideBySide = sideBySide
+        rebuildComparison()
+    }
+
     @objc func stopComparing(_ sender: Any?) {
         guard baselineURL != nil else { return }
         baselineURL = nil
@@ -290,6 +368,55 @@ final class DocumentWindowController: NSWindowController {
     }
 
     var isComparing: Bool { baselineURL != nil }
+
+    var isSideBySide: Bool { sideBySide }
+
+    /// Give the baseline a column of its own, or take it back.
+    @objc func toggleSideBySide(_ sender: Any?) {
+        sideBySide.toggle()
+        if isComparing { rebuildComparison() } else { applyPaneMode() }
+    }
+
+    /// Show or hide the second column and re-fit both to the room they have.
+    private func applyPaneMode() {
+        let two = sideBySide && isComparing
+        guard two != !baselineScroll.isHidden else { return }
+        baselineScroll.isHidden = !two
+        paneDivider.isHidden = !two
+        if two {
+            onePaneConstraint.isActive = false
+            NSLayoutConstraint.activate(twoPaneConstraints)
+        } else {
+            NSLayoutConstraint.deactivate(twoPaneConstraints)
+            onePaneConstraint.isActive = true
+        }
+        // The panes have to take their new size before a column can be fitted
+        // into one: the bounds are still yesterday's until the pass runs.
+        window?.contentView?.layoutSubtreeIfNeeded()
+        applyColumnWidth()
+    }
+
+    /// Keep the two columns level.
+    ///
+    /// The offset is copied rather than scaled: the versions share most of their
+    /// text, so the same distance down the page is the same passage until a
+    /// change pushes them apart — which is exactly where the reader is looking.
+    private func syncScroll(from source: NSScrollView, to target: NSScrollView) {
+        guard sideBySide, isComparing, !target.isHidden, !syncingScroll else { return }
+        syncingScroll = true
+        defer { syncingScroll = false }
+        let travel = max(
+            0, (target.documentView?.frame.height ?? 0) - target.contentView.bounds.height)
+        let y = min(max(0, source.contentView.bounds.minY), travel)
+        guard abs(target.contentView.bounds.minY - y) > 0.5 else { return }
+        target.contentView.setBoundsOrigin(
+            CGPoint(x: target.contentView.bounds.minX, y: y))
+        target.reflectScrolledClipView(target.contentView)
+    }
+
+    @objc private func baselineScrollDidChange() {
+        syncScroll(from: baselineScroll, to: scrollView)
+    }
 
     /// Read the baseline, merge, show the result.
     ///
@@ -302,14 +429,27 @@ final class DocumentWindowController: NSWindowController {
             showPlainDocument()
             return
         }
-        let result = CompareEngine.merge(
+        applyPaneMode()
+        guard sideBySide else {
+            let result = CompareEngine.merge(
+                current: markdownDocument.sourceBytes,
+                baseline: [UInt8](baseline)
+            )
+            show(document: MarkdownKit.Document(bytes: result.bytes), comparison: result)
+            return
+        }
+        let sides = CompareEngine.split(
             current: markdownDocument.sourceBytes,
             baseline: [UInt8](baseline)
         )
-        show(document: MarkdownKit.Document(bytes: result.bytes), comparison: result)
+        baselineLayout.comparison = sides.baseline
+        baselineLayout.replace(document: MarkdownKit.Document(bytes: sides.baseline.bytes))
+        baselineView.needsDisplay = true
+        show(document: MarkdownKit.Document(bytes: sides.current.bytes), comparison: sides.current)
     }
 
     private func showPlainDocument() {
+        applyPaneMode()
         show(document: markdownDocument.parsed, comparison: nil)
     }
 
@@ -329,8 +469,11 @@ final class DocumentWindowController: NSWindowController {
     private func appearanceChanged() {
         let theme = Theme(isDark: NSApp.effectiveAppearance.isDark)
         layout.setTheme(theme)
+        baselineLayout.setTheme(theme)
         scrollView.backgroundColor =
             NSColor(cgColor: theme.palette.background) ?? .textBackgroundColor
+        baselineScroll.backgroundColor = scrollView.backgroundColor
+        baselineView.needsDisplay = true
         documentView.needsDisplay = true
     }
 
@@ -366,6 +509,7 @@ final class DocumentWindowController: NSWindowController {
     }
 
     @objc private func scrollDidChange() {
+        syncScroll(from: scrollView, to: baselineScroll)
         guard let url = markdownDocument.fileURL, restoredScroll else { return }
         let y = scrollView.contentView.bounds.minY
         saveWorkItem?.cancel()
@@ -575,6 +719,10 @@ extension DocumentWindowController: NSMenuItemValidation {
         // default is yes and the one exception is the command that needs a
         // comparison to stop.
         if item.action == #selector(stopComparing(_:)) { return isComparing }
+        if item.action == #selector(toggleSideBySide(_:)) {
+            item.state = sideBySide ? .on : .off
+            return true
+        }
         return true
     }
 }

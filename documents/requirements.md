@@ -115,6 +115,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   cover the removed text as well. Stop Comparing returns the plain document; an
   edit while comparing re-reads the baseline and compares again. The baseline
   choice lasts for the session only.
+- **VIEW-17a** File ▸ Side by Side gives the baseline a column of its own: the
+  older version on the left with what it lost, the current file on the right
+  with what it gained. The two scroll together. Find, the outline and every
+  command keep working on the document the window belongs to.
 - **VIEW-18** The app carries its own icon, drawn from code and compiled as an
   asset catalog, so every size comes from one drawing.
 - **VIEW-19** Quitting with documents open and relaunching brings those windows

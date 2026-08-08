@@ -102,6 +102,34 @@ final class CompareEngineTests: XCTestCase {
         XCTAssertEqual(marks, [nil, nil, .added])
     }
 
+    /// Side by side needs the two versions apart: each column carries its own
+    /// text and only its own marks, and what did not change is in both.
+    func testSplitKeepsEachSideToItself() {
+        let sides = CompareEngine.split(
+            current: Array("# Title\n\nKept.\n\nAdded.\n".utf8),
+            baseline: Array("# Title\n\nKept.\n\nGone.\n".utf8)
+        )
+        let left = String(decoding: sides.baseline.bytes, as: UTF8.self)
+        let right = String(decoding: sides.current.bytes, as: UTF8.self)
+        XCTAssertTrue(left.contains("Gone."), left)
+        XCTAssertFalse(left.contains("Added."), left)
+        XCTAssertTrue(right.contains("Added."), right)
+        XCTAssertFalse(right.contains("Gone."), right)
+        // The unchanged text is in both, which is what keeps the columns level.
+        XCTAssertTrue(left.contains("Kept."))
+        XCTAssertTrue(right.contains("Kept."))
+        XCTAssertEqual(sides.baseline.marks.map(\.mark), [.removed])
+        XCTAssertEqual(sides.current.marks.map(\.mark), [.added])
+    }
+
+    /// Two files that agree have two columns of the same text and no marks.
+    func testSplitOfIdenticalVersions() {
+        let text = Array("# Title\n\nBody.\n".utf8)
+        let sides = CompareEngine.split(current: text, baseline: text)
+        XCTAssertFalse(sides.hasChanges)
+        XCTAssertEqual(sides.baseline.bytes, sides.current.bytes)
+    }
+
     func testWithoutAComparisonNothingIsMarked() {
         let layout = DocumentLayout(
             document: Document(text: "# Title\n\nBody.\n"),
