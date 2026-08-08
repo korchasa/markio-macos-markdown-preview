@@ -70,6 +70,40 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-9** The scroll position of a document is restored when it is reopened.
 - **VIEW-10** When the file changes on disk, the view reloads and the reader
   keeps their place. A write that does not change the bytes changes nothing.
+- **VIEW-11** A Markdown file dropped on a window opens. A file the app does
+  not read is not accepted, so the drop never promises what it cannot do.
+- **VIEW-12** While a search is running, a strip at the right edge shows where
+  every match sits in the whole document, with the current one picked out;
+  clicking a mark jumps to that match.
+- **VIEW-13** A fenced block under the pointer offers its language and a Copy
+  button. Copy writes the text as drawn — escapes removed — not the source
+  bytes.
+- **VIEW-14** A ```diff block reads as bands: added lines on one tint, removed
+  on another, the rest plain.
+- **VIEW-15** Terminal escapes in a pasted log are drawn as colour — the
+  sixteen basic colours, the 256-colour cube and true colour — and never shown
+  as text. Escapes that describe a terminal that is not there are dropped.
+  Find and Copy see the text without them.
+- **VIEW-16** A paragraph that is nothing but an image shows the image, decoded
+  at the size it is drawn and no larger, from a file beside the document. A
+  remote address is not fetched; anything that cannot be shown falls back to
+  the alt text.
+- **VIEW-17** A document can be compared against an older version of itself
+  (File ▸ Compare…): blocks added since the baseline and blocks removed from it
+  are marked in place, in one window with one scroll. The outline and find
+  cover the removed text as well. Stop Comparing returns the plain document; an
+  edit while comparing re-reads the baseline and compares again. The baseline
+  choice lasts for the session only.
+
+## QL — Quick Look
+
+- **QL-1** Pressing Space on a Markdown file in Finder previews it with the
+  same renderer the app uses.
+- **QL-2** The preview resolves on the turn it is asked for: nothing is
+  awaited, so it cannot hang on a spinner. A file it cannot read hands the
+  error back, and macOS shows its own plain-text preview.
+- **QL-3** The extension claims Markdown only, never plain text, and reads
+  nothing from the app — it is sandboxed apart from it.
 
 ## PERF — The reason it exists
 
@@ -112,5 +146,7 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
   `.build/Markio2.app`. Signing, packaging and upload happen outside this
   repository, and nothing in it refers to how.
 - **BUILD-5** Rendering can be verified without a screen: the app draws its own
-  window to a PNG (`--capture=<path>`), and the bench harness renders a
-  document offscreen.
+  window to a PNG (`--capture=<path>`, with `--capture-hover=<x>,<y>` for the
+  controls that only appear under the pointer), and the bench harness renders a
+  document offscreen — with an optional baseline, so a comparison can be
+  checked the same way.

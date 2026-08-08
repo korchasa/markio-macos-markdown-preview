@@ -4,12 +4,14 @@ How the viewer meets `requirements.md`.
 
 ## The shape of it
 
-Four targets, in dependency order:
+Five targets, in dependency order:
 
 - **MarkdownKit** — the parser. Pure Swift, no AppKit, no fonts, no theme.
 - **MarkioRender** — CoreText typesetting, the virtualized layout, the reading
   view. Depends on MarkdownKit and AppKit.
 - **Markio2** — the app: documents, windows, menus, preferences, live reload.
+- **Markio2QuickLook** — the preview extension: the same two renderer modules
+  in Finder's panel.
 - **markio2-bench** — headless measurement and offscreen rendering.
 
 The split is what keeps the parser testable and fast: nothing in MarkdownKit
@@ -128,7 +130,41 @@ centre inside.
 
 `DocumentRenderer` holds the actual drawing, so the on-screen view and the
 offscreen PNG take the same path — that is what makes the offscreen render
-evidence about the real thing (BUILD-5).
+evidence about the real thing (BUILD-5). The compare bands are drawn there too,
+for the same reason; only the controls that belong to the pointer — the language
+badge and the Copy pill on a fenced block — live in the view, so an offscreen
+render never has a button floating on it.
+
+### Code, terminals and pictures
+
+`CodeText` is the one place that decides what a fenced block looks like: a
+`diff` block becomes bands, a block carrying escape bytes goes through
+`AnsiText`, anything else is syntax-highlighted. It returns the attributed
+string, the plain text Find and Copy see, and the tints — built together, so the
+three cannot drift apart.
+
+`AnsiText` parses SGR sequences into coloured spans and removes every other
+escape: a cursor-motion sequence describes a terminal that is not there, and
+printing it would show as mojibake.
+
+A paragraph that is nothing but an image becomes the image. `ImageLoader`
+decodes through Image I/O at the width the block is drawn at, so a 6000-pixel
+photo costs what an 1800-pixel one does, and holds a bounded cache that evicts
+oldest-first. Only local files beside the document are read — there is no
+network path, so a remote address falls back to the alt text.
+
+### Comparing versions
+
+`CompareEngine` diffs the two versions line by line — hashes, not slices, with
+the common head and tail trimmed before any table is built — and produces one
+Markdown buffer containing both, plus the byte ranges that came from each side.
+A blank line goes in wherever the origin changes, or a replaced paragraph's old
+and new text would parse as a single block and take a single mark.
+
+The point of merging in the *source* is that nothing downstream has to know:
+the parser, the layout, the outline and find all see ordinary Markdown, so find
+covers the removed text for free. `DocumentLayout.mark(at:)` is the only new
+question, and it is answered by a binary search over the marked ranges.
 
 ### Find
 
@@ -164,13 +200,31 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   AppKit asks whether to open an untitled document before
   `applicationDidFinishLaunching` runs (UI-3).
 
+## Markio2QuickLook
+
+A hand-assembled `.appex` under the app's `PlugIns`, ad-hoc signed by
+`deno task app` because pluginkit will not load an unsigned or unsandboxed
+extension. The binary's entry point is `_NSExtensionMain`, set by linker flags;
+`main.swift` exists only because SwiftPM wants an entry symbol and is never run.
+
+`preparePreviewOfFile` parses, lays out, installs the view and calls the
+completion handler on one turn. There is nothing to await, which is why the
+preview cannot hang — and why the extension needs no network entitlement, the
+one a sandboxed `WKWebView` must have or its helper never launches.
+
 ## Verifying it
 
 - `deno task check` is the gate. Its web-engine scan is what keeps PROD-1 true.
 - Tests cover the block scanner (structure dumps), the inline parser (run
   dumps), the Fenwick tree against naive prefix sums, and the parity between
   find's plain text and the renderer's.
-- `--capture=<path>` draws the real window to a PNG; `markio2-bench snapshot`
-  draws a document offscreen at any width, scroll offset and appearance. Both
-  work without screen recording permission, which is what makes visual checks
-  possible from a script.
+- `--capture=<path>` draws the real window to a PNG; `--capture-hover=<x>,<y>`
+  parks the pointer first, which is the only way to see a control that appears
+  on hover. `markio2-bench snapshot` draws a document offscreen at any width,
+  scroll offset and appearance, and takes an optional baseline so a comparison
+  can be looked at the same way. Both work without screen recording permission,
+  which is what makes visual checks possible from a script.
+- The Quick Look extension is checked structurally — bundle layout, plist,
+  ad-hoc signature, entry point, the `@objc` class name the plist pins — and the
+  rendering it does is the renderer's, already covered by its own tests. What
+  only a real Finder panel can show is checked by hand.

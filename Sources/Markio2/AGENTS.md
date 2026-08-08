@@ -14,6 +14,11 @@ anything expensive belongs in MarkioRender or MarkdownKit.
   `applicationWillFinishLaunching`, because AppKit asks about opening an
   untitled document before `applicationDidFinishLaunching` runs.
 
+- The **displayed** document is not always the file. While comparing, it is the
+  merge of the file with a baseline, so the outline and find work over
+  `displayed` rather than over `markdownDocument.parsed` — using the file
+  directly there is what makes removed text unsearchable.
+
 ## Where the bodies are buried
 
 - **Swift 6 isolation and `NSDocument`.** Its members are main-actor isolated.
@@ -40,3 +45,8 @@ view hierarchy, so it needs no screen recording permission and works with the
 window behind another app. Use it to check rendering instead of asking someone
 to look. `--capture-after=<seconds>` delays the shot so a change made to the
 file meanwhile shows up in it — that is how live reload is verified.
+`--capture-hover=<x>,<y>` parks the pointer before the shot, which is the only
+way to see a control that appears on hover. It delivers the event to the view
+under the point rather than posting it to the window: a window hands mouse-moved
+events to its first responder, which during a capture is whatever the last
+control was.

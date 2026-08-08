@@ -27,8 +27,12 @@ Markio 2 reads. It never writes a file it opens.
 - Inline math kept as its source in a distinct style
 - Syntax highlighting for Swift, Python, Go, Rust, shell, SQL, JSON, YAML and
   the C family, in light and dark
+- A pasted terminal log in its own colours: the sixteen basic colours, the
+  256-colour cube and true colour; a ```diff block as added and removed bands
+- Images beside the document, decoded at the size they are drawn
 
-Not yet: images are marked but not decoded, and there are no diagrams.
+Not yet: diagrams and typeset mathematics. Both are separate engines, and
+neither is worth the weight in a viewer built to stay small.
 
 ## Reading it
 
@@ -38,7 +42,14 @@ Not yet: images are marked but not decoded, and there are no diagrams.
 - **⌘+** / **⌘−** reading column width, also on the slider in the bottom bar
 - Select text with the mouse, **⌘A** select all, **⌘C** copy
 - Click a link to open it; light and dark follow the system
+- Drop a Markdown file on a window to open it
+- While searching, the strip at the right edge shows where the matches are;
+  click one to go there
+- Hover a code block for its language and a Copy button
+- **File ▸ Compare…** shows the document against an older version of itself:
+  what it gained on a green band, what it lost on a red one, in the same window
 - Edit the file in another app and the view reloads where you were reading
+- Press Space on a `.md` file in Finder for the same rendering in Quick Look
 
 ## Building it
 
@@ -68,6 +79,14 @@ without a screen:
 .build/Markio2.app/Contents/MacOS/Markio2 doc.md --capture=/tmp/shot.png
 ```
 
+Add `--capture-hover=<x>,<y>` to park the pointer first, for the controls that
+only appear under it. The bench harness renders offscreen, and takes a baseline
+when the thing to look at is a comparison:
+
+```bash
+.build/release/markio2-bench snapshot new.md /tmp/diff.png 900 620 light 0 old.md
+```
+
 ## What it costs
 
 Release build, Apple silicon, generated documents of realistic shape:
@@ -89,5 +108,6 @@ document, because only the blocks on screen are ever typeset.
 - `Sources/MarkioRender` — CoreText typesetting, the virtualized layout and the
   reading view
 - `Sources/Markio2` — the app: documents, windows, menus, live reload
+- `Sources/Markio2QuickLook` — the Finder preview extension
 - `Sources/markio2-bench` — headless measurement and offscreen rendering
 - `documents/` — requirements, design and per-task notes

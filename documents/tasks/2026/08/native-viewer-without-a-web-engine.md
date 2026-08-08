@@ -10,9 +10,10 @@ Optimize for speed and for memory on large documents.
 
 ## Decisions
 
-- **Four targets, not one.** MarkdownKit (pure Swift, no AppKit), MarkioRender
-  (CoreText + AppKit), Markio2 (the app), markio2-bench (headless). The split
-  is what keeps a font metric from leaking into the parser.
+- **Five targets, not one.** MarkdownKit (pure Swift, no AppKit), MarkioRender
+  (CoreText + AppKit), Markio2 (the app), Markio2QuickLook (the Finder preview
+  extension), markio2-bench (headless). The split is what keeps a font metric
+  from leaking into the parser.
 - **Bytes, not `String`.** The whole scan path works on `[UInt8]` and `Int32`
   ranges. `String` is built once per visible block. This is the decision the
   performance numbers come from.
@@ -56,11 +57,38 @@ Recorded in `AGENTS.md` and the module files. The four that cost the most:
    concurrent reading moves construction to a background queue.
 4. The window opened as a bare title bar: every edge was pinned to a neighbour,
    so the content's fitting size was 1×31 and AppKit sized the window to it.
+5. A 32 MB file took 57 seconds to open, all of it in `ordinal(ofLeaf:)`: a
+   linear scan called once per heading, over 159 000 headings. A binary search
+   over the same sorted array brought it to 1.8 s. Found by opening a file
+   larger than any test used.
+
+## Second pass — everything Markio has that fits this architecture
+
+Added in order of cost, each with its own tests and a picture to prove it:
+dropping files on a window; the match strip beside the scroll bar; the language
+badge and Copy pill on a fenced block; `diff` bands; ANSI colour; images; the
+Quick Look extension; comparing against an older version.
+
+Two of these were worth the trouble they caused:
+
+- **The compare merge happens in the source.** `CompareEngine` builds one
+  Markdown buffer out of both versions plus the ranges each side contributed,
+  so the parser, the outline and find need no notion of comparison. The catch
+  is that two consecutive lines are one paragraph: without a blank line where
+  the origin changes, a replaced paragraph's old and new text render as a
+  single removed block. The first screenshot showed exactly that.
+- **The Quick Look extension needs no network entitlement**, unlike every
+  web-view-based one — including Markio's, where its absence hangs Finder on a
+  spinner forever. Nothing is awaited here, so nothing can hang.
 
 ## Not done
 
-- Images are marked, not decoded; no diagrams
-- ANSI colour in code blocks
-- No Quick Look extension, no diff view
+- No diagrams and no typeset mathematics. Both are separate engines; that is a
+  different project, not a missing feature of this one.
+- The compare view is inline only. Markio's side-by-side layout would need a
+  two-column layout engine, which is a larger change than the feature is worth.
+- The Quick Look extension has been verified structurally (bundle, plist,
+  signature, entry point, class-name pin) but not yet in a real Finder panel —
+  that needs registering it on the machine, which is the owner's call.
 - The app is not registered anywhere for signing or release, and must not be
-  without the owner's say-so
+  without the owner's say-so.
