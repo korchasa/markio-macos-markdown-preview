@@ -93,7 +93,9 @@ here is `@MainActor` except the parts that deliberately are not.
 - **A drawn diagram types nothing**, so its block has no segments and its plain
   text is the fence's own source. That is deliberate: find still locates the
   diagram, copy still yields something useful, and there is no text to
-  highlight because there is no text.
+  highlight because there is no text. It is also what Copy PNG and the enlarged
+  window are built on — both re-read that source rather than keeping a second
+  drawing beside the block.
 
 ## Tests
 
