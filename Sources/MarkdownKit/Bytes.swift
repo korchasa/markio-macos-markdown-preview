@@ -104,7 +104,9 @@ extension Array where Element == UInt8 {
     public func text(in range: ByteRange) -> String {
         guard !range.isEmpty else { return "" }
         return withUnsafeBufferPointer { buffer in
-            String(decoding: UnsafeBufferPointer(rebasing: buffer[range.lowerBound..<range.upperBound]), as: UTF8.self)
+            String(
+                decoding: UnsafeBufferPointer(
+                    rebasing: buffer[range.lowerBound..<range.upperBound]), as: UTF8.self)
         }
     }
 }

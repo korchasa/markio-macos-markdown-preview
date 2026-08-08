@@ -1,0 +1,156 @@
+import AppKit
+
+/// The menu bar, built in code.
+///
+/// A read-only viewer's File menu is short and its Edit menu shorter; a nib
+/// would be a binary blob carrying items that have to be deleted again. Every
+/// item here routes through the responder chain, so the focused window's
+/// controller answers without any window bookkeeping.
+enum MainMenu {
+    static func build() -> NSMenu {
+        let main = NSMenu()
+        main.addItem(appMenu())
+        main.addItem(fileMenu())
+        main.addItem(editMenu())
+        main.addItem(viewMenu())
+        main.addItem(windowMenu())
+        return main
+    }
+
+    private static func submenu(_ title: String) -> (NSMenuItem, NSMenu) {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: title)
+        item.submenu = menu
+        return (item, menu)
+    }
+
+    private static func appMenu() -> NSMenuItem {
+        let name = ProcessInfo.processInfo.processName
+        let (item, menu) = submenu(name)
+        menu.addItem(
+            withTitle: "About \(name)",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(.separator())
+        let hide = menu.addItem(
+            withTitle: "Hide \(name)",
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h"
+        )
+        hide.target = NSApp
+        let hideOthers = menu.addItem(
+            withTitle: "Hide Others",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        hideOthers.target = NSApp
+        menu.addItem(.separator())
+        let quit = menu.addItem(
+            withTitle: "Quit \(name)",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quit.target = NSApp
+        return item
+    }
+
+    private static func fileMenu() -> NSMenuItem {
+        let (item, menu) = submenu("File")
+        menu.addItem(
+            withTitle: "Open…",
+            action: #selector(NSDocumentController.openDocument(_:)),
+            keyEquivalent: "o"
+        )
+        let recents = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentsMenu = NSMenu(title: "Open Recent")
+        // AppKit fills this in as long as it carries the magic identifier.
+        recentsMenu.identifier = NSUserInterfaceItemIdentifier("NSRecentDocumentsMenu")
+        recents.submenu = recentsMenu
+        menu.addItem(recents)
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Copy File Path",
+            action: #selector(DocumentWindowController.copyFilePath(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Close",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        return item
+    }
+
+    private static func editMenu() -> NSMenuItem {
+        let (item, menu) = submenu("Edit")
+        menu.addItem(
+            withTitle: "Copy",
+            action: #selector(NSText.copy(_:)),
+            keyEquivalent: "c"
+        )
+        menu.addItem(
+            withTitle: "Select All",
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a"
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Find",
+            action: #selector(DocumentWindowController.showFind(_:)),
+            keyEquivalent: "f"
+        )
+        menu.addItem(
+            withTitle: "Find Next",
+            action: #selector(DocumentWindowController.findNext(_:)),
+            keyEquivalent: "g"
+        )
+        let previous = menu.addItem(
+            withTitle: "Find Previous",
+            action: #selector(DocumentWindowController.findPrevious(_:)),
+            keyEquivalent: "g"
+        )
+        previous.keyEquivalentModifierMask = [.command, .shift]
+        return item
+    }
+
+    private static func viewMenu() -> NSMenuItem {
+        let (item, menu) = submenu("View")
+        let outline = menu.addItem(
+            withTitle: "Table of Contents",
+            action: #selector(DocumentWindowController.toggleOutline(_:)),
+            keyEquivalent: "s"
+        )
+        outline.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(.separator())
+        menu.addItem(
+            withTitle: "Wider Column",
+            action: #selector(DocumentWindowController.widenColumn(_:)),
+            keyEquivalent: "+"
+        )
+        menu.addItem(
+            withTitle: "Narrower Column",
+            action: #selector(DocumentWindowController.narrowColumn(_:)),
+            keyEquivalent: "-"
+        )
+        return item
+    }
+
+    private static func windowMenu() -> NSMenuItem {
+        let (item, menu) = submenu("Window")
+        menu.addItem(
+            withTitle: "Minimize",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m"
+        )
+        menu.addItem(
+            withTitle: "Zoom",
+            action: #selector(NSWindow.performZoom(_:)),
+            keyEquivalent: ""
+        )
+        NSApp.windowsMenu = menu
+        return item
+    }
+}

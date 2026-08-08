@@ -198,7 +198,9 @@ public enum InlineParser {
         mutating func flushText(upTo end: Int) {
             guard pendingTextStart >= 0 else { return }
             if end > pendingTextStart {
-                emit(Token(kind: .text, range: ByteRange(pendingTextStart, end)), at: pendingTextStart)
+                emit(
+                    Token(kind: .text, range: ByteRange(pendingTextStart, end)),
+                    at: pendingTextStart)
             }
             pendingTextStart = -1
         }
@@ -485,7 +487,8 @@ public enum InlineParser {
             if index < end, bytes[index] == ASCII.lessThan {
                 let open = index + 1
                 index = open
-                while index < end, bytes[index] != ASCII.greaterThan, bytes[index] != ASCII.newline {
+                while index < end, bytes[index] != ASCII.greaterThan, bytes[index] != ASCII.newline
+                {
                     index += 1
                 }
                 guard index < end, bytes[index] == ASCII.greaterThan else { return nil }
@@ -640,7 +643,8 @@ public enum InlineParser {
                 let openerIndex = stack[openerSlot]
                 let character = tokens[closerIndex].character
                 let strike = character == ASCII.tilde
-                let strong = strike || (tokens[openerIndex].count >= 2 && tokens[closerIndex].count >= 2)
+                let strong =
+                    strike || (tokens[openerIndex].count >= 2 && tokens[closerIndex].count >= 2)
                 let width: Int32 = strong ? 2 : 1
                 if strike, tokens[openerIndex].count < 2 || tokens[closerIndex].count < 2 { return }
 

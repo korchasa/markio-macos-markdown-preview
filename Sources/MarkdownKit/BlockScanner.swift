@@ -134,7 +134,8 @@ struct BlockScanner {
                 } else {
                     var probePos = pos
                     var probeCol = col
-                    advanceIndent(&probePos, &probeCol, limit: Int(frame.contentIndent), end: lineEnd)
+                    advanceIndent(
+                        &probePos, &probeCol, limit: Int(frame.contentIndent), end: lineEnd)
                     guard probeCol >= Int(frame.contentIndent) else {
                         matched = -matched
                         break
@@ -166,8 +167,11 @@ struct BlockScanner {
             var probeCol = col
             advanceIndent(&probePos, &probeCol, limit: col + 3, end: lineEnd)
             if probePos < lineEnd, bytes[probePos] == frame.fenceChar,
-                runLength(from: probePos, to: lineEnd, of: frame.fenceChar) >= Int(frame.fenceLength),
-                isBlank(from: probePos + runLength(from: probePos, to: lineEnd, of: frame.fenceChar), to: lineEnd)
+                runLength(from: probePos, to: lineEnd, of: frame.fenceChar)
+                    >= Int(frame.fenceLength),
+                isBlank(
+                    from: probePos + runLength(from: probePos, to: lineEnd, of: frame.fenceChar),
+                    to: lineEnd)
             {
                 closeTip()
                 lastConsumedLine = Int32(line)
@@ -218,8 +222,10 @@ struct BlockScanner {
             if bytes[probePos] == ASCII.greaterThan {
                 closeLeaf()
                 // A quote at a list's own level ends the list rather than
-                // joining it.
+                // joining it; a quote INSIDE an item continues that item, and a
+                // blank line before it is what makes the list loose.
                 while stack[stack.count - 1].kind == .list { closeTip() }
+                noteContentAfterBlank()
                 pos = probePos + 1
                 col = probeCol + 1
                 if pos < lineEnd, bytes[pos] == ASCII.space {
@@ -248,7 +254,8 @@ struct BlockScanner {
             }
             closeLeaf()
             openListIfNeeded(marker: marker, line: line)
-            var item = Block(kind: .listItem, parent: stack[stack.count - 1].block, firstLine: Int32(line))
+            var item = Block(
+                kind: .listItem, parent: stack[stack.count - 1].block, firstLine: Int32(line))
             item.aux = marker.start
             blocks.append(item)
             let index = Int32(blocks.count - 1)
@@ -257,7 +264,6 @@ struct BlockScanner {
             )
             pos = marker.contentStart
             col = marker.contentIndent
-            noteContentAfterBlank()
         }
     }
 
@@ -268,9 +274,17 @@ struct BlockScanner {
         if tip.kind == .list {
             let list = blocks[Int(tip.block)]
             let sameOrder = list.flags.contains(.ordered) == marker.ordered
-            if sameOrder, list.aux == Int32(marker.bullet) { return }
+            if sameOrder, list.aux == Int32(marker.bullet) {
+                // This item continues the open list, so a blank line before it
+                // was a blank line *inside* the list.
+                noteContentAfterBlank()
+                return
+            }
             closeTip()
         }
+        // A brand-new list starts tight whatever preceded it: the blank line
+        // belonged to what came before, not to this list.
+        blankPending = false
         var flags: BlockFlags = [.tight]
         if marker.ordered { flags.insert(.ordered) }
         var list = Block(
@@ -358,11 +372,13 @@ struct BlockScanner {
             lastConsumedLine = Int32(line)
             return
         }
-        noteContentAfterBlank()
         // A list stays open only through its items. Content arriving at the
         // list's own level ends it — otherwise a quote or paragraph that
-        // follows the list would be adopted as a child of it.
+        // follows the list would be adopted as a child of it. Closing comes
+        // first, so a blank line that merely separates a list from what follows
+        // does not make that list loose.
         while stack[stack.count - 1].kind == .list { closeTip() }
+        noteContentAfterBlank()
 
         // Measure the whole indent, not just the first three columns: four is
         // the threshold that turns a line into code, so a capped measurement
@@ -568,17 +584,18 @@ struct BlockScanner {
 
     private mutating func appendLine(_ line: Int, contentStart: Int) {
         guard openLeaf >= 0 else { return }
-        lines.contentOffsets[line] = UInt16(min(max(contentStart - lines.start(of: line), 0), 0xFFFF))
+        lines.contentOffsets[line] = UInt16(
+            min(max(contentStart - lines.start(of: line), 0), 0xFFFF))
         let block = Int(openLeaf)
         blocks[block].lineCount = Int32(line) - blocks[block].firstLine + 1
         lastConsumedLine = Int32(line)
     }
 
     private mutating func push(kind: BlockKind, firstLine: Int) {
-        let block = Block(kind: kind, parent: stack[stack.count - 1].block, firstLine: Int32(firstLine))
+        let block = Block(
+            kind: kind, parent: stack[stack.count - 1].block, firstLine: Int32(firstLine))
         blocks.append(block)
         stack.append(OpenFrame(block: Int32(blocks.count - 1), kind: kind))
-        noteContentAfterBlank()
     }
 
     /// Content resuming after a blank line makes every enclosing list loose.
@@ -678,7 +695,8 @@ struct BlockScanner {
     private func isThematicBreak(from start: Int, to end: Int) -> Bool {
         guard start < end else { return false }
         let marker = bytes[start]
-        guard marker == ASCII.hyphen || marker == ASCII.asterisk || marker == ASCII.underscore else {
+        guard marker == ASCII.hyphen || marker == ASCII.asterisk || marker == ASCII.underscore
+        else {
             return false
         }
         var count = 0
