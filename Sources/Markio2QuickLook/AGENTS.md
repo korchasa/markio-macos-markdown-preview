@@ -31,3 +31,28 @@ does not.
   would put this in front of every `.txt` preview on the machine.
 - Failures go back through the completion handler. macOS then shows its own
   plain-text preview, which beats an empty panel.
+
+## Checking it on a machine
+
+`qlmanage -p -o <dir>` cannot host a view-based extension; use the GUI form or
+Finder. Registering the locally built bundle takes two commands, and the second
+is only needed if the system does not pick it up on its own:
+
+```
+lsregister -f "$PWD/.build/Markio2.app"
+pluginkit -a "$PWD/.build/Markio2.app/Contents/PlugIns/Markio2QuickLook.appex"
+```
+
+The proof that it worked is in the log, not on screen — but `Logger.info` is
+never written to disk, so a plain `log show` returns nothing and reads as "the
+extension logged nothing". Pass `--info`:
+
+```
+log show --info --predicate 'subsystem == "dev.markio.two"' --last 5m
+```
+
+A line reading `preview: <bytes> bytes, <n> blocks` means the extension was
+loaded, the principal-class name still matches the plist, and the file was read
+and laid out. Undo the registration with
+`pluginkit -r <path to the .appex>`; note the registered path lives under
+`.build`, so a clean rebuild leaves it pointing at nothing.

@@ -77,6 +77,12 @@ Two of these were worth the trouble they caused:
   is that two consecutive lines are one paragraph: without a blank line where
   the origin changes, a replaced paragraph's old and new text render as a
   single removed block. The first screenshot showed exactly that.
+The extension was registered on this machine and previewed a real file:
+`preview: 717 bytes, 7 blocks` in the log, followed by Metal shader compiles,
+which is the drawing. The trap worth remembering is that `Logger.info` is never
+persisted, so a plain `log show` comes back empty and reads as a preview that
+never ran — `--info` is what makes it visible.
+
 - **The Quick Look extension needs no network entitlement**, unlike every
   web-view-based one — including Markio's, where its absence hangs Finder on a
   spinner forever. Nothing is awaited here, so nothing can hang.
@@ -87,8 +93,8 @@ Two of these were worth the trouble they caused:
   different project, not a missing feature of this one.
 - The compare view is inline only. Markio's side-by-side layout would need a
   two-column layout engine, which is a larger change than the feature is worth.
-- The Quick Look extension has been verified structurally (bundle, plist,
-  signature, entry point, class-name pin) but not yet in a real Finder panel —
-  that needs registering it on the machine, which is the owner's call.
+- Window restoration on relaunch is one preference, the same one Markio uses,
+  and AppKit does the rest. It could not be confirmed here: this machine has no
+  `~/Library/Saved Application State` at all, for any app.
 - The app is not registered anywhere for signing or release, and must not be
   without the owner's say-so.
