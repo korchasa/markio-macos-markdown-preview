@@ -22,6 +22,9 @@ final class MarkdownDocument: NSDocument {
     private var watcher: FileWatcher?
 
     var parsed: MarkdownKit.Document { storage.document }
+    /// The bytes as read, for a comparison that diffs the source rather than
+    /// the parse.
+    var sourceBytes: [UInt8] { storage.bytes }
 
     override class var autosavesInPlace: Bool { false }
     override var isDocumentEdited: Bool { false }

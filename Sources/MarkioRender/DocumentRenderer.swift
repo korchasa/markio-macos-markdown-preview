@@ -83,6 +83,26 @@ public enum DocumentRenderer {
         }
     }
 
+    /// The band behind a block that changed between the compared versions.
+    ///
+    /// It spans the whole width rather than the reading column: a change is a
+    /// property of the page, and a band that stops at the text reads as part of
+    /// the block instead of a marker on it. The stripe at the left edge is what
+    /// stays visible when the tint is too faint to notice.
+    public static func drawCompareBand(
+        mark: CompareEngine.Mark,
+        theme: Theme,
+        rect: CGRect,
+        in context: CGContext
+    ) {
+        let palette = theme.palette
+        let added = mark == .added
+        context.setFillColor(added ? palette.diffAddedBackground : palette.diffRemovedBackground)
+        context.fill(rect)
+        context.setFillColor(added ? palette.diffAddedText : palette.diffRemovedText)
+        context.fill(CGRect(x: rect.minX, y: rect.minY, width: 3, height: rect.height))
+    }
+
     /// Render a window's worth of document into a bitmap.
     ///
     /// Used by the snapshot tool and by tests: it needs no window, no screen
@@ -123,6 +143,14 @@ public enum DocumentRenderer {
             let top = layout.offset(of: ordinal) + verticalPadding - scrollOffset
             if top > size.height { break }
             guard let box = layout.box(at: ordinal) else { break }
+            if let mark = layout.mark(at: ordinal) {
+                drawCompareBand(
+                    mark: mark,
+                    theme: layout.theme,
+                    rect: CGRect(x: 0, y: top, width: size.width, height: box.height),
+                    in: context
+                )
+            }
             context.saveGState()
             context.translateBy(x: originX, y: top)
             draw(box: box, highlights: [], in: context)

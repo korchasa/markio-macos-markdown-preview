@@ -26,11 +26,18 @@ final class DocumentWindowController: NSWindowController {
     private var outlineOrdinals: [Int] = []
     private var restoredScroll = false
     private var saveWorkItem: DispatchWorkItem?
+    /// The document on screen: the file itself, or the merge of it with a
+    /// baseline while comparing. The outline and find work over this one, so
+    /// both cover the removed text as well.
+    private var displayed: MarkdownKit.Document
+    /// The baseline being compared against, kept only for the session.
+    private var baselineURL: URL?
 
     private var sidebarWidthConstraint: NSLayoutConstraint!
 
     init(document: MarkdownDocument) {
         self.markdownDocument = document
+        self.displayed = document.parsed
         let theme = Theme(isDark: NSApp.effectiveAppearance.isDark)
         self.layout = DocumentLayout(
             document: document.parsed,
@@ -246,12 +253,77 @@ final class DocumentWindowController: NSWindowController {
     // MARK: - Document lifecycle
 
     func documentDidReload() {
+        // A comparison survives the edit it exists to show: the baseline is read
+        // again and merged again, rather than dropping back to the plain file.
+        if baselineURL != nil { rebuildComparison() } else { showPlainDocument() }
+    }
+
+    // MARK: - Compare
+
+    /// Compare the open file against an older version of it.
+    ///
+    /// The panel is the sandbox grant: choosing the baseline is what gives this
+    /// app permission to read it. The baseline is read, never opened — there is
+    /// no second window and no second scroll to keep in step.
+    @objc func compareWithBaseline(_ sender: Any?) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.message = "Choose the version to compare against."
+        panel.prompt = "Compare"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = markdownDocument.fileURL?.deletingLastPathComponent()
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            // A file against itself has nothing to show, so picking it changes
+            // nothing rather than entering a comparison with no marks in it.
+            guard url != self.markdownDocument.fileURL else { return }
+            self.baselineURL = url
+            self.rebuildComparison()
+        }
+    }
+
+    @objc func stopComparing(_ sender: Any?) {
+        guard baselineURL != nil else { return }
+        baselineURL = nil
+        showPlainDocument()
+    }
+
+    var isComparing: Bool { baselineURL != nil }
+
+    /// Read the baseline, merge, show the result.
+    ///
+    /// An unreadable baseline ends the comparison instead of leaving a stale one
+    /// on screen: the version it named is gone, and a diff nobody can reproduce
+    /// is worse than no diff.
+    private func rebuildComparison() {
+        guard let url = baselineURL, let baseline = try? Data(contentsOf: url) else {
+            baselineURL = nil
+            showPlainDocument()
+            return
+        }
+        let result = CompareEngine.merge(
+            current: markdownDocument.sourceBytes,
+            baseline: [UInt8](baseline)
+        )
+        show(document: MarkdownKit.Document(bytes: result.bytes), comparison: result)
+    }
+
+    private func showPlainDocument() {
+        show(document: markdownDocument.parsed, comparison: nil)
+    }
+
+    /// Swap what the window shows, keeping the reader roughly where they were.
+    private func show(document: MarkdownKit.Document, comparison: CompareEngine.Result?) {
         let anchor = layout.index(atOffset: scrollView.contentView.bounds.minY)
-        layout.replace(document: markdownDocument.parsed)
+        displayed = document
+        layout.comparison = comparison
+        layout.replace(document: document)
         documentView.needsDisplay = true
         refreshOutline()
         documentView.reveal(ordinal: min(anchor, max(0, layout.blockCount - 1)))
         rerunSearchIfActive()
+        updateTitle()
     }
 
     private func appearanceChanged() {
@@ -265,6 +337,17 @@ final class DocumentWindowController: NSWindowController {
     private func updateTitle() {
         window?.title = markdownDocument.fileURL?.path ?? "Markio 2"
         window?.representedURL = nil
+        // The subtitle is the only sign that the marks on screen are a diff and
+        // not part of the file, and it says when the diff found nothing.
+        guard let baselineURL else {
+            window?.subtitle = ""
+            return
+        }
+        let changed = layout.comparison?.hasChanges ?? false
+        window?.subtitle =
+            changed
+            ? "comparing with \(baselineURL.lastPathComponent)"
+            : "comparing with \(baselineURL.lastPathComponent) — no differences"
     }
 
     override func showWindow(_ sender: Any?) {
@@ -297,7 +380,7 @@ final class DocumentWindowController: NSWindowController {
     // MARK: - Outline
 
     private func refreshOutline() {
-        headings = markdownDocument.parsed.headings()
+        headings = displayed.headings()
         outlineOrdinals = headings.compactMap { layout.ordinal(ofLeaf: $0.block) }
         outline.setHeadings(headings)
     }
@@ -371,7 +454,7 @@ final class DocumentWindowController: NSWindowController {
             findBar.setCounter(current: 0, total: 0)
             return
         }
-        findEngine.search(query, in: markdownDocument.parsed) { [weak self] result in
+        findEngine.search(query, in: displayed) { [weak self] result in
             guard let self else { return }
             let firstArrival = self.findMatches.isEmpty && !result.matches.isEmpty
             self.findMatches = result.matches
@@ -474,6 +557,16 @@ extension DocumentWindowController: NSWindowDelegate {
             Preferences.setScrollPosition(scrollView.contentView.bounds.minY, for: url)
         }
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+extension DocumentWindowController: NSMenuItemValidation {
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        // Only items routed to this window controller arrive here, so the
+        // default is yes and the one exception is the command that needs a
+        // comparison to stop.
+        if item.action == #selector(stopComparing(_:)) { return isComparing }
+        return true
     }
 }
 

@@ -14,7 +14,8 @@ enum Snapshot {
     static func run(arguments: [String]) -> Int32 {
         guard arguments.count >= 2 else {
             print(
-                "usage: markio2-bench snapshot <in.md> <out.png> [width] [height] [dark] [scrollY]")
+                "usage: markio2-bench snapshot <in.md> <out.png> [width] [height] [dark] "
+                    + "[scrollY] [baseline.md]")
             return 2
         }
         let input = URL(fileURLWithPath: arguments[0])
@@ -28,7 +29,21 @@ enum Snapshot {
             print("error: cannot read \(input.path)")
             return 1
         }
-        let document = Document(bytes: [UInt8](data))
+        // With a baseline, what gets rendered is the merge of the two versions
+        // and the marks that say which side each block came from — the same
+        // thing the window shows while comparing.
+        var comparison: CompareEngine.Result?
+        if arguments.count > 6 {
+            guard let baseline = try? Data(contentsOf: URL(fileURLWithPath: arguments[6])) else {
+                print("error: cannot read \(arguments[6])")
+                return 1
+            }
+            comparison = CompareEngine.merge(
+                current: [UInt8](data),
+                baseline: [UInt8](baseline)
+            )
+        }
+        let document = Document(bytes: comparison?.bytes ?? [UInt8](data))
         let theme = Theme(isDark: dark)
         let columnWidth = min(CGFloat(width) - 120, 720)
         let layout = DocumentLayout(
@@ -37,6 +52,7 @@ enum Snapshot {
             columnWidth: columnWidth,
             baseURL: input
         )
+        layout.comparison = comparison
 
         guard
             let image = DocumentRenderer.image(

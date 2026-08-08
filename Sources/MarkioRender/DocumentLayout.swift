@@ -19,6 +19,12 @@ public final class DocumentLayout {
     public private(set) var columnWidth: CGFloat
     /// Where the document lives, so images beside it can be found.
     public var baseURL: URL?
+    /// The comparison this document is showing, if it is showing one.
+    ///
+    /// The document itself is then the merged source built by `CompareEngine`,
+    /// so nothing below this line knows a comparison is in progress; this is
+    /// only what lets the view tint the blocks that changed.
+    public var comparison: CompareEngine.Result?
 
     private var heights: HeightIndex
     private var engine: BlockLayoutEngine
@@ -72,6 +78,17 @@ public final class DocumentLayout {
             if value < leaf { low = middle + 1 } else { high = middle - 1 }
         }
         return nil
+    }
+
+    /// How a block changed between the two compared versions, if at all.
+    ///
+    /// A block is judged by its first byte: a block that straddles the boundary
+    /// of a change — a list that gained an item, say — belongs to whichever side
+    /// it starts on, which is the reading most people expect.
+    public func mark(at ordinal: Int) -> CompareEngine.Mark? {
+        guard let comparison, ordinal >= 0, ordinal < document.leaves.count else { return nil }
+        let range = document.sourceRange(of: document.leaves[ordinal])
+        return comparison.mark(atByte: Int(range.start))
     }
 
     // MARK: - Content changes

@@ -71,6 +71,17 @@ enum MainMenu {
         menu.addItem(recents)
         menu.addItem(.separator())
         menu.addItem(
+            withTitle: "Compare…",
+            action: #selector(DocumentWindowController.compareWithBaseline(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(
+            withTitle: "Stop Comparing",
+            action: #selector(DocumentWindowController.stopComparing(_:)),
+            keyEquivalent: ""
+        )
+        menu.addItem(.separator())
+        menu.addItem(
             withTitle: "Copy File Path",
             action: #selector(DocumentWindowController.copyFilePath(_:)),
             keyEquivalent: ""

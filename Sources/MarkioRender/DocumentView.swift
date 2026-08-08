@@ -171,6 +171,14 @@ public final class DocumentView: NSView {
             let top = layout.offset(of: ordinal) + verticalPadding
             guard top < dirtyRect.maxY, top + box.height > dirtyRect.minY else { continue }
 
+            if let mark = layout.mark(at: ordinal) {
+                DocumentRenderer.drawCompareBand(
+                    mark: mark,
+                    theme: layout.theme,
+                    rect: CGRect(x: 0, y: top, width: bounds.width, height: box.height),
+                    in: context
+                )
+            }
             context.saveGState()
             context.translateBy(x: originX, y: top)
             draw(box: box, ordinal: ordinal, selection: selection, in: context)
