@@ -67,6 +67,7 @@ public enum BlockPlainText {
             switch run.kind {
             case .text:
                 guard Int(run.range.end) > skipBytes else { continue }
+                guard !InlineImage.isHiddenAltText(run: run, inline: inline) else { continue }
                 var range = run.range
                 if Int(range.start) < skipBytes { range.start = Int32(skipBytes) }
                 out += content.text(in: range)
@@ -78,9 +79,18 @@ public enum BlockPlainText {
             case .hardBreak:
                 out += "\n"
             case .image:
-                out += "🖼 "
+                out += imageText(run: run, inline: inline)
             }
         }
         return out
+    }
+
+    /// A picture that will be drawn occupies one placeholder character; one
+    /// that cannot be drawn keeps the marker, and its alt text follows.
+    private static func imageText(run: InlineRun, inline: InlineContent) -> String {
+        guard run.link >= 0, Int(run.link) < inline.links.count,
+            InlineImage.isDrawable(destination: inline.links[Int(run.link)].destination)
+        else { return "🖼 " }
+        return InlineImage.placeholder
     }
 }

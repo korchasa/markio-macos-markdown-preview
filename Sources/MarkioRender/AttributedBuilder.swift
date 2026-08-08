@@ -31,13 +31,18 @@ enum AttributedBuilder {
     ///
     /// `baseFont` and `baseColor` are what unstyled text uses; a heading passes
     /// its own so the whole block scales without a second attribute pass.
+    /// - Parameter image: resolves a picture for an inline image run, so the
+    ///   line can reserve exactly the room it needs. Passing nil draws every
+    ///   inline picture as an empty frame — the text is the same either way,
+    ///   which is what keeps Find in step with what is drawn.
     static func build(
         content: [UInt8],
         inline: InlineContent,
         theme: Theme,
         baseFont: CTFont,
         baseColor: CGColor,
-        skipBytes: Int = 0
+        skipBytes: Int = 0,
+        image: ((InlineLink, CGFloat) -> CGImage?)? = nil
     ) -> StyledText {
         let attributed = NSMutableAttributedString()
         var spans: [StyledText.Span] = []
@@ -53,6 +58,10 @@ enum AttributedBuilder {
             switch run.kind {
             case .text:
                 guard Int(run.range.end) > skipBytes else { continue }
+                // Alt text describes a picture nobody can see; once the picture
+                // itself is on the line it is noise, and the plain-text
+                // projection drops it in the same place.
+                guard !InlineImage.isHiddenAltText(run: run, inline: inline) else { continue }
                 var range = run.range
                 if Int(range.start) < skipBytes { range.start = Int32(skipBytes) }
                 let text = content.text(in: range)
@@ -91,16 +100,29 @@ enum AttributedBuilder {
                     color: baseColor
                 )
             case .image:
-                // No image decoding yet; the alt text that follows carries the
-                // meaning, and a marker keeps the reader aware something is there.
-                append(
-                    "🖼 ",
-                    run: run,
-                    to: attributed,
-                    theme: theme,
-                    base: baseFont,
-                    color: theme.palette.secondaryText
-                )
+                let link =
+                    run.link >= 0 && Int(run.link) < inline.links.count
+                    ? inline.links[Int(run.link)] : nil
+                if let link, InlineImage.isDrawable(destination: link.destination) {
+                    appendPicture(
+                        link: link,
+                        run: run,
+                        to: attributed,
+                        base: baseFont,
+                        resolve: image
+                    )
+                } else {
+                    // Nothing can be drawn for a remote address, so the marker
+                    // and the alt text after it carry the meaning.
+                    append(
+                        "🖼 ",
+                        run: run,
+                        to: attributed,
+                        theme: theme,
+                        base: baseFont,
+                        color: theme.palette.secondaryText
+                    )
+                }
             }
             let length = attributed.length - start
             if length > 0, !run.style.isEmpty || run.link >= 0 {
@@ -157,6 +179,33 @@ enum AttributedBuilder {
             attributes[.strikethroughColor] = NSColor(cgColor: foreground) ?? NSColor.labelColor
         }
         attributed.append(NSAttributedString(string: text, attributes: attributes))
+    }
+
+    /// Reserve room on the line for an inline picture.
+    ///
+    /// The character is the object replacement; a run delegate gives it the
+    /// picture's width and height, and the link index rides along so the laid-
+    /// out line can be matched back to the image when it is drawn.
+    private static func appendPicture(
+        link: InlineLink,
+        run: InlineRun,
+        to attributed: NSMutableAttributedString,
+        base: CTFont,
+        resolve: ((InlineLink, CGFloat) -> CGImage?)?
+    ) {
+        let lineHeight = CTFontGetAscent(base) + CTFontGetDescent(base)
+        let picture = resolve?(link, lineHeight * 2.4)
+        let size = InlineImage.size(image: picture, lineHeight: lineHeight)
+        var attributes: [NSAttributedString.Key: Any] = [
+            fontKey: base,
+            InlineImage.key: run.link,
+        ]
+        if let delegate = InlineImage.delegate(size: size) {
+            attributes[NSAttributedString.Key(kCTRunDelegateAttributeName as String)] = delegate
+        }
+        attributed.append(
+            NSAttributedString(string: InlineImage.placeholder, attributes: attributes)
+        )
     }
 
     /// How far off the baseline a `<sup>` or `<sub>` run sits, in points.

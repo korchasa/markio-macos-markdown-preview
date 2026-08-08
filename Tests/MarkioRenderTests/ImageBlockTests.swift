@@ -57,12 +57,32 @@ final class ImageBlockTests: XCTestCase {
         )
     }
 
-    func testAnImageInsideProseStaysInline() {
+    func testAnImageInsideProseIsDrawnOnTheLine() throws {
         let base = fixtures.appendingPathComponent("images.md")
         let (_, layout) = layout("Text with ![a gradient](sample.png) in it.\n", baseURL: base)
-        let box = layout.box(at: 0)
-        XCTAssertNotNil(box)
-        XCTAssertFalse(hasImage(box!), "an image sharing a line is not a picture block")
+        let box = try XCTUnwrap(layout.box(at: 0))
+        XCTAssertTrue(hasImage(box), "a picture inside a sentence is drawn where it sits")
+        // The picture replaces its own alt text, and only that: the prose
+        // around it is untouched.
+        XCTAssertEqual(box.plainText, "Text with \u{FFFC} in it.")
+    }
+
+    func testAMissingInlineImageKeepsItsPlaceInTheText() throws {
+        let base = fixtures.appendingPathComponent("images.md")
+        let (_, layout) = layout("Text with ![gone](nowhere.png) in it.\n", baseURL: base)
+        let box = try XCTUnwrap(layout.box(at: 0))
+        XCTAssertFalse(hasImage(box))
+        // Whether the file was readable cannot change the text, or a match
+        // offset from Find would land in the wrong place.
+        XCTAssertEqual(box.plainText, "Text with \u{FFFC} in it.")
+    }
+
+    func testARemoteInlineImageKeepsItsAltText() throws {
+        let base = fixtures.appendingPathComponent("images.md")
+        let (_, layout) = layout("Text with ![a photo](https://e.com/a.png) here.\n", baseURL: base)
+        let box = try XCTUnwrap(layout.box(at: 0))
+        XCTAssertFalse(hasImage(box))
+        XCTAssertEqual(box.plainText, "Text with 🖼 a photo here.")
     }
 
     func testWithoutADocumentLocationThereAreNoImages() {

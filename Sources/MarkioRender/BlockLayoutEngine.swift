@@ -27,6 +27,18 @@ struct BlockLayoutEngine {
         self.syntax = SyntaxHighlighter.Palette(isDark: theme.isDark)
     }
 
+    /// The picture for an inline image, fitted to the height a line can give
+    /// it. Nil when there is no document location, when the destination is not
+    /// a local file, or when nothing there can be decoded.
+    func inlineImage(link: InlineLink, maxHeight: CGFloat) -> CGImage? {
+        guard link.isImage, let base = baseURL,
+            let url = Builder.imageURL(destination: link.destination, base: base)
+        else { return nil }
+        // Ask for twice the height in width: a wide picture is capped by the
+        // reading column anyway, and asking small keeps the decode cheap.
+        return ImageLoader.image(at: url, maxWidth: min(width, maxHeight * 4))
+    }
+
     // MARK: - Estimation
 
     /// A height guess made without typesetting anything.
@@ -182,7 +194,10 @@ struct BlockLayoutEngine {
                 theme: theme,
                 baseFont: theme.body,
                 baseColor: theme.palette.text,
-                skipBytes: skip
+                skipBytes: skip,
+                image: { [engine] link, maxHeight in
+                    engine.inlineImage(link: link, maxHeight: maxHeight)
+                }
             )
             place(
                 styled, inline: inline, width: available, x: indent,
@@ -249,7 +264,7 @@ struct BlockLayoutEngine {
 
         /// Resolve a destination against the document, refusing anything that
         /// is not a local file beside it — the same default-deny rule links get.
-        private static func imageURL(destination: String, base: URL) -> URL? {
+        static func imageURL(destination: String, base: URL) -> URL? {
             let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else { return nil }
             if let scheme = URL(string: trimmed)?.scheme?.lowercased() {
@@ -652,7 +667,53 @@ struct BlockLayoutEngine {
             )
             plainText += styled.attributed.string
             recordSpans(styled, result: result, inline: inline, segmentIndex: segments.count - 1)
+            recordInlineImages(result: result, inline: inline)
             y += result.height
+        }
+
+        /// Find the pictures CoreText reserved room for, and say where they go.
+        ///
+        /// The space is already there — the run delegate reserved it — so this
+        /// only has to read back where the line put it. A picture that failed to
+        /// load leaves its frame empty rather than shifting the text around it.
+        private mutating func recordInlineImages(result: Typesetter.Result, inline: InlineContent) {
+            for line in result.lines {
+                for run in (CTLineGetGlyphRuns(line.line) as? [CTRun] ?? []) {
+                    let attributes = CTRunGetAttributes(run) as NSDictionary
+                    guard let index = attributes[InlineImage.key] as? Int32,
+                        index >= 0, Int(index) < inline.links.count
+                    else { continue }
+                    var ascent: CGFloat = 0
+                    var descent: CGFloat = 0
+                    let width = CGFloat(
+                        CTRunGetTypographicBounds(run, CFRange(), &ascent, &descent, nil))
+                    let stringRange = CTRunGetStringRange(run)
+                    let x =
+                        line.origin.x
+                        + CTLineGetOffsetForStringIndex(line.line, stringRange.location, nil)
+                    let rect = CGRect(
+                        x: x,
+                        y: line.origin.y - ascent,
+                        width: width,
+                        height: ascent + descent
+                    )
+                    guard
+                        let image = engine.inlineImage(
+                            link: inline.links[Int(index)],
+                            maxHeight: rect.height
+                        )
+                    else {
+                        // The room is reserved whether or not the file was
+                        // readable, so an outline says a picture belongs here
+                        // rather than leaving a gap that reads as a typo.
+                        decorations.append(
+                            .stroke(rect: rect, color: theme.palette.rule, width: 1)
+                        )
+                        continue
+                    }
+                    decorations.append(.image(image, rect: rect))
+                }
+            }
         }
 
         /// Turn style spans into the geometry that has to be drawn behind or
