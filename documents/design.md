@@ -79,6 +79,14 @@ The label is shown as written rather than renumbered — numbering would need th
 whole document counted before any block could be drawn, which is the one thing
 this design refuses to do.
 
+A `<details>` section is two blocks — the opening tag with its summary, and the
+closing tag — with ordinary Markdown between them. CommonMark would make the
+whole thing one raw-HTML block ending at a blank line, which is right for a
+renderer that emits HTML and useless for one that draws the document: the reader
+would be shown the source of their own text. The pairing is done in the same
+pass that builds the leaf list, so the layout can know which blocks a closed
+section hides before it has drawn anything.
+
 ### Inline parsing
 
 Runs on one block's content, producing a **flat array of runs**, not a tree:
@@ -140,6 +148,13 @@ Two details that are not obvious:
 `DocumentLayout` owns the boxes, keyed by ordinal, with a retain margin around
 the visible range. `prepare(range:anchor:)` lays out what is about to be drawn
 and evicts what is far away (PERF-4), returning the shift the view must undo.
+
+A closed `<details>` section is a range of ordinals whose height is zero and
+whose boxes are empty. Ranges rather than a set of ordinals: a folded section
+may hold a hundred thousand blocks, and the question — "is this one hidden?" —
+is asked once per block laid out. Toggling one touches only that section: its
+blocks lose their boxes and go back to estimates, or to nothing. The blocks
+themselves are never dropped, so find and copy still see the folded text.
 
 ### Drawing
 
@@ -257,7 +272,8 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
   find's plain text and the renderer's.
 - `--capture=<path>` draws the real window to a PNG; `--capture-hover=<x>,<y>`
   parks the pointer first, which is the only way to see a control that appears
-  on hover. `markio2-bench snapshot` draws a document offscreen at any width,
+  on hover, and `--capture-click=<x>,<y>` clicks once, which is how folding a
+  section away is checked. `markio2-bench snapshot` draws a document offscreen at any width,
   scroll offset and appearance, and takes an optional baseline so a comparison
   can be looked at the same way. Both work without screen recording permission,
   which is what makes visual checks possible from a script.

@@ -19,6 +19,23 @@ public struct Document: Sendable {
     /// A `[^label]` reference is only a footnote when its label is in here;
     /// anything else stays the literal brackets the author typed.
     public let footnotes: [String: Int32]
+    /// The collapsible sections, in reading order, as ordinals into `leaves`.
+    public let disclosures: [Disclosure]
+
+    /// A `<details>` section: where it opens, where it ends, and whether the
+    /// author left it open.
+    ///
+    /// Ordinals rather than block indices, because the only thing that asks is
+    /// the layout, which counts in ordinals — and it asks before a single block
+    /// has been drawn, so this has to be free. It is: the pairing is done with
+    /// a stack on the pass that builds the leaf list.
+    public struct Disclosure: Sendable, Equatable {
+        public var open: Int
+        /// The `</details>` that ends it, or the last leaf when the author
+        /// never wrote one.
+        public var close: Int
+        public var startsExpanded: Bool
+    }
 
     public struct LinkReference: Sendable, Equatable {
         public var destination: ByteRange
@@ -48,6 +65,8 @@ public struct Document: Sendable {
         self.references = references
         var leaves: [Int32] = []
         var footnotes: [String: Int32] = [:]
+        var disclosures: [Disclosure] = []
+        var openSections: [Int] = []
         leaves.reserveCapacity(blocks.count / 2 + 1)
         for index in blocks.indices where blocks[index].kind.isLeaf {
             // A paragraph that held nothing but link definitions is gone.
@@ -57,10 +76,28 @@ public struct Document: Sendable {
                 let label = LinkLabel.normalize(parsed.text(in: blocks[index].info))
                 if footnotes[label] == nil { footnotes[label] = Int32(index) }
             }
+            if blocks[index].kind == .disclosure {
+                if blocks[index].level == 1 {
+                    openSections.append(disclosures.count)
+                    disclosures.append(
+                        Disclosure(
+                            open: leaves.count,
+                            close: leaves.count,
+                            startsExpanded: blocks[index].flags.contains(.expanded)
+                        )
+                    )
+                } else if let section = openSections.popLast() {
+                    disclosures[section].close = leaves.count
+                }
+            }
             leaves.append(Int32(index))
         }
+        // A section nobody closed runs to the end of the document, which is
+        // what the author's text does too.
+        for section in openSections { disclosures[section].close = max(0, leaves.count - 1) }
         self.leaves = leaves
         self.footnotes = footnotes
+        self.disclosures = disclosures
     }
 
     public init(text: String) {

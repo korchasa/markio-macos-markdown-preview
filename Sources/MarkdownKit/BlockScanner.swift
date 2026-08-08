@@ -477,6 +477,17 @@ struct BlockScanner {
             return
         }
 
+        // A collapsible section's two ends are blocks of their own, and what
+        // lies between them is ordinary Markdown. CommonMark would make the
+        // whole thing one raw-HTML block that ends at a blank line — correct
+        // for a renderer that emits HTML, useless for one that draws the
+        // document, since the reader would see the source of their own text.
+        if let tag = HTMLBlockScanner.disclosure(bytes: bytes, start: textPos, end: lineEnd),
+            openDisclosure(tag, line: line, contentStart: textPos)
+        {
+            return
+        }
+
         if openLeaf < 0, bytes[textPos] == ASCII.lessThan,
             let kind = htmlBlockKind(at: textPos, lineEnd: lineEnd)
         {
@@ -815,6 +826,64 @@ struct BlockScanner {
         if parseListMarker(at: pos, col: col, lineEnd: end) != nil { return true }
         if footnoteDefinition(at: pos, lineEnd: end) != nil { return true }
         return false
+    }
+
+    // MARK: - Collapsible sections
+
+    /// Turn a `<details>`, `</details>` or `<summary>` line into a block, and
+    /// say whether the line was consumed.
+    ///
+    /// A summary is only a summary directly under the `<details>` it belongs to.
+    /// Anywhere else it is a stray tag, and the line goes back to ordinary
+    /// classification — which shows it, rather than quietly dropping text.
+    private mutating func openDisclosure(
+        _ tag: HTMLBlockScanner.Disclosure,
+        line: Int,
+        contentStart: Int
+    ) -> Bool {
+        switch tag {
+        case .summary(let text):
+            let last = blocks.count - 1
+            guard last > 0, blocks[last].kind == .disclosure, blocks[last].level == 1,
+                blocks[last].lastLine == Int32(line - 1)
+            else { return false }
+            blocks[last].info = text
+            blocks[last].lineCount += 1
+            lines.contentOffsets[line] = UInt16(
+                min(max(contentStart - lines.start(of: line), 0), 0xFFFF))
+            lastConsumedLine = Int32(line)
+            return true
+        case .open(let expanded):
+            appendDisclosure(
+                line: line,
+                contentStart: contentStart,
+                level: 1,
+                flags: expanded ? [.expanded] : []
+            )
+            return true
+        case .close:
+            appendDisclosure(line: line, contentStart: contentStart, level: 0, flags: [])
+            return true
+        }
+    }
+
+    private mutating func appendDisclosure(
+        line: Int,
+        contentStart: Int,
+        level: UInt8,
+        flags: BlockFlags
+    ) {
+        closeLeaf()
+        var block = Block(
+            kind: .disclosure,
+            parent: stack[stack.count - 1].block,
+            firstLine: Int32(line),
+            level: level,
+            flags: flags
+        )
+        block.lineCount = 1
+        appendLeaf(block, line: line, contentStart: contentStart)
+        closeLeaf()
     }
 
     // MARK: - Footnotes

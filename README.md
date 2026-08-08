@@ -33,6 +33,7 @@ Markio 2 reads. It never writes a file it opens.
 - Images beside the document, decoded at the size they are drawn — on a line
   of their own, or inside a sentence
 - Footnotes: a raised label in the text, the note itself set smaller below
+- `<details>` sections, folded away until you click their summary
 
 Not yet: diagrams and typeset mathematics. Both are separate engines, and
 neither is worth the weight in a viewer built to stay small.
@@ -50,6 +51,7 @@ neither is worth the weight in a viewer built to stay small.
   click one to go there
 - Hover a code block for its language and a Copy button
 - Click a footnote's marker to jump to the note
+- Click a `<details>` summary to fold its section away or bring it back
 - **File ▸ Compare…** shows the document against an older version of itself:
   what it gained on a green band, what it lost on a red one, in the same window
 - Edit the file in another app and the view reloads where you were reading
@@ -85,7 +87,7 @@ without a screen:
 ```
 
 Add `--capture-hover=<x>,<y>` to park the pointer first, for the controls that
-only appear under it. The bench harness renders offscreen, and takes a baseline
+only appear under it, or `--capture-click=<x>,<y>` for what only a click shows. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 
 ```bash

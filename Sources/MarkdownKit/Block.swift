@@ -13,6 +13,8 @@ public enum BlockKind: UInt8, Sendable {
     case frontMatter
     /// The text of a footnote (`[^label]: …`), drawn beside its label.
     case footnoteDefinition
+    /// `<details>` or `</details>`: the two ends of a collapsible section.
+    case disclosure
 }
 
 extension BlockKind {
@@ -21,7 +23,7 @@ extension BlockKind {
         switch self {
         case .document, .blockQuote, .list, .listItem: return false
         case .paragraph, .heading, .codeBlock, .htmlBlock, .thematicBreak, .table, .frontMatter,
-            .footnoteDefinition:
+            .footnoteDefinition, .disclosure:
             return true
         }
     }
@@ -45,6 +47,8 @@ public struct BlockFlags: OptionSet, Sendable {
     public static let setext = BlockFlags(rawValue: 1 << 5)
     /// First leaf inside a list item — the one the item marker is drawn beside.
     public static let itemHead = BlockFlags(rawValue: 1 << 6)
+    /// `<details open>` — the section starts showing its contents.
+    public static let expanded = BlockFlags(rawValue: 1 << 7)
 }
 
 /// One node of the parsed document.

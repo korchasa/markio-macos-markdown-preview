@@ -36,6 +36,10 @@ screen exists. Everything downstream depends on that staying true.
   definition.** `ReferenceCollector` refuses labels starting with a caret; drop
   that guard and a one-word note is swallowed as a definition, line and all, so
   the note simply disappears from the document.
+- **`<details>` is recognised before the HTML-block branch**, or the section
+  becomes one raw-HTML block ending at a blank line and the reader is shown the
+  source of their own text. Only the whole-line spellings are taken: a
+  `<details>` inside a sentence is prose about HTML.
 - **Whether `[^label]` is a reference is a fact about the document**, not about
   the block. The labels are handed to `InlineParser.parse`; a caller that
   forgets them gets literal brackets, which is also the right answer for a

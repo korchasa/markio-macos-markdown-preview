@@ -52,6 +52,11 @@ enum TreeDump {
         case .table: return "table(\(block.aux))"
         case .frontMatter: return "frontmatter"
         case .footnoteDefinition: return "footnote(\(document.text(block.info)))"
+        case .disclosure:
+            guard block.level == 1 else { return "/details" }
+            let summary = document.text(block.info)
+            let state = block.flags.contains(.expanded) ? "open" : "closed"
+            return summary.isEmpty ? "details(\(state))" : "details(\(state),\(summary))"
         }
     }
 

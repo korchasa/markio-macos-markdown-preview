@@ -89,6 +89,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return CGPoint(x: x, y: y)
     }
 
+    /// `--capture-click=<x>,<y>`: click once before the shot.
+    ///
+    /// What a click does — folding a section away — cannot be seen in a still
+    /// picture of a document nobody has touched. Same coordinates as the hover.
+    private func clickPoint() -> CGPoint? {
+        let prefix = "--capture-click="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+        else { return nil }
+        let parts = argument.dropFirst(prefix.count).split(separator: ",")
+        guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else {
+            return nil
+        }
+        return CGPoint(x: x, y: y)
+    }
+
+    private func sendClick(_ point: CGPoint, to window: NSWindow) {
+        guard
+            let target = window.contentView?.hitTest(point),
+            let event = NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: point,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        else { return }
+        target.mouseDown(with: event)
+    }
+
     /// A window hands a mouse-moved event to its first responder, not to the
     /// view under the pointer, so a synthesized one has to be delivered to the
     /// view the pointer would really be over.
@@ -117,6 +150,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let visible = NSApp.windows.first(where: { $0.isVisible })
             if let point = self.hoverPoint(), let window = visible {
                 self.sendHover(point, to: window)
+                window.contentView?.displayIfNeeded()
+            }
+            if let point = self.clickPoint(), let window = visible {
+                self.sendClick(point, to: window)
                 window.contentView?.displayIfNeeded()
             }
             guard let view = visible?.contentView,

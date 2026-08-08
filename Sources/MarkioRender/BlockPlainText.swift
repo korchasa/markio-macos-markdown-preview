@@ -20,6 +20,19 @@ public enum BlockPlainText {
             return String(decoding: AnsiText.strip(content), as: UTF8.self)
         case .thematicBreak:
             return ""
+        case .disclosure:
+            // A section's header says what the section is; its closing tag says
+            // nothing. Neither shows the angle brackets it was written with.
+            guard block.level == 1 else { return "" }
+            let summary = Array(document.text(block.info).utf8)
+            guard !summary.isEmpty else { return "Details" }
+            let inline = InlineParser.parse(
+                content: summary,
+                references: document.references,
+                documentBytes: document.bytes,
+                footnotes: document.footnotes
+            )
+            return inlineText(content: summary, inline: inline, skipBytes: 0)
         case .table:
             return tableText(document: document, leaf: leaf)
         default:

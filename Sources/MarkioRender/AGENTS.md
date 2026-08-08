@@ -57,6 +57,9 @@ here is `@MainActor` except the parts that deliberately are not.
   would make one line of a paragraph taller than its neighbours. Run bounds are
   unshifted; a run delegate — an inline picture — still reports its full height,
   which is what keeps room for pictures.
+- **A closed section hides blocks; it never removes them.** Zero height and an
+  empty box, kept as ranges of ordinals. Dropping the blocks would be simpler
+  and would silently break find, copy and every ordinal the view holds.
 - **A footnote's gutter is measured from its own label.** Labels are free text,
   and a fixed indent either wastes space or lets `[^design-notes]` run into the
   note.

@@ -54,6 +54,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **PARSE-9** A line of the form `[^label]: text` is a footnote, and `[^label]`
   in the prose is a reference to it. A reference whose label nothing defines
   stays the literal brackets the author typed.
+- **PARSE-10** `<details>`, `<summary>` and `</details>`, each on a line of its
+  own, mark a collapsible section. What lies between them is ordinary Markdown,
+  not raw HTML.
 
 ## VIEW — What the reader sees
 
@@ -112,6 +115,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-21** A footnote reference is a raised, clickable label; clicking it
   scrolls to the note. The note itself is set smaller, indented, with its label
   standing beside its first line.
+- **VIEW-22** A `<details>` section shows a summary row with a triangle;
+  clicking it folds the section away or brings it back. `<details open>` starts
+  open, `<details>` starts closed — what the author wrote. A folded section's
+  blocks are hidden, not dropped: find and copy still see them.
 
 ## QL — Quick Look
 
@@ -165,6 +172,7 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
   repository, and nothing in it refers to how.
 - **BUILD-5** Rendering can be verified without a screen: the app draws its own
   window to a PNG (`--capture=<path>`, with `--capture-hover=<x>,<y>` for the
-  controls that only appear under the pointer), and the bench harness renders a
+  controls that only appear under the pointer and `--capture-click=<x>,<y>` for
+  what only a click reveals), and the bench harness renders a
   document offscreen — with an optional baseline, so a comparison can be
   checked the same way.

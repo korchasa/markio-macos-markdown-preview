@@ -311,6 +311,43 @@ final class BlockScannerTests: XCTestCase {
         XCTAssertTrue(document.footnotes.isEmpty)
     }
 
+    func testCollapsibleSections() {
+        let document = Document(
+            text: """
+                <details open>
+                <summary>Title with `code`</summary>
+
+                Ordinary *Markdown* inside.
+
+                </details>
+                """
+        )
+        XCTAssertEqual(
+            TreeDump.dump(document),
+            """
+            details(open,Title with `code`) "<details open>\\n<summary>Title with `code`</summary>"
+            para "Ordinary *Markdown* inside."
+            /details "</details>"
+            """
+        )
+        XCTAssertEqual(
+            document.disclosures,
+            [Document.Disclosure(open: 0, close: 2, startsExpanded: true)]
+        )
+    }
+
+    func testDetailsTagsThatAreNotOnTheirOwnLineStayText() {
+        let document = Document(text: "Write <details> to fold a section.\n\n<details class=\"x\">")
+        XCTAssertEqual(
+            TreeDump.dump(document),
+            """
+            para "Write <details> to fold a section."
+            html "<details class=\"x\">"
+            """
+        )
+        XCTAssertTrue(document.disclosures.isEmpty)
+    }
+
     func testEmptyDocument() {
         let document = Document(text: "")
         XCTAssertTrue(document.isEmpty)

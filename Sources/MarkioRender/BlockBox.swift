@@ -37,6 +37,12 @@ public final class BlockBox {
         public var language: String
     }
 
+    /// The header of a collapsible section: what a click on it toggles.
+    public struct DisclosureRegion {
+        public var rect: CGRect
+        public var isExpanded: Bool
+    }
+
     let leaf: Int32
     let width: CGFloat
     let height: CGFloat
@@ -47,6 +53,7 @@ public final class BlockBox {
     /// The block's text with inline markup removed — what Copy and Find work on.
     let plainText: String
     let codeRegion: CodeRegion?
+    let disclosureRegion: DisclosureRegion?
 
     init(
         leaf: Int32,
@@ -57,7 +64,8 @@ public final class BlockBox {
         links: [LinkRegion],
         linkTargets: [InlineLink],
         plainText: String,
-        codeRegion: CodeRegion? = nil
+        codeRegion: CodeRegion? = nil,
+        disclosureRegion: DisclosureRegion? = nil
     ) {
         self.leaf = leaf
         self.width = width
@@ -68,6 +76,22 @@ public final class BlockBox {
         self.linkTargets = linkTargets
         self.plainText = plainText
         self.codeRegion = codeRegion
+        self.disclosureRegion = disclosureRegion
+    }
+
+    /// A block that takes no room and draws nothing — what a block inside a
+    /// closed section becomes.
+    static func empty(leaf: Int32, width: CGFloat) -> BlockBox {
+        BlockBox(
+            leaf: leaf,
+            width: width,
+            height: 0,
+            segments: [],
+            decorations: [],
+            links: [],
+            linkTargets: [],
+            plainText: ""
+        )
     }
 
     /// Rough memory cost, used to bound the box cache.

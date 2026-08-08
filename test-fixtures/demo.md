@@ -81,3 +81,16 @@ circle is πr<sup>2</sup>; neither makes the line it sits on taller than the res
 [^native]: Drawn by CoreText, like every other line here.
 [^unused]: A note nobody refers to is still shown, because deleting text the
     author wrote is not a viewer's job.
+
+### Collapsible sections
+
+<details>
+<summary>A section that starts folded</summary>
+
+Everything between the tags is ordinary Markdown, so a list, a table or a code
+block goes here as it would anywhere else.
+
+- folded away until the summary is clicked
+- and back again on the second click
+
+</details>

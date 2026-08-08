@@ -71,6 +71,73 @@ enum HTMLBlockScanner {
         return nil
     }
 
+    /// What a `<details>`-family line is, if it is one.
+    enum Disclosure {
+        /// `<details>` or `<details open>`.
+        case open(expanded: Bool)
+        /// `</details>`.
+        case close
+        /// `<summary>text</summary>`, with the text's byte range.
+        case summary(ByteRange)
+    }
+
+    /// Recognise the three tags a collapsible section is written with.
+    ///
+    /// Only the whole-line spellings: `<details>` in the middle of a sentence is
+    /// prose about HTML, and a viewer that swallowed it would be unable to show
+    /// a document that talks about Markdown.
+    static func disclosure(
+        bytes: UnsafeBufferPointer<UInt8>,
+        start: Int,
+        end: Int
+    ) -> Disclosure? {
+        guard start < end, bytes[start] == ASCII.lessThan else { return nil }
+        if matches(bytes, at: start + 1, end: end, "/details") {
+            return isBlank(bytes, from: start + 9, to: end, after: ASCII.greaterThan) ? .close : nil
+        }
+        if matches(bytes, at: start + 1, end: end, "details") {
+            var index = start + 8
+            while index < end, isSpaceOrTab(bytes[index]) { index += 1 }
+            let expanded = matches(bytes, at: index, end: end, "open")
+            if expanded { index += 4 }
+            while index < end, isSpaceOrTab(bytes[index]) { index += 1 }
+            guard index < end, bytes[index] == ASCII.greaterThan,
+                isBlank(bytes, from: index, to: end, after: ASCII.greaterThan)
+            else { return nil }
+            return .open(expanded: expanded)
+        }
+        if matches(bytes, at: start + 1, end: end, "summary>") {
+            let textStart = start + 9
+            var index = textStart
+            while index + 9 < end {
+                if bytes[index] == ASCII.lessThan,
+                    matches(bytes, at: index + 1, end: end, "/summary>")
+                {
+                    return isBlank(bytes, from: index + 9, to: end, after: ASCII.greaterThan)
+                        ? .summary(ByteRange(textStart, index)) : nil
+                }
+                index += 1
+            }
+            return nil
+        }
+        return nil
+    }
+
+    /// Whether the rest of the line, past one expected closing bracket, is
+    /// nothing but space.
+    private static func isBlank(
+        _ bytes: UnsafeBufferPointer<UInt8>,
+        from start: Int,
+        to end: Int,
+        after bracket: UInt8
+    ) -> Bool {
+        var index = start
+        guard index < end, bytes[index] == bracket else { return false }
+        index += 1
+        while index < end, isSpaceOrTab(bytes[index]) { index += 1 }
+        return index >= end
+    }
+
     static func ends(
         kind: HTMLBlockKind,
         bytes: UnsafeBufferPointer<UInt8>,

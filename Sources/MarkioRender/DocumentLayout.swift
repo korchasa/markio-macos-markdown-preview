@@ -29,6 +29,13 @@ public final class DocumentLayout {
     private var heights: HeightIndex
     private var engine: BlockLayoutEngine
     private var boxes: [Int: BlockBox] = [:]
+    /// Sections showing their contents, by the ordinal of their `<details>`.
+    private var expanded: Set<Int> = []
+    /// The ordinals inside a closed section, as sorted, non-overlapping ranges.
+    /// Kept as ranges rather than a set of ordinals because a closed section may
+    /// hold a hundred thousand blocks, and the question asked of it — "is this
+    /// ordinal hidden?" — is asked once per block laid out.
+    private var hidden: [Range<Int>] = []
     /// Boxes are kept for the visible range plus this many blocks either side,
     /// so a small scroll never has to lay anything out again.
     private let retainMargin = 40
@@ -45,7 +52,89 @@ public final class DocumentLayout {
             baseURL: baseURL
         )
         self.heights = HeightIndex(estimates: [])
+        resetSections()
         rebuildEstimates()
+    }
+
+    // MARK: - Collapsible sections
+
+    /// Which sections are open, back to what the document itself says.
+    ///
+    /// `<details>` means closed and `<details open>` means open — the author
+    /// wrote one or the other on purpose. Answering it costs nothing here
+    /// because the pairing was done while the document was parsed.
+    private func resetSections() {
+        expanded = Set(
+            document.disclosures.filter(\.startsExpanded).map(\.open)
+        )
+        rebuildHidden()
+    }
+
+    private func rebuildHidden() {
+        var ranges: [Range<Int>] = []
+        for section in document.disclosures where !expanded.contains(section.open) {
+            let lower = section.open + 1
+            let upper = min(document.leaves.count, section.close + 1)
+            guard upper > lower else { continue }
+            // A nested section inside a closed one is already hidden; merging
+            // keeps the list short and the lookup a plain binary search.
+            if let last = ranges.last, lower <= last.upperBound {
+                ranges[ranges.count - 1] = last.lowerBound..<max(last.upperBound, upper)
+            } else {
+                ranges.append(lower..<upper)
+            }
+        }
+        hidden = ranges
+        engine.expandedSections = Set(expanded.map { document.leaves[$0] })
+    }
+
+    /// Whether a block is inside a section that is currently closed.
+    public func isHidden(_ ordinal: Int) -> Bool {
+        var low = 0
+        var high = hidden.count - 1
+        while low <= high {
+            let middle = (low + high) / 2
+            let range = hidden[middle]
+            if ordinal < range.lowerBound {
+                high = middle - 1
+            } else if ordinal >= range.upperBound {
+                low = middle + 1
+            } else {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Open or close the section whose `<details>` sits at this ordinal.
+    ///
+    /// Returns false when that ordinal is not a section header, so a caller can
+    /// treat the click as an ordinary one.
+    @discardableResult
+    public func toggleSection(at ordinal: Int) -> Bool {
+        guard let section = document.disclosures.first(where: { $0.open == ordinal }) else {
+            return false
+        }
+        if expanded.contains(ordinal) {
+            expanded.remove(ordinal)
+        } else {
+            expanded.insert(ordinal)
+        }
+        rebuildHidden()
+        // Only the section itself moved. Its header redraws with the triangle
+        // the other way round, and every block inside it goes back to an
+        // estimate — or to nothing at all, if it is now hidden.
+        let range = ordinal...min(document.leaves.count - 1, section.close)
+        for inside in range {
+            boxes.removeValue(forKey: inside)
+            heights.setHeight(estimatedHeight(of: inside), at: inside)
+        }
+        return true
+    }
+
+    private func estimatedHeight(of ordinal: Int) -> CGFloat {
+        guard !isHidden(ordinal) else { return 0 }
+        return engine.estimatedHeight(for: document.leaves[ordinal], isFirst: ordinal == 0)
     }
 
     public var blockCount: Int { document.leaves.count }
@@ -102,6 +191,7 @@ public final class DocumentLayout {
             width: columnWidth,
             baseURL: baseURL
         )
+        resetSections()
         rebuildEstimates()
     }
 
@@ -128,15 +218,16 @@ public final class DocumentLayout {
             width: columnWidth,
             baseURL: baseURL
         )
+        // Which sections are open is the reader's, not the width's: a change of
+        // column must not close what they opened.
+        rebuildHidden()
         rebuildEstimates()
     }
 
     private func rebuildEstimates() {
         var estimates = [Float](repeating: 0, count: document.leaves.count)
         for ordinal in document.leaves.indices {
-            estimates[ordinal] = Float(
-                engine.estimatedHeight(for: document.leaves[ordinal], isFirst: ordinal == 0)
-            )
+            estimates[ordinal] = Float(estimatedHeight(of: ordinal))
         }
         heights = HeightIndex(estimates: estimates)
     }
@@ -148,7 +239,13 @@ public final class DocumentLayout {
     public func box(at ordinal: Int) -> BlockBox? {
         guard ordinal >= 0, ordinal < document.leaves.count else { return nil }
         if let existing = boxes[ordinal] { return existing }
-        let box = engine.box(for: document.leaves[ordinal], isFirst: ordinal == 0)
+        // A block inside a closed section takes no room and draws nothing. It
+        // still has a box, so selection, find and copy can go on asking about
+        // it in the same way they ask about every other block.
+        let box =
+            isHidden(ordinal)
+            ? BlockBox.empty(leaf: document.leaves[ordinal], width: columnWidth)
+            : engine.box(for: document.leaves[ordinal], isFirst: ordinal == 0)
         boxes[ordinal] = box
         heights.setHeight(box.height, at: ordinal)
         return box

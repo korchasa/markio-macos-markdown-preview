@@ -276,6 +276,24 @@ public final class DocumentView: NSView {
         )
     }
 
+    /// Open or close the collapsible section whose header was clicked.
+    ///
+    /// The reader keeps the header they clicked: everything that moves is below
+    /// it, so nothing has to be scrolled back afterwards.
+    private func toggleSection(at point: CGPoint) -> Bool {
+        let ordinal = layout.index(atOffset: max(0, point.y - verticalPadding))
+        guard let box = layout.box(at: ordinal), let region = box.disclosureRegion else {
+            return false
+        }
+        let top = layout.offset(of: ordinal) + verticalPadding
+        guard region.rect.offsetBy(dx: contentX, dy: top).contains(point) else { return false }
+        guard layout.toggleSection(at: ordinal) else { return false }
+        selectionAnchor = nil
+        selectionHead = nil
+        needsDisplay = true
+        return true
+    }
+
     private func copyCode(ordinal: Int) {
         guard let box = layout.box(at: ordinal) else { return }
         NSPasteboard.general.clearContents()
@@ -558,6 +576,7 @@ public final class DocumentView: NSView {
             onActivateLink?(link)
             return
         }
+        if event.clickCount == 1, toggleSection(at: point) { return }
         selectionAnchor = position(at: point)
         selectionHead = selectionAnchor
         needsDisplay = true

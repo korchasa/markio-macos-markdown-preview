@@ -17,6 +17,10 @@ struct BlockLayoutEngine {
     /// The document's own location, so a relative image path can be resolved.
     /// Nil for a document with no file behind it, which simply has no images.
     let baseURL: URL?
+    /// The `<details>` blocks currently showing their contents, by leaf index.
+    /// Which way a section's triangle points is the only thing the engine knows
+    /// about collapsing; hiding the blocks themselves belongs to the layout.
+    var expandedSections: Set<Int32> = []
     private let syntax: SyntaxHighlighter.Palette
 
     init(document: Document, theme: Theme, width: CGFloat, baseURL: URL?) {
@@ -68,6 +72,11 @@ struct BlockLayoutEngine {
             let rowHeight = theme.lineHeight + theme.metrics.tableCellPadding * 2
             return spacing + CGFloat(rows) * rowHeight
 
+        case .disclosure:
+            // A closing tag draws nothing, so guessing a line for it would put
+            // a gap in the scrollbar that never appears on screen.
+            return block.level == 1 ? spacing + theme.lineHeight : 1
+
         case .heading:
             let font = theme.heading(level: Int(block.level))
             let size = CTFontGetSize(font)
@@ -111,6 +120,8 @@ struct BlockLayoutEngine {
             builder.layoutTable(leaf: leaf)
         case .footnoteDefinition:
             builder.layoutFootnote(block)
+        case .disclosure:
+            builder.layoutDisclosure(block, isExpanded: expandedSections.contains(leaf))
         default:
             builder.layoutParagraph(block)
         }
@@ -153,6 +164,7 @@ struct BlockLayoutEngine {
         var linkTargets: [InlineLink] = []
         var plainText = ""
         var codeRegion: BlockBox.CodeRegion?
+        var disclosureRegion: BlockBox.DisclosureRegion?
 
         var theme: Theme { engine.theme }
         var document: Document { engine.document }
@@ -175,7 +187,8 @@ struct BlockLayoutEngine {
                 links: links,
                 linkTargets: linkTargets,
                 plainText: plainText,
-                codeRegion: codeRegion
+                codeRegion: codeRegion,
+                disclosureRegion: disclosureRegion
             )
         }
 
@@ -204,6 +217,81 @@ struct BlockLayoutEngine {
             place(
                 styled, inline: inline, width: available, x: indent,
                 lineHeight: theme.metrics.lineHeightMultiple)
+        }
+
+        /// The two ends of a collapsible section.
+        ///
+        /// The opening tag becomes a row the reader can click: a triangle that
+        /// points at the summary when the section is closed and down at its
+        /// contents when it is open. The closing tag draws nothing — the
+        /// section has already ended by the time it is reached, and a second
+        /// row would only say so twice.
+        mutating func layoutDisclosure(_ block: Block, isExpanded: Bool) {
+            guard block.level == 1 else {
+                y = 0
+                return
+            }
+            let summary = document.text(block.info)
+            let bytes = Array(summary.utf8)
+            let inline = parseInline(bytes)
+            let styled = AttributedBuilder.build(
+                content: bytes,
+                inline: inline,
+                theme: theme,
+                baseFont: theme.bodyBold,
+                baseColor: theme.palette.text
+            )
+            let text =
+                styled.isEmpty
+                ? NSAttributedString(
+                    string: "Details",
+                    attributes: [
+                        AttributedBuilder.fontKey: theme.bodyBold,
+                        AttributedBuilder.colorKey: theme.palette.secondaryText,
+                    ]
+                ) : styled.attributed
+            let gutter = theme.metrics.listIndent
+            let top = y
+            let result = Typesetter.layout(
+                text,
+                width: available - gutter,
+                x: indent + gutter,
+                y: y,
+                lineHeightMultiple: theme.metrics.lineHeightMultiple
+            )
+            segments.append(
+                BlockBox.Segment(attributed: text, lines: result.lines, textOffset: 0)
+            )
+            plainText = text.string
+            recordSpans(styled, result: result, inline: inline, segmentIndex: segments.count - 1)
+            y += result.height
+            addDisclosureTriangle(isExpanded: isExpanded, gutter: gutter)
+            disclosureRegion = BlockBox.DisclosureRegion(
+                rect: CGRect(x: indent, y: top, width: available, height: y - top),
+                isExpanded: isExpanded
+            )
+        }
+
+        /// The triangle beside a section's summary, pointing where the section
+        /// is going: right while it is closed, down once it is open.
+        private mutating func addDisclosureTriangle(isExpanded: Bool, gutter: CGFloat) {
+            let size = theme.metrics.bodySize * 0.62
+            let baseline = firstLineBaseline()
+            let centre = CGPoint(x: indent + gutter / 2 - 2, y: baseline - size * 0.42)
+            let path = CGMutablePath()
+            if isExpanded {
+                path.move(to: CGPoint(x: centre.x - size / 2, y: centre.y - size * 0.35))
+                path.addLine(to: CGPoint(x: centre.x + size / 2, y: centre.y - size * 0.35))
+                path.addLine(to: CGPoint(x: centre.x, y: centre.y + size * 0.45))
+            } else {
+                path.move(to: CGPoint(x: centre.x - size * 0.35, y: centre.y - size / 2))
+                path.addLine(to: CGPoint(x: centre.x - size * 0.35, y: centre.y + size / 2))
+                path.addLine(to: CGPoint(x: centre.x + size * 0.45, y: centre.y))
+            }
+            path.closeSubpath()
+            decorations.append(
+                .path(path, color: theme.palette.secondaryText, lineWidth: 0, filled: true)
+            )
         }
 
         /// A footnote's text, set smaller and indented, with its label standing
