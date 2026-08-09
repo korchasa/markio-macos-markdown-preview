@@ -7,9 +7,14 @@ every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2
 on the right, drawing the same source with CoreText and `CGPath`: no web view, no
 diagram library.
 
-Of the 36 examples, Markio 2 draws all 36. A fence it cannot draw whole stays
-a fenced code block rather than becoming a picture that asserts something its
-author did not write, and nothing here is left as source any more.
+Of the 36 examples shown here, Markio 2 draws all 36. The pictures are the
+measure, not the count: what a comparison like this is for is the difference
+between two drawings of one source, and that is what the notes below record.
+
+The pages these come from hold 408 examples in all. Run end to end, Mermaid draws
+403 of them and Markio 2 draws 272, and there is no example Markio 2 draws that
+Mermaid does not. The 131 it still leaves as source are mostly one feature apiece:
+`A@{ shape: … }` node metadata accounts for 53 of them on its own.
 
 The example chosen for each kind is that documentation page's headline one, and
 for several kinds a second, harder example is shown as well — the one that used to
