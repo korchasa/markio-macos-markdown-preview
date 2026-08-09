@@ -44,7 +44,9 @@ Markio 2 reads. It never writes a file it opens.
   frames, `classDef` colours — and sequence diagrams with loops, alternatives,
   notes and activation bars, plus pie charts, state machines, class diagrams,
   entity–relationship diagrams, mindmaps, timelines, user journeys, Gantt
-  charts, quadrant charts, xy charts and git graphs, drawn with paths and
+  charts, quadrant charts, xy charts, git graphs, packet diagrams, kanban
+  boards, requirement diagrams, Sankey diagrams, treemaps, C4 diagrams and
+  architecture diagrams, drawn with paths and
   glyphs. No web view, no diagram library. What the subset does not cover stays
   a fenced block
 

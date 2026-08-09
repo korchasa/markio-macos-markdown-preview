@@ -73,12 +73,19 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
   `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram`, an
   `erDiagram`, a `mindmap`, a `timeline`, a `journey`, a `gantt` chart written in
-  the default date format, a `quadrantChart`, an `xychart-beta` or a `gitGraph`
-  whose lanes run across the page. Every other diagram kind, and every construct
+  the default date format, a `quadrantChart`, an `xychart-beta`, a `gitGraph`
+  whose lanes run across the page, a `packet-beta`, a `kanban` board, a
+  `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
+  (`C4Context` and its four siblings) or an `architecture-beta` whose services
+  use the icons Mermaid ships. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a nested subgraph, a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
-  an excluded weekday, a cherry-pick — is not read, and the fence stays a fenced
-  block.
+  an excluded weekday, a cherry-pick, a gap between packet fields, a flow that
+  returns to where it came from, a C4 restyling, an icon from a downloaded pack,
+  a group inside a group, or architecture edges that send two services to the
+  same place — is not read, and the fence stays a fenced block.
+- **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
+  its spellings start a new line rather than becoming a space.
 
 ## VIEW — What the reader sees
 
@@ -161,7 +168,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   periods across the page with what happened in each one under it, a line rising
   and falling over the steps of a journey, a row per task with its bar over the
   days it takes, a square cut in four with points scattered over it, bars and
-  lines over named categories, or commits along a lane per branch — centred in
+  lines over named categories, commits along a lane per branch, a row of bit
+  fields per word, a column of cards per board list, ribbons as thick as what
+  they carry, nested rectangles each as big a share as its value, or tiles on
+  the grid their edges put them on — centred in
   the reading column, in the current theme's
   colours except where the diagram names its own, and with a colour per branch
   or section where the diagram's own meaning is carried by colour. A picture too

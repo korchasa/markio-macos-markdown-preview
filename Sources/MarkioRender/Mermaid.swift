@@ -26,6 +26,7 @@ enum MermaidDiagram {
     case kanban(KanbanBoard)
     case sankey(SankeyDiagram)
     case treemap(Treemap)
+    case architecture(ArchitectureDiagram)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -77,6 +78,14 @@ enum MermaidDiagram {
         }
         if header == "packet-beta" || header == "packet" {
             return PacketDiagram.parse(rest).map(MermaidDiagram.packet)
+        }
+        if header == "architecture-beta" || header == "architecture" {
+            return ArchitectureDiagram.parse(rest).map(MermaidDiagram.architecture)
+        }
+        if C4Diagram.headers.contains(String(header)) {
+            // A C4 diagram is elements, boundaries and relations, which is a
+            // flowchart with its shapes chosen by what each element is.
+            return C4Diagram.parse(rest).map(MermaidDiagram.flowchart)
         }
         if header == "requirementDiagram" {
             return RequirementDiagram.parse(rest).map(MermaidDiagram.boxes)
@@ -318,6 +327,15 @@ struct Flowchart {
     /// `classDef` definitions, used while parsing and of no interest afterwards.
     private var classes: [String: Style] = [:]
     private var openGroup: Int?
+
+    /// A graph put together by some other reader — a C4 diagram, a state
+    /// machine — where the nodes, the edges and the frames are already known.
+    init(direction: Direction, nodes: [Node], edges: [Edge], groups: [Group] = []) {
+        self.direction = direction
+        self.nodes = nodes
+        self.edges = edges
+        self.groups = groups
+    }
 
     static func direction(header: Substring) -> Direction? {
         let words = header.split(separator: " ", omittingEmptySubsequences: true)
@@ -660,8 +678,9 @@ struct Flowchart {
             if trimmed.count >= 2, trimmed.hasPrefix("\""), trimmed.hasSuffix("\"") {
                 trimmed = String(trimmed.dropFirst().dropLast())
             }
-            return trimmed.replacingOccurrences(of: "<br/>", with: " ")
-                .replacingOccurrences(of: "<br>", with: " ")
+            // `<br/>` stays in the label: the layout is what breaks the line,
+            // and turning it into a space here would lose the author's break.
+            return trimmed
         }
     }
 }

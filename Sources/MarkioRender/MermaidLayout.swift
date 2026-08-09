@@ -83,6 +83,8 @@ enum MermaidLayout {
             return sankey(diagram, theme: theme, width: width, metrics: metrics)
         case .treemap(let map):
             return treemap(map, theme: theme, width: width, metrics: metrics)
+        case .architecture(let diagram):
+            return architecture(diagram, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -575,8 +577,7 @@ enum MermaidLayout {
         var boxes: [Placed] = []
         for (index, node) in map.nodes.enumerated() {
             let font = fonts[min(node.depth, fonts.count - 1)]
-            let line = text(node.label, font: font, color: theme.palette.text)
-            let size = measure(line)
+            let (lines, size) = labelLines(node.label, font: font, color: theme.palette.text)
             var box = CGSize(
                 width: size.width + metrics.nodePaddingX * 2,
                 height: size.height + metrics.nodePaddingY * 2
@@ -586,7 +587,7 @@ enum MermaidLayout {
             boxes.append(
                 Placed(
                     frame: CGRect(origin: .zero, size: box),
-                    label: line,
+                    lines: lines,
                     labelSize: size,
                     shape: node.shape,
                     style: Flowchart.Style(stroke: colour(wheel[branch[index] % wheel.count]))
@@ -2100,10 +2101,34 @@ enum MermaidLayout {
 
     private struct Placed {
         var frame: CGRect
-        var label: CTLine
+        /// One entry per written line: a label may be broken with `<br/>`, and
+        /// a C4 element's description is a line of its own under its name.
+        var lines: [CTLine]
+        /// The whole stack of lines: as wide as the widest, as tall as all.
         var labelSize: CGSize
         var shape: Flowchart.Shape
         var style: Flowchart.Style
+    }
+
+    /// A node's words, broken where the author broke them.
+    private static func labelLines(_ words: String, font: CTFont, color: CGColor)
+        -> (lines: [CTLine], size: CGSize)
+    {
+        var parts = [words]
+        for separator in ["<br/>", "<br />", "<br>", "\\n"] {
+            parts = parts.flatMap { $0.components(separatedBy: separator) }
+        }
+        let lines = parts.map {
+            text($0.trimmingCharacters(in: .whitespaces), font: font, color: color)
+        }
+        let sizes = lines.map(measure)
+        return (
+            lines,
+            CGSize(
+                width: sizes.map(\.width).max() ?? 0,
+                height: sizes.reduce(0) { $0 + $1.height }
+            )
+        )
     }
 
     private static func flowchart(
@@ -2113,8 +2138,7 @@ enum MermaidLayout {
         var boxes: [Placed] = []
         for node in chart.nodes {
             let colour = node.style.text.map(cgColor) ?? theme.palette.text
-            let line = text(node.label, font: font, color: colour)
-            let size = measure(line)
+            let (lines, size) = labelLines(node.label, font: font, color: colour)
             var box = CGSize(
                 width: max(metrics.minimumNodeWidth, size.width + metrics.nodePaddingX * 2),
                 height: size.height + metrics.nodePaddingY * 2
@@ -2143,7 +2167,7 @@ enum MermaidLayout {
             boxes.append(
                 Placed(
                     frame: CGRect(origin: .zero, size: box),
-                    label: line,
+                    lines: lines,
                     labelSize: size,
                     shape: node.shape,
                     style: node.style
@@ -2403,10 +2427,6 @@ enum MermaidLayout {
         -> [BlockBox.Decoration]
     {
         let path = shape(box)
-        let origin = CGPoint(
-            x: box.frame.midX - box.labelSize.width / 2,
-            y: box.frame.midY + box.labelSize.height / 2 - descent(box.label)
-        )
         // A state machine's ends are marks, not boxes: a filled dot where it
         // starts and a ring where it stops.
         if box.shape == .point || box.shape == .endPoint {
@@ -2448,7 +2468,18 @@ enum MermaidLayout {
                 filled: false
             )
         )
-        decorations.append(.glyphs(box.label, origin: origin))
+        // The stack is centred on the box, and each line is centred in the
+        // stack, so a two-line label sits the way a one-line label does.
+        var y = box.frame.midY - box.labelSize.height / 2
+        for line in box.lines {
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: box.frame.midX - size.width / 2, y: y + size.height - descent(line))))
+            y += size.height
+        }
         if box.shape == .subroutine {
             let inset = 6 * metrics.scale
             let bars = CGMutablePath()
@@ -3053,6 +3084,266 @@ enum MermaidLayout {
         let length = (point.x * point.x + point.y * point.y).squareRoot()
         guard length > 0 else { return CGPoint(x: 0, y: 1) }
         return CGPoint(x: point.x / length, y: point.y / length)
+    }
+
+    // MARK: - Architecture
+
+    /// Services on the grid their edges put them on, framed by group.
+    ///
+    /// The parser has already worked out which cell each service sits in, so
+    /// what is left here is turning cells into rectangles: a column is as wide
+    /// as its widest tile, a row as tall as its tallest, and the gaps are wide
+    /// enough for a group's frame to stand in without touching its neighbours.
+    private static func architecture(
+        _ diagram: ArchitectureDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale)
+        let iconSide = 30 * metrics.scale
+        let tilePadding = 8 * metrics.scale
+        let columnGap = 56 * metrics.scale
+        let rowGap = 52 * metrics.scale
+        let framePadding = 12 * metrics.scale
+
+        let labels = diagram.services.map { text($0.label, font: font, color: theme.palette.text) }
+        let sizes = labels.map(measure)
+        var tiles = diagram.services.indices.map { index in
+            CGRect(
+                x: 0, y: 0,
+                width: max(iconSide, sizes[index].width) + tilePadding * 2,
+                height: iconSide + 5 * metrics.scale + sizes[index].height + tilePadding * 2)
+        }
+
+        let titles = diagram.groups.map {
+            text($0.label, font: font, color: theme.palette.secondaryText)
+        }
+        let titleRoom = (titles.map { measure($0).height }.max() ?? 0) + 5 * metrics.scale
+
+        let columns = (diagram.services.map(\.column).max() ?? 0) + 1
+        let rows = (diagram.services.map(\.row).max() ?? 0) + 1
+        var columnWidths = [CGFloat](repeating: 0, count: columns)
+        var rowHeights = [CGFloat](repeating: 0, count: rows)
+        for (index, service) in diagram.services.enumerated() {
+            columnWidths[service.column] = max(columnWidths[service.column], tiles[index].width)
+            rowHeights[service.row] = max(rowHeights[service.row], tiles[index].height)
+        }
+        let content =
+            columnWidths.reduce(0, +) + columnGap * CGFloat(columns - 1)
+        let height =
+            rowHeights.reduce(0, +) + rowGap * CGFloat(rows - 1) + metrics.padding * 2
+        let left = max(metrics.padding, (width - content) / 2)
+
+        var columnStarts = [CGFloat](repeating: 0, count: columns)
+        var x = left
+        for column in 0..<columns {
+            columnStarts[column] = x
+            x += columnWidths[column] + columnGap
+        }
+        var rowStarts = [CGFloat](repeating: 0, count: rows)
+        var y = metrics.padding
+        for row in 0..<rows {
+            rowStarts[row] = y
+            y += rowHeights[row] + rowGap
+        }
+        for (index, service) in diagram.services.enumerated() {
+            tiles[index].origin = CGPoint(
+                x: columnStarts[service.column]
+                    + (columnWidths[service.column] - tiles[index].width) / 2,
+                y: rowStarts[service.row] + (rowHeights[service.row] - tiles[index].height) / 2)
+        }
+
+        var decorations: [BlockBox.Decoration] = []
+        // Frames first, so a tile is never drawn under its own group's fill.
+        for group in diagram.groups.indices {
+            let members = diagram.services.indices.filter { diagram.services[$0].group == group }
+            guard let first = members.first else { continue }
+            var bounds = tiles[first]
+            for member in members.dropFirst() { bounds = bounds.union(tiles[member]) }
+            bounds = bounds.insetBy(dx: -framePadding, dy: -framePadding)
+            bounds.origin.y -= titleRoom
+            bounds.size.height += titleRoom
+            let path = CGPath(
+                roundedRect: bounds, cornerWidth: 6 * metrics.scale,
+                cornerHeight: 6 * metrics.scale, transform: nil)
+            decorations.append(
+                .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            let title = titles[group]
+            let size = measure(title)
+            let badge = CGRect(
+                x: bounds.minX + 6 * metrics.scale, y: bounds.minY + 4 * metrics.scale,
+                width: size.height, height: size.height)
+            decorations += icon(diagram.groups[group].icon, in: badge, theme: theme)
+            decorations.append(
+                .glyphs(
+                    title,
+                    origin: CGPoint(
+                        x: badge.maxX + 5 * metrics.scale, y: badge.maxY - descent(title))))
+        }
+
+        for (index, service) in diagram.services.enumerated() {
+            let tile = tiles[index]
+            let path = CGPath(
+                roundedRect: tile, cornerWidth: 6 * metrics.scale,
+                cornerHeight: 6 * metrics.scale, transform: nil)
+            decorations.append(
+                .path(
+                    path, color: theme.palette.tableHeaderBackground, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            decorations += icon(
+                service.icon,
+                in: CGRect(
+                    x: tile.midX - iconSide / 2, y: tile.minY + tilePadding, width: iconSide,
+                    height: iconSide),
+                theme: theme)
+            decorations.append(
+                .glyphs(
+                    labels[index],
+                    origin: CGPoint(
+                        x: tile.midX - sizes[index].width / 2,
+                        y: tile.maxY - tilePadding - descent(labels[index]))))
+        }
+
+        let stub = 14 * metrics.scale
+        for edge in diagram.edges {
+            let start = anchor(of: tiles[edge.from], on: edge.fromSide)
+            let end = anchor(of: tiles[edge.to], on: edge.toSide)
+            let out = outward(edge.fromSide)
+            let back = outward(edge.toSide)
+            let first = CGPoint(x: start.x + out.x * stub, y: start.y + out.y * stub)
+            let last = CGPoint(x: end.x + back.x * stub, y: end.y + back.y * stub)
+            let route = CGMutablePath()
+            route.move(to: start)
+            route.addLine(to: first)
+            // The elbow turns away from the side the line left by, so a stub
+            // never doubles back over the tile it just came out of.
+            let elbow =
+                out.x != 0
+                ? CGPoint(x: last.x, y: first.y) : CGPoint(x: first.x, y: last.y)
+            route.addLine(to: elbow)
+            route.addLine(to: last)
+            route.addLine(to: end)
+            decorations.append(
+                .path(
+                    route, color: theme.palette.tableBorder, lineWidth: 1.5 * metrics.scale,
+                    filled: false))
+            if edge.toArrow {
+                decorations.append(
+                    arrowHead(
+                        at: end, direction: CGPoint(x: -back.x, y: -back.y),
+                        color: theme.palette.tableBorder, metrics: metrics))
+            }
+            if edge.fromArrow {
+                decorations.append(
+                    arrowHead(
+                        at: start, direction: CGPoint(x: -out.x, y: -out.y),
+                        color: theme.palette.tableBorder, metrics: metrics))
+            }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    /// The middle of the named side of a tile.
+    private static func anchor(of tile: CGRect, on side: ArchitectureDiagram.Side) -> CGPoint {
+        switch side {
+        case .left: return CGPoint(x: tile.minX, y: tile.midY)
+        case .right: return CGPoint(x: tile.maxX, y: tile.midY)
+        case .top: return CGPoint(x: tile.midX, y: tile.minY)
+        case .bottom: return CGPoint(x: tile.midX, y: tile.maxY)
+        }
+    }
+
+    /// Which way is away from the tile at that side. The renderer's y grows
+    /// down, so the top side points at a smaller y.
+    private static func outward(_ side: ArchitectureDiagram.Side) -> CGPoint {
+        switch side {
+        case .left: return CGPoint(x: -1, y: 0)
+        case .right: return CGPoint(x: 1, y: 0)
+        case .top: return CGPoint(x: 0, y: -1)
+        case .bottom: return CGPoint(x: 0, y: 1)
+        }
+    }
+
+    /// One of the five shapes Mermaid ships, drawn as a filled silhouette with
+    /// its detail cut back out in the page's own colour.
+    private static func icon(
+        _ kind: ArchitectureDiagram.Icon, in rect: CGRect, theme: Theme
+    ) -> [BlockBox.Decoration] {
+        let colours: [ArchitectureDiagram.Icon: Int] = [
+            .cloud: 0, .database: 1, .disk: 2, .internet: 3, .server: 4,
+        ]
+        let ink = wheel[(colours[kind] ?? 0) % wheel.count]
+        let cut = theme.palette.background
+        let body = CGMutablePath()
+        var detail: CGPath?
+        switch kind {
+        case .server:
+            body.addRoundedRect(
+                in: rect.insetBy(dx: rect.width * 0.08, dy: 0), cornerWidth: rect.width * 0.1,
+                cornerHeight: rect.width * 0.1)
+            let shelves = CGMutablePath()
+            for share in [0.36, 0.68] as [CGFloat] {
+                let y = rect.minY + rect.height * share
+                shelves.move(to: CGPoint(x: rect.minX + rect.width * 0.14, y: y))
+                shelves.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.14, y: y))
+            }
+            detail = shelves
+        case .database, .disk:
+            // A cylinder seen from the side: a lid, two walls and a curved foot.
+            let lid = rect.height * 0.26
+            body.move(to: CGPoint(x: rect.minX, y: rect.minY + lid / 2))
+            body.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - lid / 2))
+            body.addCurve(
+                to: CGPoint(x: rect.maxX, y: rect.maxY - lid / 2),
+                control1: CGPoint(x: rect.minX, y: rect.maxY + lid / 2),
+                control2: CGPoint(x: rect.maxX, y: rect.maxY + lid / 2))
+            body.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + lid / 2))
+            body.addEllipse(
+                in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: lid))
+            let seam = CGMutablePath()
+            seam.addEllipse(
+                in: CGRect(
+                    x: rect.minX + rect.width * 0.14, y: rect.minY + lid * 0.28,
+                    width: rect.width * 0.72, height: lid * 0.5))
+            detail = seam
+        case .cloud:
+            let base = rect.minY + rect.height * 0.78
+            body.addRoundedRect(
+                in: CGRect(
+                    x: rect.minX, y: base - rect.height * 0.24, width: rect.width,
+                    height: rect.height * 0.24),
+                cornerWidth: rect.height * 0.12, cornerHeight: rect.height * 0.12)
+            for bump in [(0.24, 0.50, 0.20), (0.50, 0.38, 0.26), (0.75, 0.52, 0.18)]
+                as [(CGFloat, CGFloat, CGFloat)]
+            {
+                let radius = rect.width * bump.2
+                body.addEllipse(
+                    in: CGRect(
+                        x: rect.minX + rect.width * bump.0 - radius,
+                        y: rect.minY + rect.height * bump.1 - radius,
+                        width: radius * 2, height: radius * 2))
+            }
+        case .internet:
+            body.addEllipse(in: rect)
+            let meridians = CGMutablePath()
+            meridians.addEllipse(in: rect.insetBy(dx: rect.width * 0.32, dy: 0))
+            meridians.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            meridians.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            detail = meridians
+        }
+        var decorations: [BlockBox.Decoration] = [
+            .path(body, color: ink, lineWidth: 0, filled: true)
+        ]
+        if let detail {
+            decorations.append(
+                .path(detail, color: cut, lineWidth: max(1, rect.width * 0.06), filled: false))
+        }
+        return decorations
     }
 
     // MARK: - Text

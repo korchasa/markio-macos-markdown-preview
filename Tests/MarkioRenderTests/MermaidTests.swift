@@ -889,6 +889,130 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAC4DiagramBecomesAFlowchartWithC4Shapes() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                C4Context
+                  title Orders
+                  Person(customer, "Customer", "Buys things")
+                  System_Boundary(shop, "Shop") {
+                    System(web, "Storefront")
+                    SystemDb(db, "Order store")
+                    SystemQueue(queue, "Dispatch")
+                  }
+                  System_Ext(bank, "Payments")
+                  Rel(customer, web, "Orders")
+                  Rel_Back(db, web, "Reads")
+                  BiRel(web, bank, "Settles")
+                """
+            )
+        )
+        XCTAssertEqual(chart.nodes.map(\.id), ["customer", "web", "db", "queue", "bank"])
+        XCTAssertEqual(
+            chart.nodes.map(\.shape), [.stadium, .rectangle, .cylinder, .subroutine, .rectangle])
+        // The kind, the name and what it does are three lines of one label.
+        XCTAssertEqual(chart.nodes[0].label, "«Person»<br/>Customer<br/>Buys things")
+        // Only what is outside the system under discussion is given a fill.
+        XCTAssertNil(chart.nodes[1].style.fill)
+        XCTAssertNotNil(chart.nodes[4].style.fill)
+        XCTAssertEqual(chart.groups.map(\.title), ["Shop"])
+        XCTAssertEqual(chart.groups[0].members, [1, 2, 3])
+        // `Rel_Back` points the other way, and `BiRel` is two arrows.
+        XCTAssertEqual(chart.edges.count, 4)
+        XCTAssertEqual(chart.edges[1].from, 1)
+        XCTAssertEqual(chart.edges[1].to, 2)
+        XCTAssertEqual(chart.edges[2].to, 4)
+        XCTAssertEqual(chart.edges[3].to, 1)
+    }
+
+    func testAnArchitectureTakesItsGridFromTheSidesItsEdgesUse() throws {
+        guard
+            case .architecture(let diagram)? = MermaidDiagram.parse(
+                """
+                architecture-beta
+                  group api(cloud)[API]
+                  service db(database)[Database] in api
+                  service disk1(disk)[Storage] in api
+                  service server(server)[Server] in api
+                  service gateway(internet)[Gateway]
+                  db:L -- R:server
+                  disk1:T -- B:server
+                  gateway:B --> T:server
+                """
+            )
+        else { return XCTFail("expected an architecture diagram") }
+        XCTAssertEqual(diagram.groups.map(\.label), ["API"])
+        XCTAssertEqual(diagram.services.map(\.label), ["Database", "Storage", "Server", "Gateway"])
+        XCTAssertEqual(diagram.services.map(\.icon), [.database, .disk, .server, .internet])
+        XCTAssertEqual(diagram.services.map(\.group), [0, 0, 0, nil])
+        // The server is left of the database, above the storage and below the
+        // gateway, which is exactly what the three edges say.
+        let cells = diagram.services.map { [$0.column, $0.row] }
+        XCTAssertEqual(cells, [[1, 1], [0, 2], [0, 1], [0, 0]])
+        XCTAssertTrue(diagram.edges[2].toArrow)
+        XCTAssertFalse(diagram.edges[0].toArrow)
+    }
+
+    func testWhatC4AndArchitectureRefuse() {
+        for source in [
+            // An element with no name, a boundary left open, and a restyling of
+            // a diagram that is already drawn.
+            "C4Context\n  Person(a)",
+            "C4Context\n  System_Boundary(b, \"B\") {\n  System(a, \"A\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"red\")",
+            "C4Context\n  Nonsense(a, \"A\")",
+            "C4Context",
+            // An icon from a pack has to be fetched, and this fetches nothing.
+            "architecture-beta\n  service a(logos:aws)[A]\n  service b(server)[B]\n  a:R -- L:b",
+            // A group inside a group needs a frame inside a frame.
+            "architecture-beta\n  group one(cloud)[One]\n  group two(cloud)[Two] in one\n"
+                + "  service a(server)[A] in two",
+            // Edges that send two services to the same cell.
+            "architecture-beta\n  service a(server)[A]\n  service b(server)[B]\n"
+                + "  service c(server)[C]\n  a:R -- L:b\n  a:R -- L:c",
+            // A stranger standing inside a group's block would look like a member.
+            "architecture-beta\n  group g(cloud)[G]\n  service a(server)[A] in g\n"
+                + "  service b(server)[B] in g\n  service c(server)[C]\n"
+                + "  a:R -- L:c\n  c:R -- L:b",
+            "architecture-beta\n  service a(server)[A]\n  a:X -- L:a",
+            "architecture-beta",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testC4AndArchitectureAreDrawnWhole() throws {
+        for source in [
+            "C4Context\n  Person(a, \"Someone\")\n  System(b, \"Thing\")\n  Rel(a, b, \"Uses\")",
+            "architecture-beta\n  group g(cloud)[Cloud]\n  service a(server)[App] in g\n"
+                + "  service d(database)[Data] in g\n  a:R -- L:d",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 6, source)
+            XCTAssertGreaterThan(box.height, 50, source)
+        }
+    }
+
+    func testALabelIsBrokenWhereTheAuthorBrokeIt() throws {
+        let chart = try XCTUnwrap(flowchart("flowchart TD\n  A[First<br/>Second] --> B[Plain]"))
+        XCTAssertEqual(chart.nodes[0].label, "First<br/>Second")
+        // Two lines make the box taller than a one-line box, not wider.
+        let two = DocumentLayout(
+            document: Document(text: "```mermaid\nflowchart TD\n  A[First<br/>Second]\n```"),
+            theme: Theme(isDark: false), columnWidth: 520)
+        let one = DocumentLayout(
+            document: Document(text: "```mermaid\nflowchart TD\n  A[First Second]\n```"),
+            theme: Theme(isDark: false), columnWidth: 520)
+        let tall = try XCTUnwrap(two.box(at: 0))
+        let flat = try XCTUnwrap(one.box(at: 0))
+        XCTAssertGreaterThan(tall.height, flat.height)
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

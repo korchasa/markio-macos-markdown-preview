@@ -200,3 +200,61 @@ gitGraph
    merge renderer
    commit tag: "1.0"
 ```
+
+```mermaid
+sankey-beta
+Source,Parser,100
+Parser,Blocks,70
+Parser,Inline,30
+Blocks,Layout,70
+Inline,Layout,30
+```
+
+```mermaid
+treemap-beta
+"Document"
+    "Text": 62
+    "Code": 21
+    "Tables": 11
+    "Diagrams": 6
+```
+
+```mermaid
+kanban
+  Todo
+    Radar charts
+    Block diagrams
+  Doing
+    C4 diagrams@{ priority: 'High' }
+  Done
+    Treemaps
+```
+
+```mermaid
+packet-beta
+0-15: "Source port"
+16-31: "Destination port"
+32-63: "Sequence number"
+```
+
+```mermaid
+C4Context
+    title Reading a document
+    Person(reader, "Reader", "Opens a file")
+    System_Boundary(viewer, "Viewer") {
+        System(parser, "Parser", "Blocks and inline runs")
+        SystemDb(cache, "Layout cache", "Boxes already measured")
+    }
+    Rel(reader, parser, "Opens a file")
+    Rel(parser, cache, "Fills")
+```
+
+```mermaid
+architecture-beta
+    group app(cloud)[Viewer]
+    service parser(server)[Parser] in app
+    service cache(database)[Cache] in app
+    service window(internet)[Window]
+    parser:R -- L:cache
+    window:B -- T:parser
+```

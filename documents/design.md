@@ -329,6 +329,52 @@ drawn on days its author did not ask for, and so is one written in another date
 format. A milestone has no length, so it is drawn as a diamond on its day rather
 than a bar nobody would see.
 
+A packet diagram is a row per word of bits: the fields are checked for
+contiguity as they are read, so a picture with a hole in it is refused rather
+than drawn with a gap nobody can measure. A field that spans a word boundary is
+drawn as one box per row.
+
+A kanban board is a column per list and a card per item, and the indentation is
+what separates the two — the first line's indent is the column level, and
+anything deeper is a card. A line shallower than the first would leave it unclear
+what is a column and what is a card, so it is refused. A card's priority tints
+its left edge.
+
+A requirement diagram is read into the same `BoxDiagram` a class diagram uses: a
+requirement is a titled box with its id, its text and its verification method in
+the rows, and `satisfies`/`verifies` and the rest are the lines between them.
+
+A Sankey diagram ranks its nodes the way a flowchart does and then gives each one
+a bar as tall as the larger of what reaches it and what leaves it. The ribbons
+are drawn before the bars, each leaving and arriving in the order the flows were
+written, so a bar is never hidden under what leaves it. A flow that returns to
+where it came from would make the ranks meaningless, so a cycle is refused.
+
+A treemap is squarified: a row takes one more rectangle only while doing so
+leaves every rectangle in it closer to square than stopping would. A branch's
+value is the sum of what it holds, summed upwards over the flat array, which
+already has every child after its parent. Several roots are given a parent that
+is never itself drawn.
+
+A C4 diagram has no layout of its own — it is read into a `Flowchart` whose
+shapes come from what each element is: a person is a stadium, a `*Db` a cylinder,
+a `*Queue` a subroutine, and anything `_Ext` is filled paler because it is
+outside the system under discussion. The kind, the name and the description are
+three lines of one label, which is what multi-line labels were added for and what
+`<br/>` in an ordinary flowchart now gets as well.
+
+An architecture diagram takes its grid from its edges. In that language
+`db:L -- R:server` is not decoration — it says the server stands to the left of
+the database — so the parser walks the edges from the first service outwards and
+gives every service a cell. Edges whose sides are opposite put two services side
+by side; any other pair puts the second over one and along one, which is why such
+an edge is drawn with a bend. A source whose edges disagree — two services sent
+to the same cell, one sent to two, or a stranger left standing inside a group's
+block — describes a picture that cannot be drawn and is refused. The five icons
+Mermaid ships are drawn as filled silhouettes with their detail cut back out in
+the page's own colour; an icon from a downloadable pack would have to be fetched,
+and this app fetches nothing.
+
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which
 slice is which by colour, so the colours have to stay apart from each other on
