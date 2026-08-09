@@ -427,6 +427,9 @@ struct Flowchart {
         case solid
         case thick
         case dotted
+        /// `A ~~~ B`: a link that only holds one box below another. It ranks
+        /// the two like any other link and then draws nothing at all.
+        case invisible
     }
 
     /// A colour written in the diagram, not taken from the theme. Kept as
@@ -435,6 +438,8 @@ struct Flowchart {
         var red: Double
         var green: Double
         var blue: Double
+        /// How much of what is behind shows through, from `rgba(…)` or `#rrggbbaa`.
+        var alpha: Double = 1
     }
 
     /// What `style`, `classDef` and `:::` can say about a node. Everything else
@@ -444,9 +449,12 @@ struct Flowchart {
         var stroke: Colour?
         var text: Colour?
         var strokeWidth: Double?
+        /// `opacity:0.5`: how much of the page shows through everything the
+        /// style paints, colours the theme supplied included.
+        var opacity: Double?
 
         var isEmpty: Bool {
-            fill == nil && stroke == nil && text == nil && strokeWidth == nil
+            fill == nil && stroke == nil && text == nil && strokeWidth == nil && opacity == nil
         }
 
         mutating func merge(_ other: Style) {
@@ -454,6 +462,7 @@ struct Flowchart {
             if let stroke = other.stroke { self.stroke = stroke }
             if let text = other.text { self.text = text }
             if let width = other.strokeWidth { strokeWidth = width }
+            if let opacity = other.opacity { self.opacity = opacity }
         }
     }
 
@@ -662,8 +671,10 @@ struct Flowchart {
             return applyClass(rest)
         case "style":
             return applyStyle(rest)
-        case "click", "linkStyle":
-            return false
+        case "click":
+            return noteClick(rest)
+        case "linkStyle":
+            return applyLinkStyle(rest)
         default:
             return parseStatement(line)
         }
@@ -708,6 +719,36 @@ struct Flowchart {
         return true
     }
 
+    /// `click A "https://example.com"`, `click A href "…" "Tooltip"` or a call
+    /// to a script. A picture on a page cannot be followed or hovered, and
+    /// Mermaid draws a clickable box exactly like any other, so the line is
+    /// read for the box it names and then changes nothing.
+    private func noteClick(_ rest: String) -> Bool {
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2 else { return false }
+        return nodes.contains { $0.id == String(parts[0]) }
+    }
+
+    /// `linkStyle 0,1 stroke:#f00,stroke-width:2px` or `linkStyle default …`.
+    /// The numbers count the links in the order they were written.
+    private mutating func applyLinkStyle(_ rest: String) -> Bool {
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])) else {
+            return false
+        }
+        if parts[0] == "default" {
+            for index in edges.indices { edges[index].style.merge(style) }
+            return true
+        }
+        for number in parts[0].split(separator: ",") {
+            guard let index = Int(number.trimmingCharacters(in: .whitespaces)),
+                edges.indices.contains(index)
+            else { return false }
+            edges[index].style.merge(style)
+        }
+        return true
+    }
+
     private mutating func applyStyle(_ rest: String) -> Bool {
         let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
         guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])),
@@ -717,12 +758,32 @@ struct Flowchart {
         return true
     }
 
+    /// One declaration per comma — except the commas inside `rgb(…)`, which
+    /// separate a colour's own numbers and hold the declaration together.
+    private static func declarations(in text: String) -> [Substring] {
+        var parts: [Substring] = []
+        var start = text.startIndex
+        var depth = 0
+        for index in text.indices {
+            switch text[index] {
+            case "(": depth += 1
+            case ")": depth -= 1
+            case "," where depth == 0:
+                parts.append(text[start..<index])
+                start = text.index(after: index)
+            default: break
+            }
+        }
+        parts.append(text[start...])
+        return parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     /// `fill:#f9f,stroke:#333,stroke-width:2px,color:#fff`. A property this
     /// cannot draw fails the whole diagram, because a node drawn without the
     /// colour the author gave it is a node the author did not write.
     static func style(from text: String) -> Style? {
         var style = Style()
-        for declaration in text.split(separator: ",") {
+        for declaration in declarations(in: text) {
             let pair = declaration.split(separator: ":", maxSplits: 1)
             guard pair.count == 2 else { return nil }
             let key = pair[0].trimmingCharacters(in: .whitespaces)
@@ -742,6 +803,9 @@ struct Flowchart {
                 let number = value.prefix(while: { $0.isNumber || $0 == "." })
                 guard let width = Double(number), width > 0 else { return nil }
                 style.strokeWidth = width
+            case "opacity":
+                guard let share = Double(value), (0...1).contains(share) else { return nil }
+                style.opacity = share
             default:
                 return nil
             }
@@ -923,13 +987,14 @@ struct Flowchart {
                 (["=", "=", "="], .thick, false),
                 (["-", "-", ">"], .solid, true),
                 (["-", "-", "-"], .solid, false),
+                (["~", "~", "~"], .invisible, false),
             ]
             guard let spelling = spellings.first(where: { starts(with: $0.text) }) else {
                 return readLabelledLink()
             }
             advance(spelling.text.count)
             // A trailing `-` or `=` only makes the line longer: `---->` is `-->`.
-            while let char = peek(), char == "-" || char == "=" { advance() }
+            while let char = peek(), char == "-" || char == "=" || char == "~" { advance() }
             // `--->` opens as the plain `---` and only then shows its head, so
             // the head is read after the line's length rather than with it.
             var arrow = spelling.arrow
@@ -993,49 +1058,107 @@ struct Flowchart {
 }
 
 extension Flowchart.Colour {
-    /// `#f9f`, `#ff99ff` or one of the colour names people actually type. A
+    /// `#f9f`, `#ff99ff`, `rgb(0, 0, 0)` or any colour name CSS knows. A
     /// spelling this does not know fails the diagram rather than picking one.
     init?(css text: String) {
-        if text.hasPrefix("#") {
-            let digits = Array(text.dropFirst())
-            let channels: [Double]
-            switch digits.count {
-            case 3:
-                channels = digits.compactMap { $0.hexDigit.map { Double($0 * 17) / 255 } }
-            case 6:
-                channels = stride(from: 0, to: 6, by: 2).compactMap { offset -> Double? in
-                    guard let high = digits[offset].hexDigit, let low = digits[offset + 1].hexDigit
-                    else { return nil }
-                    return Double(high * 16 + low) / 255
-                }
-            default:
-                return nil
-            }
-            guard channels.count == 3 else { return nil }
-            self.init(red: channels[0], green: channels[1], blue: channels[2])
+        let written = text.trimmingCharacters(in: .whitespaces).lowercased()
+        if written == "transparent" {
+            self.init(red: -1, green: -1, blue: -1)
             return
         }
-        guard let named = Flowchart.Colour.names[text.lowercased()] else { return nil }
-        self = named
+        if written.hasPrefix("rgb") {
+            guard let open = written.firstIndex(of: "("), written.hasSuffix(")") else { return nil }
+            let inside = written[
+                written.index(after: open)..<written.index(before: written.endIndex)]
+            let parts = inside.split(separator: ",").map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }
+            guard parts.count == 3 || parts.count == 4 else { return nil }
+            let channels = parts.prefix(3).compactMap { part -> Double? in
+                if part.hasSuffix("%") { return Double(part.dropLast()).map { $0 / 100 } }
+                return Double(part).map { $0 / 255 }
+            }
+            guard channels.count == 3 else { return nil }
+            var alpha = 1.0
+            if parts.count == 4 {
+                guard let written = Double(parts[3]), (0...1).contains(written) else { return nil }
+                alpha = written
+            }
+            self.init(red: channels[0], green: channels[1], blue: channels[2], alpha: alpha)
+            return
+        }
+        let hex =
+            written.hasPrefix("#") ? String(written.dropFirst()) : Flowchart.Colour.names[written]
+        guard let hex else { return nil }
+        let digits = Array(hex)
+        let channels: [Double]
+        switch digits.count {
+        case 3:
+            channels = digits.compactMap { $0.hexDigit.map { Double($0 * 17) / 255 } }
+        case 6, 8:
+            channels = stride(from: 0, to: digits.count, by: 2).compactMap { offset -> Double? in
+                guard let high = digits[offset].hexDigit, let low = digits[offset + 1].hexDigit
+                else { return nil }
+                return Double(high * 16 + low) / 255
+            }
+        default:
+            return nil
+        }
+        guard channels.count == (digits.count == 3 ? 3 : digits.count / 2) else { return nil }
+        self.init(
+            red: channels[0], green: channels[1], blue: channels[2],
+            alpha: channels.count == 4 ? channels[3] : 1)
     }
 
-    private static let names: [String: Flowchart.Colour] = [
-        "black": Flowchart.Colour(red: 0, green: 0, blue: 0),
-        "white": Flowchart.Colour(red: 1, green: 1, blue: 1),
-        "red": Flowchart.Colour(red: 1, green: 0, blue: 0),
-        "green": Flowchart.Colour(red: 0, green: 0.5, blue: 0),
-        "blue": Flowchart.Colour(red: 0, green: 0, blue: 1),
-        "yellow": Flowchart.Colour(red: 1, green: 1, blue: 0),
-        "orange": Flowchart.Colour(red: 1, green: 0.65, blue: 0),
-        "purple": Flowchart.Colour(red: 0.5, green: 0, blue: 0.5),
-        "pink": Flowchart.Colour(red: 1, green: 0.75, blue: 0.8),
-        "cyan": Flowchart.Colour(red: 0, green: 1, blue: 1),
-        "magenta": Flowchart.Colour(red: 1, green: 0, blue: 1),
-        "grey": Flowchart.Colour(red: 0.5, green: 0.5, blue: 0.5),
-        "gray": Flowchart.Colour(red: 0.5, green: 0.5, blue: 0.5),
-        "lightgrey": Flowchart.Colour(red: 0.83, green: 0.83, blue: 0.83),
-        "lightgray": Flowchart.Colour(red: 0.83, green: 0.83, blue: 0.83),
-        "transparent": Flowchart.Colour(red: -1, green: -1, blue: -1),
+    /// Every colour name CSS knows, as the hex it stands for. A diagram may
+    /// name any of them, so knowing only the dozen people usually type turned a
+    /// valid `fill:chartreuse` into a fence of source.
+    private static let names: [String: String] = [
+        "aliceblue": "f0f8ff", "antiquewhite": "faebd7", "aqua": "00ffff",
+        "aquamarine": "7fffd4", "azure": "f0ffff", "beige": "f5f5dc", "bisque": "ffe4c4",
+        "black": "000000", "blanchedalmond": "ffebcd", "blue": "0000ff",
+        "blueviolet": "8a2be2", "brown": "a52a2a", "burlywood": "deb887",
+        "cadetblue": "5f9ea0", "chartreuse": "7fff00", "chocolate": "d2691e",
+        "coral": "ff7f50", "cornflowerblue": "6495ed", "cornsilk": "fff8dc",
+        "crimson": "dc143c", "cyan": "00ffff", "darkblue": "00008b", "darkcyan": "008b8b",
+        "darkgoldenrod": "b8860b", "darkgray": "a9a9a9", "darkgreen": "006400",
+        "darkgrey": "a9a9a9", "darkkhaki": "bdb76b", "darkmagenta": "8b008b",
+        "darkolivegreen": "556b2f", "darkorange": "ff8c00", "darkorchid": "9932cc",
+        "darkred": "8b0000", "darksalmon": "e9967a", "darkseagreen": "8fbc8f",
+        "darkslateblue": "483d8b", "darkslategray": "2f4f4f", "darkslategrey": "2f4f4f",
+        "darkturquoise": "00ced1", "darkviolet": "9400d3", "deeppink": "ff1493",
+        "deepskyblue": "00bfff", "dimgray": "696969", "dimgrey": "696969",
+        "dodgerblue": "1e90ff", "firebrick": "b22222", "floralwhite": "fffaf0",
+        "forestgreen": "228b22", "fuchsia": "ff00ff", "gainsboro": "dcdcdc",
+        "ghostwhite": "f8f8ff", "gold": "ffd700", "goldenrod": "daa520", "gray": "808080",
+        "green": "008000", "greenyellow": "adff2f", "grey": "808080", "honeydew": "f0fff0",
+        "hotpink": "ff69b4", "indianred": "cd5c5c", "indigo": "4b0082", "ivory": "fffff0",
+        "khaki": "f0e68c", "lavender": "e6e6fa", "lavenderblush": "fff0f5",
+        "lawngreen": "7cfc00", "lemonchiffon": "fffacd", "lightblue": "add8e6",
+        "lightcoral": "f08080", "lightcyan": "e0ffff", "lightgoldenrodyellow": "fafad2",
+        "lightgray": "d3d3d3", "lightgreen": "90ee90", "lightgrey": "d3d3d3",
+        "lightpink": "ffb6c1", "lightsalmon": "ffa07a", "lightseagreen": "20b2aa",
+        "lightskyblue": "87cefa", "lightslategray": "778899", "lightslategrey": "778899",
+        "lightsteelblue": "b0c4de", "lightyellow": "ffffe0", "lime": "00ff00",
+        "limegreen": "32cd32", "linen": "faf0e6", "magenta": "ff00ff", "maroon": "800000",
+        "mediumaquamarine": "66cdaa", "mediumblue": "0000cd", "mediumorchid": "ba55d3",
+        "mediumpurple": "9370db", "mediumseagreen": "3cb371", "mediumslateblue": "7b68ee",
+        "mediumspringgreen": "00fa9a", "mediumturquoise": "48d1cc",
+        "mediumvioletred": "c71585", "midnightblue": "191970", "mintcream": "f5fffa",
+        "mistyrose": "ffe4e1", "moccasin": "ffe4b5", "navajowhite": "ffdead", "navy": "000080",
+        "oldlace": "fdf5e6", "olive": "808000", "olivedrab": "6b8e23", "orange": "ffa500",
+        "orangered": "ff4500", "orchid": "da70d6", "palegoldenrod": "eee8aa",
+        "palegreen": "98fb98", "paleturquoise": "afeeee", "palevioletred": "db7093",
+        "papayawhip": "ffefd5", "peachpuff": "ffdab9", "peru": "cd853f", "pink": "ffc0cb",
+        "plum": "dda0dd", "powderblue": "b0e0e6", "purple": "800080",
+        "rebeccapurple": "663399", "red": "ff0000", "rosybrown": "bc8f8f",
+        "royalblue": "4169e1", "saddlebrown": "8b4513", "salmon": "fa8072",
+        "sandybrown": "f4a460", "seagreen": "2e8b57", "seashell": "fff5ee", "sienna": "a0522d",
+        "silver": "c0c0c0", "skyblue": "87ceeb", "slateblue": "6a5acd", "slategray": "708090",
+        "slategrey": "708090", "snow": "fffafa", "springgreen": "00ff7f",
+        "steelblue": "4682b4", "tan": "d2b48c", "teal": "008080", "thistle": "d8bfd8",
+        "tomato": "ff6347", "turquoise": "40e0d0", "violet": "ee82ee", "wheat": "f5deb3",
+        "white": "ffffff", "whitesmoke": "f5f5f5", "yellow": "ffff00", "yellowgreen": "9acd32",
     ]
 
     /// `fill:transparent` is the one colour that is not a colour.

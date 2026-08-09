@@ -53,6 +53,62 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.edges.map(\.arrow), [true, true, false])
     }
 
+    /// A link written to hold two boxes apart and draw nothing.
+    func testAnInvisibleLinkRanksTheBoxesAndDrawsNoLine() throws {
+        let chart = try XCTUnwrap(flowchart("flowchart TD\n A ~~~ B"))
+        XCTAssertEqual(chart.edges.map(\.stroke), [.invisible])
+        XCTAssertFalse(chart.edges[0].arrow)
+        // Held one under the other, the picture is taller than it is wide.
+        let held = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "flowchart TD\n A ~~~ B", theme: Theme(isDark: false), width: 700))
+        let apart = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "flowchart TD\n A\n B", theme: Theme(isDark: false), width: 700))
+        XCTAssertGreaterThan(held.height, apart.height)
+    }
+
+    /// Every colour name CSS knows, written any of the ways CSS writes one.
+    func testAColourIsReadByNameByHexAndByItsNumbers() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    A --> B --> C --> D
+                    style A fill:chartreuse
+                    style B fill:rgb(255, 0, 0)
+                    style C fill:rgba(0, 0, 255, 0.5)
+                    style D fill:#00ff0080
+                """))
+        XCTAssertEqual(
+            chart.nodes[0].style.fill, Flowchart.Colour(red: 127.0 / 255, green: 1, blue: 0))
+        XCTAssertEqual(chart.nodes[1].style.fill, Flowchart.Colour(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(
+            chart.nodes[2].style.fill, Flowchart.Colour(red: 0, green: 0, blue: 1, alpha: 0.5))
+        XCTAssertEqual(chart.nodes[3].style.fill?.alpha, 128.0 / 255)
+    }
+
+    /// A share of the page shows through a faded node, and a link named by its
+    /// number is painted on its own.
+    func testANodeFadesAndALinkIsPaintedByItsNumber() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    A --> B
+                    B --> C
+                    style A opacity:0.5
+                    linkStyle 1 stroke:red,stroke-width:2px
+                    click A "https://example.com" "Open"
+                """))
+        XCTAssertEqual(chart.nodes[0].style.opacity, 0.5)
+        XCTAssertNil(chart.edges[0].style.stroke)
+        XCTAssertEqual(chart.edges[1].style.stroke, Flowchart.Colour(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(chart.edges[1].style.strokeWidth, 2)
+        // A click cannot be followed in a picture, so it changes nothing drawn.
+        XCTAssertTrue(chart.nodes[0].style.fill == nil)
+    }
+
     /// A node named once and shaped later is one node, not two.
     func testANodeMentionedTwiceKeepsOneIdentity() throws {
         let chart = try XCTUnwrap(flowchart("flowchart TD\n A --> B\n B[Done]"))
@@ -64,18 +120,20 @@ final class MermaidTests: XCTestCase {
         // Each of these has to come back nil, because drawing what is left after
         // ignoring the rest would be a different diagram.
         for source in [
-            "flowchart TD\n A ~~~ B",
             // A subgraph left open, and one closed twice.
             "flowchart TD\n subgraph a\n A --> B",
             "flowchart TD\n A --> B\n end",
             // A direction nobody knows.
             "flowchart TD\n subgraph a\n direction sideways\n A --> B\n end",
-            // A colour and a property this cannot draw.
-            "flowchart TD\n A --> B\n style A fill:chartreuse",
-            "flowchart TD\n A --> B\n style A opacity:0.5",
+            // A colour, a share and a property this cannot draw.
+            "flowchart TD\n A --> B\n style A fill:chartruse",
+            "flowchart TD\n A --> B\n style A opacity:2",
+            "flowchart TD\n A --> B\n style A rotate:30deg",
             "flowchart TD\n A --> B\n class A missing",
             "flowchart TD\n A:::missing --> B",
-            "flowchart TD\n A --> B\n click A \"https://example.com\"",
+            // A line, and a click, naming something nobody wrote.
+            "flowchart TD\n A --> B\n linkStyle 4 stroke:red",
+            "flowchart TD\n A --> B\n click Z \"https://example.com\"",
             "flowchart TD",
             "",
         ] {
@@ -542,11 +600,17 @@ final class MermaidTests: XCTestCase {
 
     func testWhatTheBoxDiagramsRefuse() {
         for source in [
-            // A note with nothing written on it, a namespace and a click handler.
+            // A note with nothing written on it.
             "classDiagram\n class A\n note",
             "classDiagram\n class A\n note for A",
-            "classDiagram\n namespace one {\n class A\n }",
-            "classDiagram\n class A\n click A href \"x\"",
+            // A namespace left open, and a class written in two of them.
+            "classDiagram\n namespace one {\n class A",
+            "classDiagram\n namespace one {\n class A\n }\n"
+                + "namespace two {\n class A\n }",
+            // A click, a painting and a class of styles naming nobody.
+            "classDiagram\n class A\n click Z href \"x\"",
+            "classDiagram\n class A\n style Z fill:red",
+            "classDiagram\n class A\n cssClass \"A\" missing",
             "classDiagram\n A B C",
             "classDiagram",
             // A relation with an end this does not know, and an unclosed block.
@@ -556,6 +620,52 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A namespace is a titled frame around the classes written inside it.
+    func testANamespaceFramesTheClassesInsideIt() throws {
+        let source = """
+            classDiagram
+            namespace Shapes {
+              class Square
+              class Circle
+            }
+            class Paper
+            Paper <|-- Square
+            """
+        guard case .boxes(let diagram)? = MermaidDiagram.parse(source) else {
+            return XCTFail("a class diagram with a namespace is read")
+        }
+        XCTAssertEqual(diagram.namespaces.map(\.name), ["Shapes"])
+        XCTAssertEqual(diagram.boxes.map(\.namespace), [0, 0, nil])
+        // The frame is room the picture would not otherwise need.
+        let framed = try XCTUnwrap(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 900))
+        let loose = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: source.replacingOccurrences(of: "namespace Shapes {", with: "")
+                    .replacingOccurrences(of: "}", with: ""),
+                theme: Theme(isDark: false), width: 900))
+        XCTAssertGreaterThan(framed.height, loose.height)
+    }
+
+    /// A class painted by name, and one painted by the class of styles it joins.
+    func testAClassIsPaintedByNameAndByItsStyleClass() throws {
+        guard
+            case .boxes(let diagram)? = MermaidDiagram.parse(
+                """
+                classDiagram
+                class Duck
+                class Fish
+                classDef pale fill:#eeeeee,stroke:#333333
+                cssClass "Duck,Fish" pale
+                style Duck fill:red
+                link Duck "https://example.com"
+                """)
+        else { return XCTFail("a painted class diagram is read") }
+        XCTAssertEqual(diagram.boxes[0].style.fill, Flowchart.Colour(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(diagram.boxes[1].style.fill?.red, 238.0 / 255)
+        XCTAssertEqual(diagram.boxes[0].style.stroke?.red, 51.0 / 255)
     }
 
     func testAMindmapIsATreeReadFromItsIndentation() throws {
@@ -1147,7 +1257,7 @@ final class MermaidTests: XCTestCase {
             // A restyling of something nobody wrote, a colour that is no colour,
             // and a setting nobody knows.
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(b, $bgColor=\"red\")",
-            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartreuse\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartruse\")",
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
             "C4Context",

@@ -31,6 +31,15 @@ struct BoxDiagram {
         var stereotype: String
         /// One list per compartment, drawn with a rule between them.
         var compartments: [[String]]
+        /// The `namespace` the class was written inside, if any.
+        var namespace: Int?
+        var style = Flowchart.Style()
+    }
+
+    /// A `namespace`: a titled frame around the classes written inside it.
+    struct Namespace {
+        var name: String
+        var members: [Int] = []
     }
 
     struct Link {
@@ -55,13 +64,14 @@ struct BoxDiagram {
     var boxes: [Box]
     var links: [Link]
     var notes: [Note] = []
+    var namespaces: [Namespace] = []
     /// A class diagram is drawn with the parent above; an entity diagram reads
     /// across the page.
     var direction: Flowchart.Direction
 
     mutating func index(of name: String) -> Int {
         if let existing = boxes.firstIndex(where: { $0.name == name }) { return existing }
-        boxes.append(Box(name: name, stereotype: "", compartments: []))
+        boxes.append(Box(name: name, stereotype: "", compartments: [], namespace: nil))
         return boxes.count - 1
     }
 }
@@ -81,6 +91,9 @@ enum ClassDiagram {
     static func parse(_ lines: [Substring]) -> BoxDiagram? {
         var diagram = BoxDiagram(boxes: [], links: [], direction: .down)
         var open: Int?
+        var openNamespace: Int?
+        /// The styles `classDef` named, waiting for a `cssClass` to use them.
+        var styles: [String: Flowchart.Style] = [:]
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
@@ -92,21 +105,72 @@ enum ClassDiagram {
                 append(String(line), to: &diagram.boxes[box])
                 continue
             }
+            if line == "}" {
+                guard openNamespace != nil else { return nil }
+                openNamespace = nil
+                continue
+            }
             switch word {
             case "direction":
                 guard let read = Flowchart.direction(header: Substring("flowchart \(rest)"))
                 else { return nil }
                 diagram.direction = read
                 continue
+            case "namespace":
+                guard openNamespace == nil, rest.hasSuffix("{") else { return nil }
+                let name = String(rest.dropLast()).trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains(" ") else { return nil }
+                diagram.namespaces.append(BoxDiagram.Namespace(name: name))
+                openNamespace = diagram.namespaces.count - 1
+                continue
             case "class":
-                guard declared(rest, in: &diagram, opening: &open) else { return nil }
+                guard declared(rest, in: &diagram, opening: &open, inside: openNamespace) else {
+                    return nil
+                }
                 continue
             case "note":
                 guard let note = note(rest, in: &diagram) else { return nil }
                 diagram.notes.append(note)
                 continue
-            case "click", "callback", "link", "style", "classDef", "cssClass", "namespace":
-                return nil
+            case "classDef":
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
+                else { return nil }
+                for name in parts[0].split(separator: ",") {
+                    styles[name.trimmingCharacters(in: .whitespaces)] = style
+                }
+                continue
+            case "style":
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])),
+                    let index = diagram.boxes.firstIndex(where: { $0.name == String(parts[0]) })
+                else { return nil }
+                diagram.boxes[index].style.merge(style)
+                continue
+            case "cssClass":
+                // `cssClass "Duck,Fish" highlight`, the names always quoted.
+                let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = styles[String(parts[1])] else { return nil }
+                let named = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+                for name in named.split(separator: ",") {
+                    let box = name.trimmingCharacters(in: .whitespaces)
+                    guard let index = diagram.boxes.firstIndex(where: { $0.name == box }) else {
+                        return nil
+                    }
+                    diagram.boxes[index].style.merge(style)
+                }
+                continue
+            case "click", "callback", "link":
+                // A picture cannot be followed anywhere, and Mermaid draws a
+                // clickable class like any other, so this changes nothing drawn.
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2,
+                    diagram.boxes.contains(where: { $0.name == String(parts[0]) })
+                else { return nil }
+                continue
             default:
                 break
             }
@@ -134,7 +198,7 @@ enum ClassDiagram {
             }
             return nil
         }
-        guard open == nil, !diagram.boxes.isEmpty else { return nil }
+        guard open == nil, openNamespace == nil, !diagram.boxes.isEmpty else { return nil }
         return diagram
     }
 
@@ -159,9 +223,9 @@ enum ClassDiagram {
     }
 
     /// `class Animal`, `class Animal {`, `class Animal["A nicer name"]`.
-    private static func declared(_ rest: String, in diagram: inout BoxDiagram, opening: inout Int?)
-        -> Bool
-    {
+    private static func declared(
+        _ rest: String, in diagram: inout BoxDiagram, opening: inout Int?, inside namespace: Int?
+    ) -> Bool {
         var text = rest
         var opens = false
         if text.hasSuffix("{") {
@@ -180,6 +244,12 @@ enum ClassDiagram {
         let index = diagram.index(of: name)
         if let label { diagram.boxes[index].name = label }
         if opens { opening = index }
+        if let namespace {
+            // A class written in two namespaces belongs to neither.
+            guard diagram.boxes[index].namespace == nil else { return false }
+            diagram.boxes[index].namespace = namespace
+            diagram.namespaces[namespace].members.append(index)
+        }
         return true
     }
 

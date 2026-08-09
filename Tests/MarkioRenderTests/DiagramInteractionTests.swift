@@ -19,11 +19,11 @@ final class DiagramInteractionTests: XCTestCase {
             theme: Theme(isDark: false), columnWidth: 520)
         XCTAssertEqual(try XCTUnwrap(drawn.box(at: 0)).codeRegion?.isDiagram, true)
 
-        // The same fence with something the layout cannot draw stays text.
-        // An invisible link is a construct no layout here can honour, which
-        // keeps this example refused however many diagram kinds are added.
+        // The same fence with something the layout cannot draw stays text. A
+        // subgraph left open is not a diagram in any Mermaid, which keeps this
+        // example refused however many constructs are added.
         let refused = DocumentLayout(
-            document: Document(text: "```mermaid\nflowchart TD\n A ~~~ B\n```"),
+            document: Document(text: "```mermaid\nflowchart TD\n subgraph a\n A --> B\n```"),
             theme: Theme(isDark: false), columnWidth: 520)
         XCTAssertEqual(try XCTUnwrap(refused.box(at: 0)).codeRegion?.isDiagram, false)
 
@@ -108,7 +108,8 @@ final class DiagramInteractionTests: XCTestCase {
     func testAFenceItCannotDrawHasNoPictureToCopy() {
         XCTAssertNil(
             DocumentRenderer.diagram(
-                source: "flowchart TD\n A ~~~ B", theme: Theme(isDark: false), width: 400))
+                source: "flowchart TD\n subgraph a\n A --> B", theme: Theme(isDark: false),
+                width: 400))
     }
 
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {

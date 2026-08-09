@@ -256,61 +256,49 @@ enum MermaidLayout {
             )
         }
 
-        // The same ranking a flowchart uses: a box sits one rank below whatever
-        // points at it, and a cycle cannot spin it.
-        let ranks = self.ranks(
-            count: entities.count, edges: diagram.links.map { ($0.from, $0.to) })
         let down = diagram.direction == .down || diagram.direction == .up
-        let depths = ranks.map { rank in
-            rank.map { down ? entities[$0].frame.height : entities[$0].frame.width }.max() ?? 0
+        var frames: [CGRect]
+        var content: CGSize
+        var walls: [(rect: CGRect, name: String)] = []
+        if diagram.namespaces.isEmpty {
+            (frames, content) = ranked(
+                sizes: entities.map(\.frame.size), links: diagram.links.map { ($0.from, $0.to) },
+                down: down, metrics: metrics)
+        } else {
+            (frames, content, walls) = walled(
+                diagram, sizes: entities.map(\.frame.size), down: down, theme: theme,
+                font: rowFont, metrics: metrics)
         }
-        let extents = ranks.map { rank in
-            rank.reduce(CGFloat(0)) {
-                $0 + (down ? entities[$1].frame.width : entities[$1].frame.height)
-            } + metrics.siblingGap * CGFloat(max(0, rank.count - 1))
-        }
-        let crossExtent = extents.max() ?? 0
-        let rankGap = metrics.rankGap * 1.3
-        var rankOffset = metrics.padding
-        for (level, rank) in ranks.enumerated() {
-            var cross = (crossExtent - extents[level]) / 2
-            for index in rank {
-                let size = entities[index].frame.size
-                entities[index].frame.origin =
-                    down
-                    ? CGPoint(x: cross, y: rankOffset + (depths[level] - size.height) / 2)
-                    : CGPoint(x: rankOffset + (depths[level] - size.width) / 2, y: cross)
-                cross += (down ? size.width : size.height) + metrics.siblingGap
-            }
-            rankOffset += depths[level] + rankGap
-        }
-        let along = rankOffset - rankGap - metrics.padding
-        let content = CGSize(
-            width: down ? crossExtent : along, height: down ? along : crossExtent)
         let left = max(metrics.padding, (width - content.width) / 2)
-        for index in entities.indices {
-            if down {
-                entities[index].frame.origin.x += left
-            } else {
-                entities[index].frame.origin.x += left - metrics.padding
-                entities[index].frame.origin.y += metrics.padding
-            }
+        for index in frames.indices {
+            frames[index].origin.x += left
+            frames[index].origin.y += metrics.padding
         }
+        for index in walls.indices {
+            walls[index].rect.origin.x += left
+            walls[index].rect.origin.y += metrics.padding
+        }
+        for index in entities.indices { entities[index].frame = frames[index] }
 
         let slips = notes(
             diagram.notes, beside: entities.map(\.frame), theme: theme, font: rowFont,
             metrics: metrics)
 
         var decorations: [BlockBox.Decoration] = []
+        for wall in walls {
+            decorations += namespace(
+                wall.rect, named: wall.name, theme: theme, font: rowFont, metrics: metrics)
+        }
         for link in diagram.links {
             guard link.from < entities.count, link.to < entities.count else { continue }
             decorations += relation(
                 link, from: entities[link.from].frame, to: entities[link.to].frame, theme: theme,
                 font: rowFont, metrics: metrics)
         }
-        for entity in entities {
+        for (index, entity) in entities.enumerated() {
             decorations += self.entity(
-                entity, theme: theme, padding: padding, metrics: metrics)
+                entity, style: diagram.boxes[index].style, theme: theme, padding: padding,
+                metrics: metrics)
         }
         decorations += slips
         return Drawing(
@@ -318,6 +306,119 @@ enum MermaidLayout {
             size: CGSize(width: width, height: content.height + metrics.padding * 2),
             contentWidth: content.width
         )
+    }
+
+    /// The same ranking a flowchart uses: a box sits one rank below whatever
+    /// points at it, and a cycle cannot spin it. Frames come back measured from
+    /// the picture's own corner, so a caller may place them anywhere.
+    private static func ranked(
+        sizes: [CGSize], links: [(Int, Int)], down: Bool, metrics: Metrics
+    ) -> (frames: [CGRect], content: CGSize) {
+        var frames = sizes.map { CGRect(origin: .zero, size: $0) }
+        let ranks = self.ranks(count: sizes.count, edges: links)
+        let depths = ranks.map { rank in
+            rank.map { down ? sizes[$0].height : sizes[$0].width }.max() ?? 0
+        }
+        let extents = ranks.map { rank in
+            rank.reduce(CGFloat(0)) { $0 + (down ? sizes[$1].width : sizes[$1].height) }
+                + metrics.siblingGap * CGFloat(max(0, rank.count - 1))
+        }
+        let crossExtent = extents.max() ?? 0
+        let rankGap = metrics.rankGap * 1.3
+        var rankOffset: CGFloat = 0
+        for (level, rank) in ranks.enumerated() {
+            var cross = (crossExtent - extents[level]) / 2
+            for index in rank {
+                let size = sizes[index]
+                frames[index].origin =
+                    down
+                    ? CGPoint(x: cross, y: rankOffset + (depths[level] - size.height) / 2)
+                    : CGPoint(x: rankOffset + (depths[level] - size.width) / 2, y: cross)
+                cross += (down ? size.width : size.height) + metrics.siblingGap
+            }
+            rankOffset += depths[level] + rankGap
+        }
+        let along = max(0, rankOffset - rankGap)
+        return (
+            frames,
+            CGSize(width: down ? crossExtent : along, height: down ? along : crossExtent)
+        )
+    }
+
+    /// A class diagram whose classes live in namespaces.
+    ///
+    /// Each namespace is laid out as a picture of its own and then placed as one
+    /// box, exactly the way a subgraph inside a flowchart is: it is the only way
+    /// a frame can be sure to hold its own classes and nobody else's.
+    private static func walled(
+        _ diagram: BoxDiagram, sizes: [CGSize], down: Bool, theme: Theme, font: CTFont,
+        metrics: Metrics
+    ) -> (frames: [CGRect], content: CGSize, walls: [(rect: CGRect, name: String)]) {
+        let inset = 12 * metrics.scale
+        let titleRoom =
+            measure(text("X", font: font, color: theme.palette.text)).height
+            + 10 * metrics.scale
+        /// Which top-level unit each box belongs to, and where inside it stands.
+        var unitOf = [Int](repeating: 0, count: sizes.count)
+        var inside = [CGRect](repeating: .zero, count: sizes.count)
+        var unitSizes: [CGSize] = []
+        var wallOf: [Int: Int] = [:]
+        for (index, space) in diagram.namespaces.enumerated() {
+            let members = space.members
+            let local = Dictionary(uniqueKeysWithValues: members.enumerated().map { ($1, $0) })
+            let links = diagram.links.compactMap { link -> (Int, Int)? in
+                guard let from = local[link.from], let to = local[link.to] else { return nil }
+                return (from, to)
+            }
+            let (laid, content) = ranked(
+                sizes: members.map { sizes[$0] }, links: links, down: down, metrics: metrics)
+            for (offset, member) in members.enumerated() {
+                unitOf[member] = unitSizes.count
+                inside[member] = laid[offset].offsetBy(dx: inset, dy: inset + titleRoom)
+            }
+            wallOf[unitSizes.count] = index
+            unitSizes.append(
+                CGSize(
+                    width: content.width + inset * 2,
+                    height: content.height + inset * 2 + titleRoom))
+        }
+        for (index, box) in diagram.boxes.enumerated() where box.namespace == nil {
+            unitOf[index] = unitSizes.count
+            inside[index] = CGRect(origin: .zero, size: sizes[index])
+            unitSizes.append(sizes[index])
+        }
+        let between = diagram.links.compactMap { link -> (Int, Int)? in
+            let from = unitOf[link.from]
+            let to = unitOf[link.to]
+            return from == to ? nil : (from, to)
+        }
+        let (units, content) = ranked(
+            sizes: unitSizes, links: between, down: down, metrics: metrics)
+        let frames = inside.enumerated().map { index, local in
+            local.offsetBy(
+                dx: units[unitOf[index]].minX, dy: units[unitOf[index]].minY)
+        }
+        let walls = wallOf.keys.sorted().map {
+            (rect: units[$0], name: diagram.namespaces[wallOf[$0]!].name)
+        }
+        return (frames, content, walls)
+    }
+
+    /// The titled frame a `namespace` draws around the classes inside it.
+    private static func namespace(
+        _ rect: CGRect, named name: String, theme: Theme, font: CTFont, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let path = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+        let line = text(name, font: font, color: theme.palette.secondaryText)
+        let size = measure(line)
+        return [
+            .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true),
+            .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
+            .glyphs(
+                line,
+                origin: CGPoint(
+                    x: rect.midX - size.width / 2, y: rect.minY + 6 * metrics.scale + size.height)),
+        ]
     }
 
     /// The notes of a class diagram, drawn where they will not cover a box.
@@ -386,13 +487,19 @@ enum MermaidLayout {
     }
 
     private static func entity(
-        _ entity: Entity, theme: Theme, padding: CGFloat, metrics: Metrics
+        _ entity: Entity, style: Flowchart.Style, theme: Theme, padding: CGFloat, metrics: Metrics
     ) -> [BlockBox.Decoration] {
         let frame = entity.frame
         let path = CGPath(roundedRect: frame, cornerWidth: 3, cornerHeight: 3, transform: nil)
         var decorations: [BlockBox.Decoration] = [
-            .path(path, color: theme.palette.background, lineWidth: 0, filled: true),
-            .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
+            .path(
+                path, color: faded(style.fill.map(cgColor) ?? theme.palette.background, by: style),
+                lineWidth: 0, filled: true),
+            .path(
+                path,
+                color: faded(style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: style),
+                lineWidth: (style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale,
+                filled: false),
         ]
         var y = frame.minY + padding
         if let stereotype = entity.stereotype {
@@ -2545,7 +2652,7 @@ enum MermaidLayout {
         let font = scaled(theme.body, by: metrics.scale)
         var boxes: [Placed] = []
         for node in chart.nodes {
-            let colour = node.style.text.map(cgColor) ?? theme.palette.text
+            let colour = faded(node.style.text.map(cgColor) ?? theme.palette.text, by: node.style)
             let (lines, size) = labelLines(node.label, font: font, color: colour)
             var box = CGSize(
                 width: max(metrics.minimumNodeWidth, size.width + metrics.nodePaddingX * 2),
@@ -2991,17 +3098,22 @@ enum MermaidLayout {
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
         var decorations: [BlockBox.Decoration] = [
             .path(
-                path, color: group.style.fill.map(cgColor) ?? theme.palette.codeBackground,
+                path,
+                color: faded(
+                    group.style.fill.map(cgColor) ?? theme.palette.codeBackground, by: group.style),
                 lineWidth: 0, filled: true),
             .path(
-                path, color: group.style.stroke.map(cgColor) ?? theme.palette.tableBorder,
+                path,
+                color: faded(
+                    group.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: group.style),
                 lineWidth: group.style.strokeWidth ?? 1, filled: false),
         ]
         guard !group.title.isEmpty else { return decorations }
         let line = text(
             group.title,
             font: scaled(theme.controlLabel, by: metrics.scale),
-            color: group.style.text.map(cgColor) ?? theme.palette.secondaryText
+            color: faded(
+                group.style.text.map(cgColor) ?? theme.palette.secondaryText, by: group.style)
         )
         let size = measure(line)
         decorations.append(
@@ -3050,13 +3162,15 @@ enum MermaidLayout {
         if let fill = box.style.fill, fill.isTransparent {
             // Nothing to fill.
         } else {
-            let colour = box.style.fill.map(cgColor) ?? theme.palette.tableHeaderBackground
+            let colour = faded(
+                box.style.fill.map(cgColor) ?? theme.palette.tableHeaderBackground, by: box.style)
             decorations.append(.path(path, color: colour, lineWidth: 0, filled: true))
         }
         decorations.append(
             .path(
                 path,
-                color: box.style.stroke.map(cgColor) ?? theme.palette.tableBorder,
+                color: faded(
+                    box.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: box.style),
                 lineWidth: (box.style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale,
                 filled: false
             )
@@ -3096,7 +3210,14 @@ enum MermaidLayout {
     private static func cgColor(_ colour: Flowchart.Colour) -> CGColor {
         CGColor(
             red: max(0, colour.red), green: max(0, colour.green), blue: max(0, colour.blue),
-            alpha: 1)
+            alpha: colour.alpha)
+    }
+
+    /// A style's `opacity` lets the page through everything that style paints,
+    /// the colours the theme supplied included, so it is applied last of all.
+    private static func faded(_ color: CGColor, by style: Flowchart.Style) -> CGColor {
+        guard let share = style.opacity else { return color }
+        return color.copy(alpha: color.alpha * share) ?? color
     }
 
     private static func shape(_ box: Placed) -> CGPath {
@@ -3383,6 +3504,9 @@ enum MermaidLayout {
         _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
         order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect]
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
+        // `A ~~~ B` is written to hold one box under another and nothing more,
+        // so it has already done its work by the time there is a line to draw.
+        guard edge.stroke != .invisible else { return (shaft: [], label: []) }
         var (start, end) = joined(from, to)
         // An edge that skips a rank would otherwise run straight through
         // whatever stands between, which reads as an edge to that box; and two
@@ -3399,7 +3523,8 @@ enum MermaidLayout {
         }
         let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
         var decorations: [BlockBox.Decoration] = []
-        let color = edge.style.stroke.map(cgColor) ?? theme.palette.secondaryText
+        let color = faded(
+            edge.style.stroke.map(cgColor) ?? theme.palette.secondaryText, by: edge.style)
         let width: CGFloat = (edge.stroke == .thick ? 2.5 : 1.3) * metrics.scale
         let shaft = CGMutablePath()
         let head = edge.arrow ? metrics.arrowLength : 0
@@ -3436,7 +3561,8 @@ enum MermaidLayout {
         let line = text(
             edge.label,
             font: scaled(theme.controlLabel, by: metrics.scale),
-            color: edge.style.text.map(cgColor) ?? theme.palette.secondaryText
+            color: faded(
+                edge.style.text.map(cgColor) ?? theme.palette.secondaryText, by: edge.style)
         )
         let size = measure(line)
         // An edge between neighbouring ranks is labelled in the middle; one that
@@ -4105,7 +4231,7 @@ enum MermaidLayout {
         let font = scaled(theme.body, by: metrics.scale)
         var labels: [(lines: [CTLine], size: CGSize)] = []
         for node in diagram.chart.nodes {
-            let colour = node.style.text.map(cgColor) ?? theme.palette.text
+            let colour = faded(node.style.text.map(cgColor) ?? theme.palette.text, by: node.style)
             labels.append(labelLines(node.label, font: font, color: colour))
         }
         // Every column is the same width: a grid whose columns drifted would
