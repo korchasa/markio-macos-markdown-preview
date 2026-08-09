@@ -406,16 +406,36 @@ enum RequirementDiagram {
 // MARK: - Entity–relationship diagram
 
 enum EntityDiagram {
-    private static let leftEnds: [(text: String, end: BoxDiagram.End)] = [
-        ("||", .one), ("|o", .zeroOrOne), ("}|", .oneOrMore), ("}o", .zeroOrMore),
+    /// The marks at an end. Each count has a spelling that faces left and one
+    /// that faces right, and either may be written at either end: which side it
+    /// stands on decides how it is drawn, not which spelling was used.
+    private static let ends: [String: BoxDiagram.End] = [
+        "||": .one,
+        "|o": .zeroOrOne, "o|": .zeroOrOne,
+        "}|": .oneOrMore, "|{": .oneOrMore,
+        "}o": .zeroOrMore, "o{": .zeroOrMore,
     ]
-    private static let rightEnds: [(text: String, end: BoxDiagram.End)] = [
-        ("||", .one), ("o|", .zeroOrOne), ("|{", .oneOrMore), ("o{", .zeroOrMore),
+    /// The words an author may write instead of the marks. Both ends read from
+    /// one table: which side a count stands on decides how it is drawn, not
+    /// what it means.
+    private static let counts: [String: BoxDiagram.End] = [
+        "only one": .one, "1": .one,
+        "zero or one": .zeroOrOne, "one or zero": .zeroOrOne,
+        "zero or more": .zeroOrMore, "zero or many": .zeroOrMore,
+        "many(0)": .zeroOrMore, "0+": .zeroOrMore,
+        "one or more": .oneOrMore, "one or many": .oneOrMore,
+        "many(1)": .oneOrMore, "1+": .oneOrMore,
     ]
 
     static func parse(_ lines: [Substring]) -> BoxDiagram? {
         var diagram = BoxDiagram(boxes: [], links: [], direction: .down)
         var open: Int?
+        /// An entity is known by its id, which is not always what it shows.
+        var ids: [String: Int] = [:]
+        var styles: [String: Flowchart.Style] = [:]
+        /// Which class each entity asked for, kept until every `classDef` has
+        /// been read: a class may be named before it is written.
+        var painted: [(box: Int, name: String)] = []
         for line in lines {
             if let box = open {
                 if line == "}" {
@@ -438,51 +458,244 @@ enum EntityDiagram {
                 diagram.boxes[box].compartments[0].append(member)
                 continue
             }
-            if line.hasSuffix("{") {
-                let name = String(line.dropLast()).trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty, !name.contains(" ") else { return nil }
-                let index = diagram.index(of: name)
+            let word = String(line.prefix(while: { !$0.isWhitespace }))
+            let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
+            switch word {
+            case "direction":
+                guard let read = Flowchart.direction(header: Substring("flowchart \(rest)"))
+                else { return nil }
+                diagram.direction = read
+                continue
+            case "classDef":
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
+                else { return nil }
+                for name in parts[0].split(separator: ",") {
+                    styles[name.trimmingCharacters(in: .whitespaces)] = style
+                }
+                continue
+            case "style":
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
+                else { return nil }
+                // An entity nobody wrote leaves the line with nothing to paint.
+                for name in parts[0].split(separator: ",") {
+                    guard let index = ids[name.trimmingCharacters(in: .whitespaces)] else {
+                        continue
+                    }
+                    diagram.boxes[index].style.merge(style)
+                }
+                continue
+            default:
+                break
+            }
+            var tokens = fields(String(line))
+            guard !tokens.isEmpty else { continue }
+            var opens = false
+            if tokens.last == "{" {
+                tokens.removeLast()
+                opens = true
+            } else if let last = tokens.last, last.count > 1, last.hasSuffix("{"),
+                !last.contains("--"), !last.contains("..")
+            {
+                tokens[tokens.count - 1] = String(last.dropLast())
+                opens = true
+            }
+            if opens {
+                guard tokens.count == 1,
+                    let index = entity(tokens[0], in: &diagram, ids: &ids, painted: &painted)
+                else { return nil }
                 if diagram.boxes[index].compartments.isEmpty {
                     diagram.boxes[index].compartments = [[]]
                 }
                 open = index
                 continue
             }
-            guard let link = relation(line, in: &diagram) else { return nil }
-            diagram.links.append(link)
+            if let link = relation(tokens, in: &diagram, ids: &ids, painted: &painted) {
+                diagram.links.append(link)
+                continue
+            }
+            // A line that joins nothing is a list of entities standing on their
+            // own, however many words it holds. It is why `subgraph one` draws
+            // two boxes: an entity diagram has no frames, so both words name
+            // something.
+            guard !tokens.contains(":") else { return nil }
+            for token in tokens {
+                guard entity(token, in: &diagram, ids: &ids, painted: &painted) != nil else {
+                    return nil
+                }
+            }
         }
         guard open == nil, !diagram.boxes.isEmpty else { return nil }
+        // `classDef default` paints everything; a named class paints what asked
+        // for it, and a class nobody wrote paints nothing.
+        if let fallback = styles["default"] {
+            for index in diagram.boxes.indices { diagram.boxes[index].style.merge(fallback) }
+        }
+        for (box, name) in painted {
+            guard let style = styles[name] else { continue }
+            diagram.boxes[box].style.merge(style)
+        }
         return diagram
     }
 
-    private static func relation(_ line: Substring, in diagram: inout BoxDiagram) -> BoxDiagram
-        .Link?
-    {
-        // `CUSTOMER ||--o{ ORDER : places`
-        var body = line
-        var label = ""
-        if let colon = body.lastIndex(of: ":") {
-            label = String(body[body.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
-            body = body[body.startIndex..<colon]
+    /// The words of a line, with anything quoted or bracketed kept whole:
+    /// `a["Customer Account"] {` is two words, not three.
+    private static func fields(_ line: String) -> [String] {
+        var out: [String] = []
+        var current = ""
+        var quoted = false
+        var depth = 0
+        for char in line {
+            if char == "\"" {
+                quoted.toggle()
+                current.append(char)
+                continue
+            }
+            if !quoted, char == "[" { depth += 1 }
+            if !quoted, char == "]" { depth = max(depth - 1, 0) }
+            if !quoted, depth == 0, char == " " {
+                if !current.isEmpty {
+                    out.append(current)
+                    current = ""
+                }
+                continue
+            }
+            current.append(char)
         }
-        let words = body.split(separator: " ", omittingEmptySubsequences: true)
-        guard words.count == 3 else { return nil }
-        let joint = String(words[1])
-        guard let dash = joint.range(of: "--") ?? joint.range(of: "..") else { return nil }
-        let head = String(joint[joint.startIndex..<dash.lowerBound])
-        let tail = String(joint[dash.upperBound...])
-        guard let fromEnd = leftEnds.first(where: { $0.text == head })?.end,
-            let toEnd = rightEnds.first(where: { $0.text == tail })?.end
+        if !current.isEmpty { out.append(current) }
+        return out
+    }
+
+    private static func unquoted(_ text: String) -> String {
+        guard text.count >= 2, text.hasPrefix("\""), text.hasSuffix("\"") else { return text }
+        return String(text.dropFirst().dropLast())
+    }
+
+    /// An entity is named by an id and may be shown under other words:
+    /// `CAR`, `"This ❤ Unicode"`, `p[Person]`, `a["Customer Account"]`, and any
+    /// of them with a `:::class` hung off the end.
+    private static func entity(
+        _ token: String, in diagram: inout BoxDiagram, ids: inout [String: Int],
+        painted: inout [(box: Int, name: String)]
+    ) -> Int? {
+        var token = token
+        var asked: String?
+        if let mark = token.range(of: ":::") {
+            asked = String(token[mark.upperBound...])
+            token = String(token[token.startIndex..<mark.lowerBound])
+            guard let name = asked, !name.isEmpty else { return nil }
+        }
+        var id = token
+        var label: String?
+        var written = true
+        if token.hasPrefix("\""), token.hasSuffix("\""), token.count >= 2 {
+            id = unquoted(token)
+            label = id
+            written = false
+        } else if let open = token.firstIndex(of: "["), token.hasSuffix("]") {
+            id = String(token[token.startIndex..<open])
+            let shown = String(
+                token[token.index(after: open)..<token.index(before: token.endIndex)])
+            guard shown.hasPrefix("\"") || !shown.contains(" ") else { return nil }
+            label = unquoted(shown)
+        }
+        // Quoting is what lets a name hold a space; a bare word is one word.
+        guard !id.isEmpty, !written || !id.contains(" ") else { return nil }
+        let index: Int
+        if let known = ids[id] {
+            index = known
+            if let shown = label { diagram.boxes[index].name = shown }
+        } else {
+            diagram.boxes.append(
+                BoxDiagram.Box(
+                    name: label ?? id, stereotype: "", compartments: [], namespace: nil))
+            index = diagram.boxes.count - 1
+            ids[id] = index
+        }
+        if let name = asked { painted.append((index, name)) }
+        return index
+    }
+
+    private static func relation(
+        _ tokens: [String], in diagram: inout BoxDiagram, ids: inout [String: Int],
+        painted: inout [(box: Int, name: String)]
+    ) -> BoxDiagram.Link? {
+        // `CUSTOMER ||--o{ ORDER : places`
+        var tokens = tokens
+        var label = ""
+        if let cut = tokens.lastIndex(of: ":"), cut + 1 < tokens.count {
+            label = tokens[(cut + 1)...].joined(separator: " ")
+            tokens = Array(tokens[..<cut])
+        }
+        guard let (from, joint, to) = ends(tokens) else { return nil }
+        guard
+            let start = entity(from, in: &diagram, ids: &ids, painted: &painted),
+            let stop = entity(to, in: &diagram, ids: &ids, painted: &painted)
         else { return nil }
         return BoxDiagram.Link(
-            from: diagram.index(of: String(words[0])),
-            to: diagram.index(of: String(words[2])),
-            label: label,
-            dashed: joint.contains(".."),
-            fromEnd: fromEnd,
-            toEnd: toEnd,
-            fromCount: "",
-            toCount: ""
-        )
+            from: start, to: stop, label: unquoted(label), dashed: joint.dashed,
+            fromEnd: joint.from, toEnd: joint.to, fromCount: "", toCount: "")
+    }
+
+    /// What stands between the two entities: either the marks Mermaid draws,
+    /// written together or apart, or the words that mean the same thing.
+    private static func ends(_ tokens: [String])
+        -> (
+            from: String, joint: (from: BoxDiagram.End, to: BoxDiagram.End, dashed: Bool),
+            to: String
+        )?
+    {
+        if tokens.count == 1, let split = marks(tokens[0]) { return split }
+        if tokens.count == 3, let read = joint(tokens[1]) { return (tokens[0], read, tokens[2]) }
+        // `CAR 1 to zero or more NAMED-DRIVER` and `PERSON many(0) optionally
+        // to 0+ NAMED-DRIVER`: the entities stand at the ends and the words
+        // between them are the two counts, told apart by the `to` in the middle.
+        guard tokens.count >= 4, let cut = tokens.firstIndex(of: "to"), cut >= 2,
+            cut + 1 < tokens.count - 1
+        else { return nil }
+        var head = Array(tokens[1..<cut])
+        let dashed = head.last == "optionally"
+        if dashed { head.removeLast() }
+        guard let from = counts[head.joined(separator: " ")],
+            let to = counts[tokens[(cut + 1)..<(tokens.count - 1)].joined(separator: " ")]
+        else { return nil }
+        return (tokens[0], (from, to, dashed), tokens[tokens.count - 1])
+    }
+
+    /// `id1||--||id2`, written with no room around the marks.
+    private static func marks(_ token: String)
+        -> (String, (from: BoxDiagram.End, to: BoxDiagram.End, dashed: Bool), String)?
+    {
+        guard let dash = token.range(of: "--") ?? token.range(of: "..") else { return nil }
+        let head = token[token.startIndex..<dash.lowerBound]
+        let tail = token[dash.upperBound...]
+        let signs: Set<Character> = ["|", "o", "{", "}"]
+        var left = head.endIndex
+        while left > head.startIndex, signs.contains(head[head.index(before: left)]) {
+            left = head.index(before: left)
+        }
+        var right = tail.startIndex
+        while right < tail.endIndex, signs.contains(tail[right]) {
+            right = tail.index(after: right)
+        }
+        let from = String(head[head.startIndex..<left])
+        let to = String(tail[right...])
+        guard !from.isEmpty, !to.isEmpty,
+            let read = joint(String(head[left...]) + String(token[dash]) + String(tail[..<right]))
+        else { return nil }
+        return (from, read, to)
+    }
+
+    private static func joint(_ text: String)
+        -> (from: BoxDiagram.End, to: BoxDiagram.End, dashed: Bool)?
+    {
+        guard let dash = text.range(of: "--") ?? text.range(of: "..") else { return nil }
+        let head = String(text[text.startIndex..<dash.lowerBound])
+        let tail = String(text[dash.upperBound...])
+        guard let from = ends[head], let to = ends[tail] else { return nil }
+        return (from, to, text.contains(".."))
     }
 }

@@ -78,7 +78,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `autonumber`, a `rect` tinting a run of messages and a `box` framing a team),
   a `pie` chart, a `stateDiagram-v2` with the machines inside its states, its
   forks, joins, choices and notes, a `classDiagram` with the notes beside its
-  classes, its namespaces and its painting, an `erDiagram`, a `mindmap` with its
+  classes, its namespaces and its painting, an `erDiagram` whose entities may be
+  called one thing and show another, whose counts may be written as marks or as
+  words, and which is painted by `style`, `classDef` and `:::`, a `mindmap` with its
   clouds and bangs, a `timeline`, a `journey`, a `gantt` chart in any date format
   it declares, around the days nobody works, a `quadrantChart`, an
   `xychart-beta`, a `gitGraph` whose lanes run either way, with its cherry-picks,

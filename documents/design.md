@@ -407,6 +407,17 @@ and in which ends their lines may have, which is why `BoxDiagram` is shared and
 written type first and name second, the order it is declared in: `string email`
 and not `email string`, which would say the attribute is called `string`.
 
+An entity is known by an id and shows whatever words are hung off it — `CAR`,
+`"This ❤ Unicode"`, `p[Person]`, `a["Customer Account"]` — so the reader keeps
+its own id table rather than looking boxes up by what they show; two ids that
+show the same words are still two entities. How many stand at each end of a line
+can be written as the marks or as the words that mean the same thing, and each
+count has a spelling facing either way, so one table serves both ends and the
+side a mark stands on is what decides how it is drawn. What is left after the
+keywords is a list of entities however long it is, which is why `subgraph one`
+draws two boxes and `end` a third: an entity diagram has no frames, and Mermaid
+reads those words as names like any other.
+
 A class diagram's `note` is a slip of paper laid beside the picture rather than
 in it. One tied to a box stands to that box's left, joined to it by a dotted
 line, and is slid further left until it covers nothing — a note laid over a box

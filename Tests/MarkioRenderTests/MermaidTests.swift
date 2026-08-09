@@ -849,6 +849,86 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.links.map(\.dashed), [false, true])
     }
 
+    func testAnEntityCanBeCalledOneThingAndShowAnother() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                erDiagram
+                    p[Person] {
+                        string firstName
+                    }
+                    a["Customer Account"] {
+                        string email
+                    }
+                    "This ❤ Unicode"
+                    p ||--o| a : has
+                """
+            )
+        )
+        XCTAssertEqual(
+            diagram.boxes.map(\.name), ["Person", "Customer Account", "This ❤ Unicode"])
+        // The link names the ids, and lands on the boxes they stand for.
+        XCTAssertEqual(diagram.links.map { [$0.from, $0.to] }, [[0, 1]])
+        XCTAssertEqual(diagram.links[0].toEnd, .zeroOrOne)
+        // An alias holding a space has to be quoted, the way Mermaid asks.
+        XCTAssertNil(boxes("erDiagram\n  subgraph id1 [title 1]\n  CUSTOMER\n  end"))
+    }
+
+    func testAnEntityDiagramCountsInWordsAsWellAsMarks() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                erDiagram
+                    CAR 1 to zero or more NAMED-DRIVER : allows
+                    PERSON many(0) optionally to 0+ NAMED-DRIVER : is
+                    MANUFACTURER only one to one or many CAR : makes
+                    id1||--||id2 : label
+                    PERSON o{--|| HOUSE : has
+                """
+            )
+        )
+        XCTAssertEqual(diagram.links.map(\.fromEnd), [.one, .zeroOrMore, .one, .one, .zeroOrMore])
+        XCTAssertEqual(
+            diagram.links.map(\.toEnd), [.zeroOrMore, .zeroOrMore, .oneOrMore, .one, .one])
+        // `optionally to` is the dotted line; `to` alone is the solid one.
+        XCTAssertEqual(diagram.links.map(\.dashed), [false, true, false, false, false])
+        XCTAssertEqual(diagram.links[3].label, "label")
+    }
+
+    /// An entity diagram has no frames, so `subgraph one` is two entities and
+    /// `end` is a third — which is what Mermaid draws.
+    func testAnEntityDiagramHasNoFramesToPutAnythingIn() throws {
+        let diagram = try XCTUnwrap(
+            boxes("erDiagram\n  subgraph title1\n    CUSTOMER\n  end")
+        )
+        XCTAssertEqual(diagram.boxes.map(\.name), ["subgraph", "title1", "CUSTOMER", "end"])
+        XCTAssertTrue(diagram.namespaces.isEmpty)
+        XCTAssertTrue(diagram.links.isEmpty)
+    }
+
+    func testAnEntityDiagramPaintsWhatItsClassesName() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                erDiagram
+                    direction LR
+                    CAR:::someclass
+                    PERSON:::nobody ||--|| CAR : owns
+                    style PERSON fill:#bbf
+                    classDef default stroke-width:4px
+                    classDef someclass fill:#f96
+                """
+            )
+        )
+        XCTAssertEqual(diagram.direction, .right)
+        // A class written after it is named still lands; one nobody wrote does
+        // not, and the line it was written on is still read.
+        XCTAssertNotNil(diagram.boxes[0].style.fill)
+        XCTAssertNotNil(diagram.boxes[1].style.fill)
+        // `classDef default` paints everything.
+        XCTAssertEqual(diagram.boxes.compactMap(\.style.strokeWidth).count, 2)
+    }
+
     /// A `note` is a slip of paper, tied to one box or standing on its own.
     func testAClassDiagramReadsItsNotes() throws {
         let diagram = try XCTUnwrap(
