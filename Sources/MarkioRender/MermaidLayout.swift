@@ -2828,6 +2828,60 @@ enum MermaidLayout {
                 box.height += size.height * 1.4
             case .arrowLeft, .arrowRight:
                 box.width += size.width * 0.6 + 20 * metrics.scale
+            // A named shape gets back whatever its own drawing takes away: the
+            // corner it cuts, the wave along its foot, the rule down its side,
+            // the copies stacked behind it.
+            case .card, .loopLimit:
+                box.height += 8 * metrics.scale
+            case .linedProcess, .dividedProcess, .taggedProcess, .linedDocument,
+                .taggedDocument:
+                box.width += 12 * metrics.scale
+                box.height += 8 * metrics.scale
+            case .windowPane:
+                box.width += 14 * metrics.scale
+                box.height += 12 * metrics.scale
+            case .stackedProcess, .stackedDocument:
+                box.width += 12 * metrics.scale
+                box.height += 14 * metrics.scale
+            case .document:
+                box.height += 10 * metrics.scale
+            case .paperTape:
+                box.height += 18 * metrics.scale
+            case .storedData, .display, .delay, .dataStore, .horizontalCylinder:
+                box.width += 22 * metrics.scale
+            case .linedCylinder:
+                box.width += 12 * metrics.scale
+                box.height += 10 * metrics.scale
+            case .manualInput:
+                box.height += 10 * metrics.scale
+            case .braceLeft, .braceRight:
+                box.width += 14 * metrics.scale
+            case .braces:
+                box.width += 28 * metrics.scale
+            case .triangle, .flippedTriangle:
+                // Only the base of a triangle is wide enough for words, so it
+                // is given the width twice over and room to move them there.
+                box.width += size.width * 1.6 + 30 * metrics.scale
+                box.height += size.height * 1.1
+            case .hourglass:
+                // A collate mark carries no words: the two triangles are read.
+                box = CGSize(width: 44 * metrics.scale, height: 44 * metrics.scale)
+            case .bolt:
+                // Nor does a com link: the bolt is the whole of it.
+                box = CGSize(width: 34 * metrics.scale, height: 46 * metrics.scale)
+            case .junction:
+                let side = 16 * metrics.scale
+                box = CGSize(width: side, height: side)
+            case .summary:
+                let side = max(box.width, box.height + size.width * 0.3)
+                box = CGSize(width: side, height: side)
+            case .pictureBox:
+                box.height += 46 * metrics.scale
+                box.width = max(box.width, 62 * metrics.scale)
+            case .text:
+                // The words alone, with nothing drawn around them to make room
+                // for.
+                box = CGSize(width: size.width, height: size.height)
             case .rectangle, .rounded, .stadium:
                 break
             }
@@ -3304,6 +3358,29 @@ enum MermaidLayout {
             }
             return decorations
         }
+        // A collate mark, a com link and a junction are read as the symbol they
+        // are; a name written on one belongs to the diagram, not inside it.
+        if box.shape == .hourglass || box.shape == .bolt || box.shape == .junction {
+            let outline = faded(
+                box.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: box.style)
+            var marks: [BlockBox.Decoration] = [
+                .path(
+                    path,
+                    color: faded(
+                        box.style.fill.map(cgColor) ?? theme.palette.background,
+                        by: box.style), lineWidth: 0, filled: box.shape != .junction)
+            ]
+            if box.shape == .junction {
+                marks = [.path(path, color: outline, lineWidth: 0, filled: true)]
+            } else {
+                marks.append(
+                    .path(
+                        path, color: outline,
+                        lineWidth: (box.style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale,
+                        filled: false))
+            }
+            return marks
+        }
         // A fork is read as a bar and nothing else, so it is drawn solid.
         if box.shape == .bar {
             return [
@@ -3314,27 +3391,45 @@ enum MermaidLayout {
             ]
         }
         var decorations: [BlockBox.Decoration] = []
+        let outline = faded(
+            box.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: box.style)
+        let pen = (box.style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale
+        let filling = faded(
+            box.style.fill.map(cgColor) ?? theme.palette.tableHeaderBackground, by: box.style)
+        let solid = !(box.style.fill?.isTransparent ?? false)
+        // The copies stacked behind a multi-process stand under the front one,
+        // so they are filled and outlined before it is.
+        if box.shape == .stackedProcess || box.shape == .stackedDocument {
+            for behind in inner(box) {
+                if solid {
+                    decorations.append(.path(behind, color: filling, lineWidth: 0, filled: true))
+                }
+                decorations.append(
+                    .path(behind, color: outline, lineWidth: pen, filled: false))
+            }
+        }
         // A `fill:transparent` is the author asking for the page to show
         // through, which is not the same as filling it with the page's colour.
-        if let fill = box.style.fill, fill.isTransparent {
-            // Nothing to fill.
-        } else {
-            let colour = faded(
-                box.style.fill.map(cgColor) ?? theme.palette.tableHeaderBackground, by: box.style)
-            decorations.append(.path(path, color: colour, lineWidth: 0, filled: true))
+        if solid {
+            decorations.append(.path(path, color: filling, lineWidth: 0, filled: true))
         }
-        decorations.append(
-            .path(
-                path,
-                color: faded(
-                    box.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: box.style),
-                lineWidth: (box.style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale,
-                filled: false
-            )
-        )
+        decorations.append(.path(path, color: outline, lineWidth: pen, filled: false))
+        if box.shape != .stackedProcess, box.shape != .stackedDocument {
+            for mark in inner(box) {
+                decorations.append(.path(mark, color: outline, lineWidth: pen, filled: false))
+            }
+        }
         // The stack is centred on the box, and each line is centred in the
-        // stack, so a two-line label sits the way a one-line label does.
+        // stack, so a two-line label sits the way a one-line label does. A
+        // triangle is only wide enough for words at one end, so its words are
+        // moved down to the base — or up to it, when it stands on its point.
         var y = box.frame.midY - box.labelSize.height / 2
+        switch box.shape {
+        case .triangle: y += box.frame.height * 0.2
+        case .flippedTriangle: y -= box.frame.height * 0.2
+        case .stackedProcess, .stackedDocument: y += 4
+        default: break
+        }
         for line in box.lines {
             let size = measure(line)
             decorations.append(
@@ -3419,7 +3514,7 @@ enum MermaidLayout {
         // the lean looks the same at every scale.
         let lean = frame.height * 0.28
         switch box.shape {
-        case .rectangle, .subroutine:
+        case .rectangle:
             return CGPath(roundedRect: frame, cornerWidth: 3, cornerHeight: 3, transform: nil)
         case .rounded:
             return CGPath(roundedRect: frame, cornerWidth: 9, cornerHeight: 9, transform: nil)
@@ -3527,21 +3622,361 @@ enum MermaidLayout {
         case .cylinder:
             // A drum seen from the side: an ellipse for the lid, straight sides,
             // and the same curve again at the foot.
-            let lid = min(frame.height * 0.18, 10)
+            return drum(frame)
+        case .card:
+            // A card is a rectangle with its top-left corner cut away.
+            let cut = min(frame.height * 0.3, 16)
+            return polygon([
+                CGPoint(x: frame.minX + cut, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.minY + cut),
+            ])
+        case .loopLimit:
+            // A pentagon with both top corners cut.
+            let cut = min(frame.height * 0.3, 16)
+            return polygon([
+                CGPoint(x: frame.minX + cut, y: frame.minY),
+                CGPoint(x: frame.maxX - cut, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.minY + cut),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.minY + cut),
+            ])
+        case .linedProcess, .dividedProcess, .taggedProcess, .windowPane, .subroutine:
+            // The rules these carry are drawn over the box, not cut out of it.
+            return CGPath(roundedRect: frame, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        case .stackedProcess:
+            // The front of the stack; the two behind it are drawn separately.
+            let step = 6 * frame.height / max(frame.height, 1)
+            return CGPath(
+                roundedRect: CGRect(
+                    x: frame.minX, y: frame.minY + step * 2, width: frame.width - step * 2,
+                    height: frame.height - step * 2), cornerWidth: 3, cornerHeight: 3,
+                transform: nil)
+        case .document, .linedDocument, .taggedDocument:
+            return sheet(frame)
+        case .stackedDocument:
+            let step = 6 * frame.height / max(frame.height, 1)
+            return sheet(
+                CGRect(
+                    x: frame.minX, y: frame.minY + step * 2, width: frame.width - step * 2,
+                    height: frame.height - step * 2))
+        case .paperTape:
+            // A wave along the top and another along the foot.
+            let wave = min(frame.height * 0.16, 12)
             let path = CGMutablePath()
-            path.move(to: CGPoint(x: frame.minX, y: frame.minY + lid))
+            path.move(to: CGPoint(x: frame.minX, y: frame.minY + wave))
             path.addCurve(
-                to: CGPoint(x: frame.maxX, y: frame.minY + lid),
-                control1: CGPoint(x: frame.minX, y: frame.minY - lid),
-                control2: CGPoint(x: frame.maxX, y: frame.minY - lid))
-            path.addLine(to: CGPoint(x: frame.maxX, y: frame.maxY - lid))
+                to: CGPoint(x: frame.maxX, y: frame.minY + wave),
+                control1: CGPoint(x: frame.minX + frame.width / 3, y: frame.minY - wave),
+                control2: CGPoint(x: frame.maxX - frame.width / 3, y: frame.minY + wave * 3))
+            path.addLine(to: CGPoint(x: frame.maxX, y: frame.maxY - wave))
             path.addCurve(
-                to: CGPoint(x: frame.minX, y: frame.maxY - lid),
-                control1: CGPoint(x: frame.maxX, y: frame.maxY + lid),
-                control2: CGPoint(x: frame.minX, y: frame.maxY + lid))
+                to: CGPoint(x: frame.minX, y: frame.maxY - wave),
+                control1: CGPoint(x: frame.maxX - frame.width / 3, y: frame.maxY + wave),
+                control2: CGPoint(x: frame.minX + frame.width / 3, y: frame.maxY - wave * 3))
             path.closeSubpath()
             return path
+        case .storedData:
+            // Both sides bow the same way, so the shape leans as it stands.
+            let bow = min(frame.width * 0.1, 16)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX + bow, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX - bow, y: frame.minY))
+            path.addQuadCurve(
+                to: CGPoint(x: frame.maxX - bow, y: frame.maxY),
+                control: CGPoint(x: frame.maxX + bow * 2.4, y: frame.midY))
+            path.addLine(to: CGPoint(x: frame.minX + bow, y: frame.maxY))
+            path.addQuadCurve(
+                to: CGPoint(x: frame.minX + bow, y: frame.minY),
+                control: CGPoint(x: frame.minX + bow * 3.4, y: frame.midY))
+            path.closeSubpath()
+            return path
+        case .manualInput:
+            // The top edge slopes up towards the right.
+            let slope = min(frame.height * 0.28, 16)
+            return polygon([
+                CGPoint(x: frame.minX, y: frame.minY + slope),
+                CGPoint(x: frame.maxX, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.maxY),
+            ])
+        case .delay:
+            // Square at the left, rounded right off at the right.
+            let radius = frame.height / 2
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX - radius, y: frame.minY))
+            path.addArc(
+                center: CGPoint(x: frame.maxX - radius, y: frame.midY), radius: radius,
+                startAngle: -.pi / 2, endAngle: .pi / 2, clockwise: false)
+            path.addLine(to: CGPoint(x: frame.minX, y: frame.maxY))
+            path.closeSubpath()
+            return path
+        case .horizontalCylinder, .linedCylinder, .dataStore:
+            if box.shape == .linedCylinder {
+                // A drum standing up, like a database; the second line under its
+                // lid is drawn over it.
+                return drum(frame)
+            }
+            // A drum lying on its side: a curve at each end.
+            // Each end cap bulges out by exactly the lid, so the ends read as
+            // halves of an ellipse rather than as clipped corners.
+            let lid = min(frame.width * 0.12, 16)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX + lid, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX - lid, y: frame.minY))
+            path.addCurve(
+                to: CGPoint(x: frame.maxX - lid, y: frame.maxY),
+                control1: CGPoint(x: frame.maxX + lid * 0.34, y: frame.minY),
+                control2: CGPoint(x: frame.maxX + lid * 0.34, y: frame.maxY))
+            path.addLine(to: CGPoint(x: frame.minX + lid, y: frame.maxY))
+            path.addCurve(
+                to: CGPoint(x: frame.minX + lid, y: frame.minY),
+                control1: CGPoint(x: frame.minX - lid * 0.34, y: frame.maxY),
+                control2: CGPoint(x: frame.minX - lid * 0.34, y: frame.minY))
+            path.closeSubpath()
+            return path
+        case .display:
+            // Flat down the left, bulging out at the right.
+            let bulge = min(frame.width * 0.16, 22)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX, y: frame.minY))
+            path.addLine(to: CGPoint(x: frame.maxX - bulge, y: frame.minY))
+            path.addQuadCurve(
+                to: CGPoint(x: frame.maxX - bulge, y: frame.maxY),
+                control: CGPoint(x: frame.maxX + bulge * 1.8, y: frame.midY))
+            path.addLine(to: CGPoint(x: frame.minX, y: frame.maxY))
+            path.closeSubpath()
+            return path
+        case .triangle:
+            return polygon([
+                CGPoint(x: frame.midX, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.maxY),
+            ])
+        case .flippedTriangle:
+            return polygon([
+                CGPoint(x: frame.minX, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.minY),
+                CGPoint(x: frame.midX, y: frame.maxY),
+            ])
+        case .hourglass:
+            return polygon([
+                CGPoint(x: frame.minX, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.minY),
+                CGPoint(x: frame.minX, y: frame.maxY),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+            ])
+        case .bolt:
+            // A lightning bolt: down the left, back across, and down to a point.
+            let across = frame.width
+            let down = frame.height
+            return polygon([
+                CGPoint(x: frame.minX + across * 0.55, y: frame.minY),
+                CGPoint(x: frame.minX + across * 0.1, y: frame.minY + down * 0.55),
+                CGPoint(x: frame.minX + across * 0.45, y: frame.minY + down * 0.55),
+                CGPoint(x: frame.minX + across * 0.3, y: frame.maxY),
+                CGPoint(x: frame.maxX, y: frame.minY + down * 0.4),
+                CGPoint(x: frame.minX + across * 0.6, y: frame.minY + down * 0.4),
+                CGPoint(x: frame.maxX - across * 0.1, y: frame.minY),
+            ])
+        case .braceLeft, .braceRight, .braces:
+            // The braces themselves are strokes drawn beside the words, so the
+            // box behind them holds nothing.
+            return CGMutablePath()
+        case .junction:
+            return CGPath(ellipseIn: frame, transform: nil)
+        case .summary:
+            return CGPath(ellipseIn: frame, transform: nil)
+        case .text:
+            return CGMutablePath()
+        case .pictureBox:
+            return CGPath(roundedRect: frame, cornerWidth: 6, cornerHeight: 6, transform: nil)
         }
+    }
+
+    /// The marks that stand a shape apart from a plain box: the rule down a
+    /// lined process, the copies behind a stacked one, the tag at a corner, the
+    /// cross through a summary, the braces beside a comment.
+    ///
+    /// They are drawn over the box rather than cut out of it, so the fill and
+    /// the outline stay one path and one colour each.
+    private static func inner(_ box: Placed) -> [CGPath] {
+        let frame = box.frame
+        func line(_ from: CGPoint, _ to: CGPoint) -> CGPath {
+            let path = CGMutablePath()
+            path.move(to: from)
+            path.addLine(to: to)
+            return path
+        }
+        let step = min(frame.height * 0.16, 12)
+        // A sheet of paper waves along its foot, so a mark that would meet the
+        // bottom edge stops where the wave starts instead of hanging past it.
+        let foot: CGFloat =
+            box.shape == .linedDocument || box.shape == .taggedDocument
+            ? min(frame.height * 0.16, 12) : 0
+        switch box.shape {
+        case .subroutine:
+            // A call to something described elsewhere: a wall at each end.
+            return [
+                line(
+                    CGPoint(x: frame.minX + step, y: frame.minY),
+                    CGPoint(x: frame.minX + step, y: frame.maxY)),
+                line(
+                    CGPoint(x: frame.maxX - step, y: frame.minY),
+                    CGPoint(x: frame.maxX - step, y: frame.maxY)),
+            ]
+        case .linedProcess, .linedDocument:
+            return [
+                line(
+                    CGPoint(x: frame.minX + step, y: frame.minY),
+                    CGPoint(x: frame.minX + step, y: frame.maxY - foot))
+            ]
+        case .dividedProcess:
+            return [
+                line(
+                    CGPoint(x: frame.minX, y: frame.minY + step),
+                    CGPoint(x: frame.maxX, y: frame.minY + step))
+            ]
+        case .windowPane:
+            return [
+                line(
+                    CGPoint(x: frame.minX + step, y: frame.minY),
+                    CGPoint(x: frame.minX + step, y: frame.maxY)),
+                line(
+                    CGPoint(x: frame.minX, y: frame.minY + step),
+                    CGPoint(x: frame.maxX, y: frame.minY + step)),
+            ]
+        case .linedCylinder:
+            // A second line under the lid, so the drum reads as a disk.
+            let lid = min(frame.height * 0.18, 10)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX, y: frame.minY + lid * 2.2))
+            path.addCurve(
+                to: CGPoint(x: frame.maxX, y: frame.minY + lid * 2.2),
+                control1: CGPoint(x: frame.minX, y: frame.minY + lid * 0.2),
+                control2: CGPoint(x: frame.maxX, y: frame.minY + lid * 0.2))
+            return [path]
+        case .dataStore:
+            // Open at the left: the near curve is drawn inside the drum.
+            let lid = min(frame.width * 0.12, 16)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX + lid, y: frame.minY))
+            path.addCurve(
+                to: CGPoint(x: frame.minX + lid, y: frame.maxY),
+                control1: CGPoint(x: frame.minX + lid * 2.34, y: frame.minY),
+                control2: CGPoint(x: frame.minX + lid * 2.34, y: frame.maxY))
+            return [path]
+        case .stackedProcess, .stackedDocument:
+            // Two copies behind, each offset up and to the right.
+            let offset = 6 * min(frame.height / max(frame.height, 1), 1)
+            let body = CGRect(
+                x: frame.minX, y: frame.minY + offset * 2, width: frame.width - offset * 2,
+                height: frame.height - offset * 2)
+            return (1...2).map { number in
+                let shifted = body.offsetBy(
+                    dx: offset * CGFloat(number), dy: -offset * CGFloat(number))
+                return box.shape == .stackedDocument
+                    ? sheet(shifted)
+                    : CGPath(roundedRect: shifted, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            }.reversed()
+        case .taggedProcess, .taggedDocument:
+            // A tag folded over the bottom-left corner.
+            let tag = min(frame.width * 0.18, 20)
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: frame.minX, y: frame.maxY - foot - tag))
+            path.addLine(to: CGPoint(x: frame.minX + tag, y: frame.maxY - foot))
+            return [path]
+        case .summary:
+            // A cross through the circle, corner to corner of its square.
+            let reach = frame.width / 2 * 0.7071
+            return [
+                line(
+                    CGPoint(x: frame.midX - reach, y: frame.midY - reach),
+                    CGPoint(x: frame.midX + reach, y: frame.midY + reach)),
+                line(
+                    CGPoint(x: frame.midX + reach, y: frame.midY - reach),
+                    CGPoint(x: frame.midX - reach, y: frame.midY + reach)),
+            ]
+        case .braceLeft, .braceRight, .braces:
+            var paths: [CGPath] = []
+            if box.shape != .braceRight { paths.append(brace(frame, facing: 1)) }
+            if box.shape != .braceLeft { paths.append(brace(frame, facing: -1)) }
+            return paths
+        case .pictureBox:
+            // A framed square where the picture would have gone, with a
+            // question mark where its subject would have been.
+            let side = min(34, frame.width - 12)
+            let tile = CGRect(
+                x: frame.midX - side / 2, y: frame.minY + 8, width: side, height: side)
+            let path = CGMutablePath()
+            path.addRoundedRect(in: tile, cornerWidth: 4, cornerHeight: 4)
+            let radius = side * 0.18
+            let top = CGPoint(x: tile.midX, y: tile.midY - radius * 0.6)
+            path.addArc(
+                center: top, radius: radius, startAngle: .pi, endAngle: 0.6, clockwise: false)
+            path.addLine(to: CGPoint(x: tile.midX, y: tile.midY + radius * 0.7))
+            path.move(to: CGPoint(x: tile.midX, y: tile.maxY - side * 0.16))
+            path.addLine(to: CGPoint(x: tile.midX, y: tile.maxY - side * 0.14))
+            return [path]
+        default:
+            return []
+        }
+    }
+
+    /// One curly brace, `facing: 1` opening to the right and `-1` to the left.
+    private static func brace(_ frame: CGRect, facing: CGFloat) -> CGPath {
+        let x = facing > 0 ? frame.minX : frame.maxX
+        let reach = 9 * facing
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: x + reach, y: frame.minY))
+        path.addQuadCurve(
+            to: CGPoint(x: x + reach / 2, y: frame.minY + frame.height / 4),
+            control: CGPoint(x: x + reach / 3, y: frame.minY))
+        path.addLine(to: CGPoint(x: x + reach / 2, y: frame.midY - 4))
+        path.addLine(to: CGPoint(x: x, y: frame.midY))
+        path.addLine(to: CGPoint(x: x + reach / 2, y: frame.midY + 4))
+        path.addLine(to: CGPoint(x: x + reach / 2, y: frame.maxY - frame.height / 4))
+        path.addQuadCurve(
+            to: CGPoint(x: x + reach, y: frame.maxY),
+            control: CGPoint(x: x + reach / 3, y: frame.maxY))
+        return path
+    }
+
+    /// A sheet of paper: square on three sides and waved along its foot.
+    private static func sheet(_ frame: CGRect) -> CGPath {
+        let wave = min(frame.height * 0.16, 12)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: frame.minX, y: frame.minY))
+        path.addLine(to: CGPoint(x: frame.maxX, y: frame.minY))
+        path.addLine(to: CGPoint(x: frame.maxX, y: frame.maxY - wave))
+        path.addCurve(
+            to: CGPoint(x: frame.minX, y: frame.maxY - wave),
+            control1: CGPoint(x: frame.maxX - frame.width / 3, y: frame.maxY + wave),
+            control2: CGPoint(x: frame.minX + frame.width / 3, y: frame.maxY - wave * 3))
+        path.closeSubpath()
+        return path
+    }
+
+    /// A drum seen from the side, standing on end.
+    private static func drum(_ frame: CGRect) -> CGPath {
+        let lid = min(frame.height * 0.18, 10)
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: frame.minX, y: frame.minY + lid))
+        path.addCurve(
+            to: CGPoint(x: frame.maxX, y: frame.minY + lid),
+            control1: CGPoint(x: frame.minX, y: frame.minY - lid),
+            control2: CGPoint(x: frame.maxX, y: frame.minY - lid))
+        path.addLine(to: CGPoint(x: frame.maxX, y: frame.maxY - lid))
+        path.addCurve(
+            to: CGPoint(x: frame.minX, y: frame.maxY - lid),
+            control1: CGPoint(x: frame.maxX, y: frame.maxY + lid),
+            control2: CGPoint(x: frame.minX, y: frame.maxY + lid))
+        path.closeSubpath()
+        return path
     }
 
     /// How far to one side a line has to bow: enough to clear whatever stands

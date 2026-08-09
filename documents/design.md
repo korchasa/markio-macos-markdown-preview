@@ -376,6 +376,28 @@ them. A word that names a frame makes no box: a stand-in node parsed before the
 frame was known is folded into the frame it names once the whole source has been
 read.
 
+A node's shape can be written as brackets around its words or asked for by name
+— `A@{ shape: cyl, label: "Store" }`. The two roads meet at `Flowchart.Shape`,
+so the metadata block adds no drawing of its own: it is read into the same case
+the brackets would have produced, and everything downstream — sizing, the
+outline, the marks inside it — is shared. Mermaid answers to three names for
+each of its 48 shapes (a semantic one, a short one, and the aliases), so the
+reader carries the whole table of 144 names and refuses a name that is in none
+of them, because that is where Mermaid stops too. A key the block carries that
+says nothing about the picture is passed over; `icon`, `img` and `image` say
+the node is a picture whatever else is written beside them.
+
+Not every shape is a box with words in it. A collate mark, a com link and a
+junction are read as the symbol alone, so a name written on one belongs to the
+diagram and is not drawn inside it. A triangle is only wide enough for words at
+its base, so its label is moved there rather than to the middle. A sheet of
+paper waves along its foot, so a mark that would otherwise meet the bottom edge
+— the line down a lined document, the tag folded into its corner — stops where
+the wave starts. The marks inside a box are drawn over it rather than cut out of
+it, which keeps the fill and the outline one path and one colour each; the
+copies behind a stacked process are the exception, since they stand under the
+front one and are drawn before it.
+
 A class diagram and an entity–relationship diagram are one layout: titled boxes
 with rows in them, ranked the same way a flowchart is, joined by lines whose
 ends carry the meaning — a hollow triangle for inheritance, a diamond for

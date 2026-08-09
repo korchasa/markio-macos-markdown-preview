@@ -37,6 +37,68 @@ final class MermaidTests: XCTestCase {
         XCTAssertTrue(chart.edges[0].arrow)
     }
 
+    func testANodeCanBeGivenItsShapeAndLabelByName() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    A@{ shape: rounded, label: "Start" }
+                    B@{ shape: diam, label: "Choose" }
+                    C@{ shape: doc, label: "Report" }
+                    A --> B --> C
+                """
+            )
+        )
+        XCTAssertEqual(chart.nodes.map(\.id), ["A", "B", "C"])
+        XCTAssertEqual(chart.nodes.map(\.label), ["Start", "Choose", "Report"])
+        XCTAssertEqual(chart.nodes.map(\.shape), [.rounded, .diamond, .document])
+        XCTAssertEqual(chart.edges.count, 2)
+    }
+
+    func testEveryNameMermaidKnowsForAShapeIsAccepted() throws {
+        // The same shape under its semantic name, its short name and an alias.
+        for name in ["lin-cyl", "disk", "lined-cylinder"] {
+            let chart = try XCTUnwrap(flowchart("flowchart LR\n  A@{ shape: \(name) }"), name)
+            XCTAssertEqual(chart.nodes[0].shape, .linedCylinder, name)
+            // With no label of its own, the node is still called by its id.
+            XCTAssertEqual(chart.nodes[0].label, "A", name)
+        }
+        // A picture is a shape of its own, whichever key names the file.
+        for key in ["icon", "img", "image"] {
+            let chart = try XCTUnwrap(
+                flowchart("flowchart LR\n  A@{ \(key): \"cloud\", label: \"Host\" }"), key)
+            XCTAssertEqual(chart.nodes[0].shape, .pictureBox, key)
+            XCTAssertEqual(chart.nodes[0].label, "Host", key)
+        }
+    }
+
+    func testAShapeNobodyKnowsLeavesTheLineUnread() throws {
+        // Mermaid stops on a shape it cannot name, so the fence is refused.
+        XCTAssertNil(flowchart("flowchart LR\n  A@{ shape: banana }"))
+        // A key it does not use is passed over, and the node still stands.
+        let chart = try XCTUnwrap(
+            flowchart("flowchart LR\n  A@{ shape: rect, label: \"Go\", constraint: \"on\" }"))
+        XCTAssertEqual(chart.nodes[0].shape, .rectangle)
+        XCTAssertEqual(chart.nodes[0].label, "Go")
+    }
+
+    func testANamedShapeIsDrawnAsItsOwnPicture() throws {
+        // Two shapes that share a box size still draw different outlines.
+        func marks(_ shape: String) throws -> Int {
+            let document = Document(
+                text: "```mermaid\nflowchart LR\n  A@{ shape: \(shape), label: \"Body\" }\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            return try XCTUnwrap(layout.box(at: 0)).decorations.count
+        }
+        // A lined process carries one mark more than a plain one, a window pane
+        // two, and a stacked process draws two whole copies behind itself.
+        let plain = try marks("rect")
+        XCTAssertEqual(try marks("lin-rect"), plain + 1)
+        XCTAssertEqual(try marks("win-pane"), plain + 2)
+        XCTAssertGreaterThan(try marks("st-rect"), plain + 2)
+    }
+
     func testAChainIsAsManyEdgesAsItHasArrows() throws {
         let chart = try XCTUnwrap(flowchart("graph LR\n  A --> B --> C"))
         XCTAssertEqual(chart.direction, .right)

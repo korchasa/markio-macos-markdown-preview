@@ -638,7 +638,163 @@ struct Flowchart {
         case arrowDown
         case arrowLeft
         case arrowRight
+
+        // The shapes an author asks for by name, `A@{ shape: manual-file }`.
+        // Every one of them is a symbol from the flowcharting alphabet, drawn
+        // the way that alphabet draws it.
+        /// A card: a rectangle with its top-left corner cut away.
+        case card
+        /// A lined process: a rectangle with a rule down its left.
+        case linedProcess
+        /// A multi-process: a rectangle with two more stacked behind it.
+        case stackedProcess
+        /// A divided process: a rectangle with a rule across its top.
+        case dividedProcess
+        /// A tagged process: a rectangle with a corner tag at its foot.
+        case taggedProcess
+        /// Internal storage: a rectangle ruled once down and once across.
+        case windowPane
+        /// Stored data: a rectangle whose sides both bow the same way.
+        case storedData
+        /// Manual input: a rectangle whose top edge slopes up to the right.
+        case manualInput
+        /// A document: a rectangle with a wave along its foot.
+        case document
+        /// The same with a rule down its left.
+        case linedDocument
+        /// The same with two more stacked behind it.
+        case stackedDocument
+        /// The same with a corner tag at its foot.
+        case taggedDocument
+        /// A delay: a rectangle rounded off at its right end only.
+        case delay
+        /// Direct access storage: a drum lying on its side.
+        case horizontalCylinder
+        /// Disk storage: a drum with a second line under its lid.
+        case linedCylinder
+        /// A data store: a drum on its side, open at the left.
+        case dataStore
+        /// A display: flat at the left, bulging at the right.
+        case display
+        /// Extract and manual file: a triangle standing, and one on its point.
+        case triangle
+        case flippedTriangle
+        /// A loop limit: a pentagon with its top corners cut.
+        case loopLimit
+        /// Collate: two triangles meeting point to point.
+        case hourglass
+        /// A com link: a lightning bolt.
+        case bolt
+        /// A comment: words held by a brace on one side or on both.
+        case braceLeft
+        case braceRight
+        case braces
+        /// A junction: a small filled dot, the same mark a machine starts with.
+        case junction
+        /// A summary: a circle with a cross through it.
+        case summary
+        /// Paper tape: a wave along the top and another along the foot.
+        case paperTape
+        /// A text block: the words alone, with nothing drawn around them.
+        case text
+        /// `A@{ icon: "fa:user" }` and `A@{ img: "…" }`: a box whose picture
+        /// lives somewhere this app will not go, since it fetches nothing. The
+        /// frame says a picture belongs here and the question mark says it
+        /// could not be had — the same mark Mermaid draws for an icon out of a
+        /// pack the page never registered.
+        case pictureBox
     }
+
+    /// `shape: manual-file, label: "File Handling"` — what a node's braces say
+    /// about it in words rather than in punctuation.
+    ///
+    /// Pairs are written one per line or several to a line, and a value may be
+    /// quoted. A key this has no use for is passed over, the way Mermaid passes
+    /// over one; a `shape` naming something that is not a shape is not, because
+    /// Mermaid has no such shape either.
+    static func metadata(_ body: String) -> (label: String?, shape: Shape?)? {
+        var label: String?
+        var shape: Shape?
+        var picture = false
+        for pair in body.split(whereSeparator: { $0 == "," || $0 == "\n" }) {
+            let text = pair.trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { continue }
+            guard let colon = text.firstIndex(of: ":") else { return nil }
+            let key = String(text[text.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+            let value = String(text[text.index(after: colon)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+            switch key {
+            case "shape":
+                guard let read = shapeNames[value] else { return nil }
+                shape = read
+            case "label", "title":
+                label = value
+            case "icon", "img", "image":
+                picture = true
+            default:
+                continue
+            }
+        }
+        if picture, shape == nil { shape = .pictureBox }
+        return (label, shape)
+    }
+
+    /// Every name an author may write in `A@{ shape: … }`, taken from Mermaid's
+    /// own table of shapes and their spellings — 48 shapes, and each of them
+    /// answers to several names.
+    static let shapeNames: [String: Shape] = [
+        "bang": .bang, "bolt": .bolt, "bow-rect": .storedData,
+        "bow-tie-rectangle": .storedData, "brace": .braceLeft, "brace-l": .braceLeft,
+        "brace-r": .braceRight, "braces": .braces, "card": .card, "circ": .circle,
+        "circle": .circle, "cloud": .cloud, "collate": .hourglass, "com-link": .bolt,
+        "comment": .braceLeft, "cross-circ": .summary, "crossed-circle": .summary,
+        "curv-trap": .display, "curved-trapezoid": .display, "cyl": .cylinder,
+        "cylinder": .cylinder, "das": .horizontalCylinder, "data-store": .dataStore,
+        "database": .cylinder, "datastore": .dataStore, "db": .cylinder,
+        "dbl-circ": .doubleCircle, "decision": .diamond, "delay": .delay, "diam": .diamond,
+        "diamond": .diamond, "disk": .linedCylinder, "display": .display,
+        "div-proc": .dividedProcess, "div-rect": .dividedProcess,
+        "divided-process": .dividedProcess, "divided-rectangle": .dividedProcess,
+        "doc": .document, "docs": .stackedDocument, "document": .document,
+        "documents": .stackedDocument, "double-circle": .doubleCircle,
+        "doublecircle": .doubleCircle, "event": .rounded, "extract": .triangle,
+        "f-circ": .junction, "filled-circle": .junction, "flag": .paperTape,
+        "flip-tri": .flippedTriangle, "flipped-triangle": .flippedTriangle, "fork": .bar,
+        "forkJoin": .bar, "fr-circ": .endPoint, "fr-rect": .subroutine,
+        "framed-circle": .endPoint, "framed-rectangle": .subroutine,
+        "h-cyl": .horizontalCylinder, "half-rounded-rectangle": .delay, "hex": .hexagon,
+        "hexagon": .hexagon, "horizontal-cylinder": .horizontalCylinder,
+        "hourglass": .hourglass, "in-out": .parallelogram, "internal-storage": .windowPane,
+        "inv-trapezoid": .trapezoidAlt, "inv_trapezoid": .trapezoidAlt, "join": .bar,
+        "junction": .junction, "lean-l": .parallelogramAlt, "lean-left": .parallelogramAlt,
+        "lean-r": .parallelogram, "lean-right": .parallelogram,
+        "lean_left": .parallelogramAlt, "lean_right": .parallelogram,
+        "lightning-bolt": .bolt, "lin-cyl": .linedCylinder, "lin-doc": .linedDocument,
+        "lin-proc": .linedProcess, "lin-rect": .linedProcess,
+        "lined-cylinder": .linedCylinder, "lined-document": .linedDocument,
+        "lined-process": .linedProcess, "lined-rectangle": .linedProcess,
+        "loop-limit": .loopLimit, "manual": .trapezoidAlt, "manual-file": .flippedTriangle,
+        "manual-input": .manualInput, "notch-pent": .loopLimit, "notch-rect": .card,
+        "notched-pentagon": .loopLimit, "notched-rectangle": .card, "odd": .flag,
+        "out-in": .parallelogramAlt, "paper-tape": .paperTape, "pill": .stadium,
+        "prepare": .hexagon, "priority": .trapezoid, "proc": .rectangle,
+        "process": .rectangle, "processes": .stackedProcess, "procs": .stackedProcess,
+        "question": .diamond, "rect": .rectangle, "rect_left_inv_arrow": .flag,
+        "rectangle": .rectangle, "rounded": .rounded, "roundedRect": .rounded,
+        "shaded-process": .linedProcess, "sl-rect": .manualInput,
+        "sloped-rectangle": .manualInput, "sm-circ": .point, "small-circle": .point,
+        "squareRect": .rectangle, "st-doc": .stackedDocument, "st-rect": .stackedProcess,
+        "stacked-document": .stackedDocument, "stacked-rectangle": .stackedProcess,
+        "stadium": .stadium, "start": .point, "stateEnd": .endPoint, "stateStart": .point,
+        "stop": .endPoint, "stored-data": .storedData, "subproc": .subroutine,
+        "subprocess": .subroutine, "subroutine": .subroutine, "summary": .summary,
+        "tag-doc": .taggedDocument, "tag-proc": .taggedProcess, "tag-rect": .taggedProcess,
+        "tagged-document": .taggedDocument, "tagged-process": .taggedProcess,
+        "tagged-rectangle": .taggedProcess, "terminal": .stadium, "text": .text,
+        "trap-b": .trapezoid, "trap-t": .trapezoidAlt, "trapezoid": .trapezoid,
+        "trapezoid-bottom": .trapezoid, "trapezoid-top": .trapezoidAlt, "tri": .triangle,
+        "triangle": .triangle, "win-pane": .windowPane, "window-pane": .windowPane,
+    ]
 
     enum Stroke {
         case solid
@@ -1124,6 +1280,20 @@ struct Flowchart {
             guard !id.isEmpty else { return nil }
             var label: String?
             var shape: Shape?
+            // `A@{ shape: manual-file, label: "File Handling" }` says in words
+            // what the brackets say in punctuation.
+            if starts(with: ["@", "{"]) {
+                advance(2)
+                var body = ""
+                while let char = peek(), char != "}" {
+                    body.append(char)
+                    advance()
+                }
+                guard peek() == "}" else { return nil }
+                advance()
+                guard let read = Flowchart.metadata(body) else { return nil }
+                return (id, read.label, read.shape)
+            }
             // `[/…/]` and `[/…\]` open the same way and close differently, so a
             // candidate that does not close is put back rather than failing the
             // whole diagram.

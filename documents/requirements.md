@@ -71,7 +71,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs —
   nested, turned by a `direction` line of their own, and named by edges —
   `classDef`/`class`/`style`/`linkStyle` colouring in any colour CSS can name,
-  invisible links, `click` lines and labelled links) or a sequence diagram
+  invisible links, `click` lines and labelled links, and a node given its shape
+  and its words by name — `A@{ shape: cyl, label: "Store" }` — under any of the
+  names Mermaid answers to, semantic, short or aliased) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars,
   `autonumber`, a `rect` tinting a run of messages and a `box` framing a team),
   a `pie` chart, a `stateDiagram-v2` with the machines inside its states, its
