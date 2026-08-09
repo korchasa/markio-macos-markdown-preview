@@ -513,8 +513,9 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
   on hover, and `--capture-click=<x>,<y>` clicks once, which is how folding a
   section away is checked. `markio2-bench snapshot` draws a document offscreen at any width,
   scroll offset and appearance, and takes an optional baseline so a comparison
-  can be looked at the same way. Both work without screen recording permission,
-  which is what makes visual checks possible from a script.
+  can be looked at the same way; `markio2-bench diagram` draws one Mermaid source
+  alone and exits 3 when the layout refuses it. All of them work without screen
+  recording permission, which is what makes visual checks possible from a script.
 - The Quick Look extension is checked structurally — bundle layout, plist,
   ad-hoc signature, entry point, the `@objc` class name the plist pins — and the
   rendering it does is the renderer's, already covered by its own tests. What

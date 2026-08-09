@@ -52,6 +52,15 @@ quits. The bench `snapshot` renders a document offscreen at a given width,
 height, appearance and scroll offset. Neither needs screen recording
 permission; `screencapture` does, and does not have it.
 
+One Mermaid source on its own, without a document around it, is
+
+```bash
+.build/release/markio2-bench diagram doc.mmd /tmp/shot.png 760 dark
+```
+
+which exits 3 and prints `refused` when the diagram is one the layout does not
+draw — the same answer the fence gives when it stays a code block.
+
 `--capture-after=<seconds>` delays the shot, which is how live reload is
 checked: launch with a delay, rewrite the file meanwhile, and see whether the
 window followed.

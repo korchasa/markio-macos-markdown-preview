@@ -1,0 +1,791 @@
+# Mermaid side by side
+
+Every example below is taken word for word from Mermaid's own documentation —
+[`packages/mermaid/src/docs/syntax`](https://github.com/mermaid-js/mermaid/tree/f68935690ef7/packages/mermaid/src/docs/syntax),
+commit `f68935690ef7`, 30 July 2026 — with one exception, marked where it appears. In
+every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2 is
+on the right, drawing the same source with CoreText and `CGPath`: no web view, no
+diagram library.
+
+Of the 36 examples, Markio 2 draws 24 and shows 12 as source. A fence it
+cannot draw whole stays a fenced code block rather than becoming a picture that
+asserts something its author did not write, so every “shown as source” line below
+says which construct stopped it.
+
+The example chosen for each kind is that documentation page's headline one. Where
+it is not drawn, the page's next-simplest example is shown as well, so every kind
+appears drawn at least once — except C4, where none of Mermaid's six examples is
+drawable and the drawn one below was written here instead.
+
+## What is missing
+
+5 of the 12 refusals are one thing: Mermaid's YAML front matter, the
+`---` / `title:` / `---` preamble. Markio 2 does not read it at all, and it carries
+a title the drawing would then have to show. That is the one gap here worth
+closing.
+
+The rest are constructs Markio 2 deliberately does not draw — a frame inside a
+frame, a machine inside a machine, a note beside a class, an icon fetched from a
+font, a restyling applied to a picture already drawn — and one it cannot place: an
+edge that names a subgraph ends on that frame in Mermaid, and Markio 2 has no way
+to end an edge anywhere but on a box.
+
+## What this comparison turned up
+
+Running Mermaid's own examples through the reader found three defects, all fixed
+before this file was written:
+
+- `--->` lost its arrowhead. A longer line is the same line, and the head is read
+  after the length rather than with it.
+- An edge naming a subgraph quietly invented a box with the frame's name, so the
+  picture held both a frame and a box called `one`. It is refused now.
+- A C4 boundary inside a boundary put every element in the innermost frame and
+  dropped the outer one without saying so. It is refused now.
+
+## Flowchart
+
+From [`flowchart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/flowchart.md), example 112.
+
+```text
+flowchart LR
+    A[Hard edge] -->|Link text| B(Round edge)
+    B --> C{Decision}
+    C -->|One| D[Result one]
+    C -->|Two| E[Result two]
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart.png)
+
+## Flowchart with subgraphs
+
+From [`flowchart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/flowchart.md), example 95.
+
+```text
+flowchart TB
+    c1-->a2
+    subgraph one
+    a1-->a2
+    end
+    subgraph two
+    b1-->b2
+    end
+    subgraph three
+    c1-->c2
+    end
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-subgraphs.png)
+
+## Flowchart with an edge to a subgraph
+
+From [`flowchart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/flowchart.md), example 97.
+
+```text
+flowchart TB
+    c1-->a2
+    subgraph one
+    a1-->a2
+    end
+    subgraph two
+    b1-->b2
+    end
+    subgraph three
+    c1-->c2
+    end
+    one --> two
+    three --> two
+    two --> c2
+```
+
+**Markio 2 shows this as source**, because of `one --> two` joins a frame, and an edge to a frame is not an edge to a box.
+
+![Mermaid's own drawing](images/mermaid/flowchart-frame-edge.png)
+
+## Flowchart with a direction inside a subgraph
+
+From [`flowchart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/flowchart.md), example 99.
+
+```text
+flowchart LR
+    subgraph subgraph1
+        direction TB
+        top1[top] --> bottom1[bottom]
+    end
+    subgraph subgraph2
+        direction TB
+        top2[top] --> bottom2[bottom]
+    end
+    %% ^ These subgraphs are identical, except for the links to them:
+
+    %% Link *to* subgraph1: subgraph1 direction is maintained
+    outside --> subgraph1
+    %% Link *within* subgraph2:
+    %% subgraph2 inherits the direction of the top-level graph (LR)
+    outside ---> top2
+```
+
+**Markio 2 shows this as source**, because of `direction TB` turns one frame's own contents, and `outside --> subgraph1` joins a frame.
+
+![Mermaid's own drawing](images/mermaid/flowchart-direction.png)
+
+## Sequence diagram
+
+From [`sequenceDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/sequenceDiagram.md), example 25.
+
+```text
+sequenceDiagram
+    Alice->>Bob: Hello Bob, how are you?
+    alt is sick
+        Bob->>Alice: Not so good :(
+    else is well
+        Bob->>Alice: Feeling fresh like a daisy
+    end
+    opt Extra response
+        Bob->>Alice: Thanks for asking
+    end
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/sequence.png)
+
+## Class diagram
+
+From [`classDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/classDiagram.md), example 10.
+
+```text
+classDiagram
+classA <|-- classB
+classC *-- classD
+classE o-- classF
+classG <-- classH
+classI -- classJ
+classK <.. classL
+classM <|.. classN
+classO .. classP
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/class.png)
+
+## Class diagram with notes
+
+From [`classDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/classDiagram.md), example 1.
+
+```text
+---
+title: Animal example
+---
+classDiagram
+    note "From Duck till Zebra"
+    Animal <|-- Duck
+    note for Duck "can fly<br>can swim<br>can dive<br>can help in debugging"
+    Animal <|-- Fish
+    Animal <|-- Zebra
+    Animal : +int age
+    Animal : +String gender
+    Animal: +isMammal()
+    Animal: +mate()
+    class Duck{
+        +String beakColor
+        +swim()
+        +quack()
+    }
+    class Fish{
+        -int sizeInFeet
+        -canEat()
+    }
+    class Zebra{
+        +bool is_wild
+        +run()
+    }
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter, and the two `note` lines.
+
+![Mermaid's own drawing](images/mermaid/class-notes.png)
+
+## State diagram
+
+From [`stateDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/stateDiagram.md), example 2.
+
+```text
+stateDiagram
+    [*] --> Still
+    Still --> [*]
+
+    Still --> Moving
+    Moving --> Still
+    Moving --> Crash
+    Crash --> [*]
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/state.png)
+
+## State diagram with composite states
+
+From [`stateDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/stateDiagram.md), example 9.
+
+```text
+stateDiagram-v2
+    [*] --> First
+    state First {
+        [*] --> second
+        second --> [*]
+    }
+
+    [*] --> NamedComposite
+    NamedComposite: Another Composite
+    state NamedComposite {
+        [*] --> namedSimple
+        namedSimple --> [*]
+        namedSimple: Another simple
+    }
+```
+
+**Markio 2 shows this as source**, because of `state First { … }` — a machine inside a machine.
+
+![Mermaid's own drawing](images/mermaid/state-composite.png)
+
+## Entity relationship diagram
+
+From [`entityRelationshipDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/entityRelationshipDiagram.md), example 2.
+
+```text
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    CUSTOMER {
+        string name
+        string custNumber
+        string sector
+    }
+    ORDER ||--|{ LINE-ITEM : contains
+    ORDER {
+        int orderNumber
+        string deliveryAddress
+    }
+    LINE-ITEM {
+        string productCode
+        int quantity
+        float pricePerUnit
+    }
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/er.png)
+
+## Entity relationship diagram with a title
+
+From [`entityRelationshipDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/entityRelationshipDiagram.md), example 1.
+
+```text
+---
+title: Order example
+---
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter.
+
+![Mermaid's own drawing](images/mermaid/er-title.png)
+
+## User journey
+
+From [`userJourney.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/userJourney.md), example 1.
+
+```text
+journey
+    title My working day
+    section Go to work
+      Make tea: 5: Me
+      Go upstairs: 3: Me
+      Do work: 1: Me, Cat
+    section Go home
+      Go downstairs: 5: Me
+      Sit down: 5: Me
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/journey.png)
+
+## Gantt chart
+
+From [`gantt.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/gantt.md), example 1.
+
+```text
+gantt
+    title A Gantt Diagram
+    dateFormat YYYY-MM-DD
+    section Section
+        A task          :a1, 2014-01-01, 30d
+        Another task    :after a1, 20d
+    section Another
+        Task in Another :2014-01-12, 12d
+        another task    :24d
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/gantt.png)
+
+## Pie chart
+
+From [`pie.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/pie.md), example 1.
+
+```text
+pie title Pets adopted by volunteers
+    "Dogs" : 386
+    "Cats" : 85
+    "Rats" : 15
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/pie.png)
+
+## Quadrant chart
+
+From [`quadrantChart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/quadrantChart.md), example 1.
+
+```text
+quadrantChart
+    title Reach and engagement of campaigns
+    x-axis Low Reach --> High Reach
+    y-axis Low Engagement --> High Engagement
+    quadrant-1 We should expand
+    quadrant-2 Need to promote
+    quadrant-3 Re-evaluate
+    quadrant-4 May be improved
+    Campaign A: [0.3, 0.6]
+    Campaign B: [0.45, 0.23]
+    Campaign C: [0.57, 0.69]
+    Campaign D: [0.78, 0.34]
+    Campaign E: [0.40, 0.34]
+    Campaign F: [0.35, 0.78]
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/quadrant.png)
+
+## Requirement diagram
+
+From [`requirementDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/requirementDiagram.md), example 1.
+
+```text
+    requirementDiagram
+
+    requirement test_req {
+    id: 1
+    text: the test text.
+    risk: high
+    verifymethod: test
+    }
+
+    element test_entity {
+    type: simulation
+    }
+
+    test_entity - satisfies -> test_req
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/requirement.png)
+
+## Git graph
+
+From [`gitgraph.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/gitgraph.md), example 5.
+
+```text
+    gitGraph
+       commit
+       commit id: "Normal" tag: "v1.0.0"
+       commit
+       commit id: "Reverse" type: REVERSE tag: "RC_1"
+       commit
+       commit id: "Highlight" type: HIGHLIGHT tag: "8.8.4"
+       commit
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/git.png)
+
+## Git graph with a title
+
+From [`gitgraph.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/gitgraph.md), example 1.
+
+```text
+---
+title: Example Git diagram
+---
+gitGraph
+   commit
+   commit
+   branch develop
+   checkout develop
+   commit
+   commit
+   checkout main
+   merge develop
+   commit
+   commit
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter.
+
+![Mermaid's own drawing](images/mermaid/git-title.png)
+
+## Mindmap
+
+From [`mindmap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/mindmap.md), example 12.
+
+```text
+mindmap
+Root
+    A
+        B
+      C
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap.png)
+
+## Mindmap with icons
+
+From [`mindmap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/mindmap.md), example 1.
+
+```text
+mindmap
+  root((mindmap))
+    Origins
+      Long history
+      ::icon(fa fa-book)
+      Popularisation
+        British popular psychology author Tony Buzan
+    Research
+      On effectiveness<br/>and features
+      On Automatic creation
+        Uses
+            Creative techniques
+            Strategic planning
+            Argument mapping
+    Tools
+      Pen and paper
+      Mermaid
+```
+
+**Markio 2 shows this as source**, because of `::icon(fa fa-book)`.
+
+![Mermaid's own drawing](images/mermaid/mindmap-icons.png)
+
+## Timeline
+
+From [`timeline.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/timeline.md), example 1.
+
+```text
+timeline
+    title History of Social Media Platform
+    2002 : LinkedIn
+    2004 : Facebook
+         : Google
+    2005 : YouTube
+    2006 : Twitter
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/timeline.png)
+
+## ZenUML
+
+From [`zenuml.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/zenuml.md), example 15.
+
+```text
+zenuml
+    Alice->Bob: Hello Bob, how are you?
+    if(is_sick) {
+      Bob->Alice: Not so good :(
+    } else {
+      Bob->Alice: Feeling fresh like a daisy
+    }
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/zenuml.png)
+
+## Sankey diagram
+
+From [`sankey.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/sankey.md), example 2.
+
+```text
+sankey
+
+%% source,target,value
+Electricity grid,Over generation / exports,104.453
+Electricity grid,Heating and cooling - homes,113.726
+Electricity grid,H2 conversion,27.14
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/sankey.png)
+
+## XY chart
+
+From [`xyChart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/xyChart.md), example 1.
+
+```text
+xychart
+    title "Sales Revenue"
+    x-axis [jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec]
+    y-axis "Revenue (in $)" 4000 --> 11000
+    bar [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]
+    line [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/xy.png)
+
+## Block diagram
+
+From [`block.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/block.md), example 19.
+
+```text
+block
+  columns 3
+  a space b
+  c   d   e
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/block.png)
+
+## Block diagram with a block inside a block
+
+From [`block.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/block.md), example 1.
+
+```text
+block
+columns 1
+  db(("DB"))
+  blockArrowId6<["&nbsp;&nbsp;&nbsp;"]>(down)
+  block:ID
+    A
+    B["A wide one in the middle"]
+    C
+  end
+  space
+  D
+  ID --> D
+  C --> D
+  style B fill:#969,stroke:#333,stroke-width:4px
+```
+
+**Markio 2 shows this as source**, because of `block:ID … end` — a frame inside a frame — and the `blockArrowId6<[…]>(down)` arrow.
+
+![Mermaid's own drawing](images/mermaid/block-nested.png)
+
+## Packet diagram
+
+From [`packet.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/packet.md), example 2.
+
+```text
+packet
+title UDP Packet
++16: "Source Port"
++16: "Destination Port"
+32-47: "Length"
+48-63: "Checksum"
+64-95: "Data (variable length)"
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/packet.png)
+
+## Packet diagram with a title
+
+From [`packet.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/packet.md), example 1.
+
+```text
+---
+title: "TCP Packet"
+---
+packet
+0-15: "Source Port"
+16-31: "Destination Port"
+32-63: "Sequence Number"
+64-95: "Acknowledgment Number"
+96-99: "Data Offset"
+100-105: "Reserved"
+106: "URG"
+107: "ACK"
+108: "PSH"
+109: "RST"
+110: "SYN"
+111: "FIN"
+112-127: "Window"
+128-143: "Checksum"
+144-159: "Urgent Pointer"
+160-191: "(Options and Padding)"
+192-255: "Data (variable length)"
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter.
+
+![Mermaid's own drawing](images/mermaid/packet-title.png)
+
+## Kanban board
+
+From [`kanban.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/kanban.md), example 2.
+
+```text
+kanban
+todo[Todo]
+  id3[Update Database Function]@{ ticket: MC-2037, assigned: 'knsv', priority: 'High' }
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/kanban.png)
+
+## Kanban board with a ticket base URL
+
+From [`kanban.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/kanban.md), example 3.
+
+```text
+---
+config:
+  kanban:
+    ticketBaseUrl: 'https://mermaidchart.atlassian.net/browse/#TICKET#'
+---
+kanban
+  Todo
+    [Create Documentation]
+    docs[Create Blog about the new diagram]
+  [In progress]
+    id6[Create renderer so that it works in all cases. We also add some extra text here for testing purposes. And some more just for the extra flare.]
+  id9[Ready for deploy]
+    id8[Design grammar]@{ assigned: 'knsv' }
+  id10[Ready for test]
+    id4[Create parsing tests]@{ ticket: MC-2038, assigned: 'K.Sveidqvist', priority: 'High' }
+    id66[last item]@{ priority: 'Very Low', assigned: 'knsv' }
+  id11[Done]
+    id5[define getData]
+    id2[Title of diagram is more than 100 chars when user duplicates diagram with 100 char]@{ ticket: MC-2036, priority: 'Very High'}
+    id3[Update DB function]@{ ticket: MC-2037, assigned: knsv, priority: 'High' }
+
+  id12[Can't reproduce]
+    id3[Weird flickering in Firefox]
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter.
+
+![Mermaid's own drawing](images/mermaid/kanban-config.png)
+
+## Architecture diagram
+
+From [`architecture.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/architecture.md), example 1.
+
+```text
+architecture-beta
+    group api(cloud)[API]
+
+    service db(database)[Database] in api
+    service disk1(disk)[Storage] in api
+    service disk2(disk)[Storage] in api
+    service server(server)[Server] in api
+
+    db:L -- R:server
+    disk1:T -- B:server
+    disk2:T -- B:db
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/architecture.png)
+
+## C4 diagram
+
+From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/c4.md), example 5.
+
+```text
+    C4Dynamic
+    title Dynamic diagram for Internet Banking System - API Application
+
+    ContainerDb(c4, "Database", "Relational Database Schema", "Stores user registration information, hashed authentication credentials, access logs, etc.")
+    Container(c1, "Single-Page Application", "JavaScript and Angular", "Provides all of the Internet banking functionality to customers via their web browser.")
+    Container_Boundary(b, "API Application") {
+      Component(c3, "Security Component", "Spring Bean", "Provides functionality Related to signing in, changing passwords, etc.")
+      Component(c2, "Sign In Controller", "Spring MVC Rest Controller", "Allows users to sign in to the Internet Banking System.")
+    }
+    Rel(c1, c2, "Submits credentials to", "JSON/HTTPS")
+    Rel(c2, c3, "Calls isAuthenticated() on")
+    Rel(c3, c4, "select * from users where username = ?", "JDBC")
+
+    UpdateRelStyle(c1, c2, $textColor="red", $offsetY="-40")
+    UpdateRelStyle(c2, c3, $textColor="red", $offsetX="-40", $offsetY="60")
+    UpdateRelStyle(c3, c4, $textColor="red", $offsetY="-40", $offsetX="10")
+```
+
+**Markio 2 shows this as source**, because of the `UpdateRelStyle` and `UpdateLayoutConfig` lines, which restyle a picture already drawn.
+
+![Mermaid's own drawing](images/mermaid/c4.png)
+
+## C4 diagram, written here
+
+Not from Mermaid's documentation: every C4 example there ends in an
+`Update…` restyling, so this one was written for this comparison.
+
+```text
+C4Context
+    title Reading a document
+    Person(reader, "Reader", "Opens a file")
+    System_Boundary(viewer, "Viewer") {
+        System(parser, "Parser", "Blocks and inline runs")
+        SystemDb(cache, "Layout cache", "Boxes already measured")
+    }
+    System_Ext(disk, "The file on disk")
+    Rel(reader, parser, "Opens a file")
+    Rel(parser, cache, "Fills")
+    Rel(parser, disk, "Maps")
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/c4-ours.png)
+
+## Radar chart
+
+From [`radar.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/radar.md), example 2.
+
+```text
+radar-beta
+  title Restaurant Comparison
+  axis food["Food Quality"], service["Service"], price["Price"]
+  axis ambiance["Ambiance"]
+
+  curve a["Restaurant A"]{4, 3, 2, 4}
+  curve b["Restaurant B"]{3, 4, 3, 3}
+  curve c["Restaurant C"]{2, 3, 4, 2}
+  curve d["Restaurant D"]{2, 2, 4, 3}
+
+  graticule polygon
+  max 5
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/radar.png)
+
+## Radar chart with a title
+
+From [`radar.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/radar.md), example 1.
+
+```text
+---
+title: "Grades"
+---
+radar-beta
+  axis m["Math"], s["Science"], e["English"]
+  axis h["History"], g["Geography"], a["Art"]
+  curve a["Alice"]{85, 90, 80, 70, 75, 90}
+  curve b["Bob"]{70, 75, 85, 80, 90, 85}
+
+  max 100
+  min 0
+```
+
+**Markio 2 shows this as source**, because of the YAML front matter.
+
+![Mermaid's own drawing](images/mermaid/radar-title.png)
+
+## Treemap
+
+From [`treemap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/treemap.md), example 2.
+
+```text
+treemap-beta
+"Products"
+    "Electronics"
+        "Phones": 50
+        "Computers": 30
+        "Accessories": 20
+    "Clothing"
+        "Men's": 40
+        "Women's": 40
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/treemap.png)
