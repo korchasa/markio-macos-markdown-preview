@@ -76,5 +76,13 @@ let package = Package(
             dependencies: ["MarkdownKit", "MarkioRender"],
             path: "Tests/MarkioRenderTests"
         ),
+        // The app shell itself: the window and what a drag on it may do. The
+        // window controller lives in the executable target, so the tests depend
+        // on the executable rather than on a module carved out to be testable.
+        .testTarget(
+            name: "Markio2Tests",
+            dependencies: ["Markio2"],
+            path: "Tests/Markio2Tests"
+        ),
     ]
 )

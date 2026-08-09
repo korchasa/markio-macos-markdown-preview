@@ -517,6 +517,13 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
 - Tests cover the block scanner (structure dumps), the inline parser (run
   dumps), the Fenwick tree against naive prefix sums, and the parity between
   find's plain text and the renderer's.
+- `Markio2Tests` depends on the executable target itself, which is how the
+  window is testable without carving a module out of the app shell. What it
+  holds is what a window has to allow: a drag on its edge, expressed the way
+  AppKit expresses one — a size constraint at priority 510 — has to win against
+  everything the window's own content asks for. It also puts the autosaved
+  window frame back afterwards, so running the tests never decides how wide the
+  app opens next.
 - `--capture=<path>` draws the real window to a PNG; `--capture-hover=<x>,<y>`
   parks the pointer first, which is the only way to see a control that appears
   on hover, and `--capture-click=<x>,<y>` clicks once, which is how folding a
