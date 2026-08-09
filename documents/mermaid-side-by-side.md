@@ -12,9 +12,11 @@ measure, not the count: what a comparison like this is for is the difference
 between two drawings of one source, and that is what the notes below record.
 
 The pages these come from hold 408 examples in all. Run end to end, Mermaid draws
-403 of them and Markio 2 draws 272, and there is no example Markio 2 draws that
-Mermaid does not. The 131 it still leaves as source are mostly one feature apiece:
-`A@{ shape: … }` node metadata accounts for 53 of them on its own.
+403 of them and Markio 2 draws 363, and there is no example Markio 2 draws that
+Mermaid does not. The 40 it still leaves as source are spread thin — zenuml seven,
+state diagrams five, architecture and class diagrams four apiece, and one or two
+each across nine more kinds — and each is a feature of its own rather than a
+common cause.
 
 The example chosen for each kind is that documentation page's headline one, and
 for several kinds a second, harder example is shown as well — the one that used to
