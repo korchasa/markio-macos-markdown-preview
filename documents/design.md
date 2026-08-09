@@ -339,6 +339,14 @@ and in which ends their lines may have, which is why `BoxDiagram` is shared and
 written type first and name second, the order it is declared in: `string email`
 and not `email string`, which would say the attribute is called `string`.
 
+A class diagram's `note` is a slip of paper laid beside the picture rather than
+in it. One tied to a box stands to that box's left, joined to it by a dotted
+line, and is slid further left until it covers nothing — a note laid over a box
+says less than no note at all. One standing on its own has no box to belong to,
+so it goes in a row above everything. Either may end up outside the rectangle
+the boxes were laid out in, which needs no arithmetic here: the drawing is
+measured by what was drawn, so the picture grows to hold them.
+
 A mindmap is a tree, and depth alone decides the column, so every node the same
 number of steps from the root lines up. A parent is then centred on the children
 it opens, which is what makes a branch read as one thing however deep it goes. A
@@ -444,7 +452,19 @@ three lines of one label, which is what multi-line labels were added for and wha
 `title` line rather than in a preamble, so `C4Diagram.parse` hands that name back
 beside the chart and the reader wraps the pair in the same `titled` case a
 preamble produces — one way of drawing a diagram's name, whichever way it was
-written.
+written. A boundary inside a boundary is a frame inside a frame, which the
+flowchart draws.
+
+C4 hangs `$key="value"` settings off its lines, and writes the same settings
+again in the `Update…` lines underneath, which repaint what has already been
+written. Both go through one reader: the keys that name a colour paint the box,
+the frame or the line, and the rest — where Mermaid nudges a word, how many
+shapes it packs into a row, the sprite it draws, the tag it hangs off a box — is
+read and let go, for the same reason `Rel_U` is. This ranks and draws its own
+graph, so a hint about someone else's layout says nothing about this picture. A
+key nobody knows, a colour that is no colour, and an `Update…` line naming
+something nobody wrote are all refused, because any of them may be the thing the
+author cared about.
 
 An architecture diagram takes its grid from its edges. In that language
 `db:L -- R:server` is not decoration — it says the server stands to the left of

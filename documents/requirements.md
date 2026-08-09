@@ -72,12 +72,14 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   nested, turned by a `direction` line of their own, and named by edges —
   `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
-  `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram`, an
+  `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram` with the
+  notes beside its classes, an
   `erDiagram`, a `mindmap`, a `timeline`, a `journey`, a `gantt` chart written in
   the default date format, a `quadrantChart`, an `xychart-beta`, a `gitGraph`
   whose lanes run across the page, a `packet-beta`, a `kanban` board, a
   `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
-  (`C4Context` and its four siblings), an `architecture-beta` whose services
+  (`C4Context` and its four siblings, with the `Update…` lines that repaint
+  it), an `architecture-beta` whose services
   use the icons Mermaid ships, a `radar-beta`, a `block-beta` or a `zenuml`
   written as calls, replies and the blocks around them. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a
@@ -85,7 +87,7 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   an excluded weekday, a cherry-pick, a commit of a kind it has no mark for, a
   gap between packet fields, a flow that
   returns to where it came from,
-  a C4 restyling, a C4 boundary inside a boundary, an icon from a downloaded
+  an icon from a downloaded
   pack, a group inside a group, architecture edges that send two services to the
   same place, a radar curve short of a value, a block inside a block, or a
   ZenUML call with nobody calling it — is not read, and the fence stays a

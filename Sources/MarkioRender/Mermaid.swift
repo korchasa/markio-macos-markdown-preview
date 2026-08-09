@@ -411,6 +411,9 @@ struct Flowchart {
         var stroke: Stroke
         /// `---` joins without an arrowhead; `-->` points.
         var arrow: Bool
+        /// A colour for the line and one for its words, when something has said
+        /// what they should be. `fill` means nothing on a line.
+        var style = Style()
 
         init(from: End, to: End, label: String, stroke: Stroke, arrow: Bool) {
             self.from = from
@@ -438,6 +441,8 @@ struct Flowchart {
         /// `direction TB` inside the frame turns the frame's own contents. A
         /// frame that does not say keeps the direction of whatever holds it.
         var direction: Direction?
+        /// What the frame is painted with, when something has said.
+        var style = Style()
     }
 
     var direction: Direction

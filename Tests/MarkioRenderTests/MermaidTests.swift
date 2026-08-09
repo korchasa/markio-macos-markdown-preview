@@ -489,10 +489,37 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.links.map(\.dashed), [false, true])
     }
 
+    /// A `note` is a slip of paper, tied to one box or standing on its own.
+    func testAClassDiagramReadsItsNotes() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                classDiagram
+                    note "From Duck till Zebra"
+                    Animal <|-- Duck
+                    note for Duck "can fly<br>can swim"
+                """
+            )
+        )
+        XCTAssertEqual(diagram.notes.map(\.text), ["From Duck till Zebra", "can fly<br>can swim"])
+        XCTAssertEqual(diagram.notes.map(\.attached), [nil, 1])
+        // A note stands beside the picture rather than inside it, so the words
+        // it carries make the drawing wider.
+        let plain = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "classDiagram\n Animal <|-- Duck", theme: Theme(isDark: false), width: 900))
+        let noted = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "classDiagram\n Animal <|-- Duck\n note for Duck \"can fly\"",
+                theme: Theme(isDark: false), width: 900))
+        XCTAssertGreaterThan(noted.width, plain.width)
+    }
+
     func testWhatTheBoxDiagramsRefuse() {
         for source in [
-            // A note, a namespace and a click handler are not drawn.
-            "classDiagram\n class A\n note \"hello\"",
+            // A note with nothing written on it, a namespace and a click handler.
+            "classDiagram\n class A\n note",
+            "classDiagram\n class A\n note for A",
             "classDiagram\n namespace one {\n class A\n }",
             "classDiagram\n class A\n click A href \"x\"",
             "classDiagram\n A B C",
@@ -1079,12 +1106,12 @@ final class MermaidTests: XCTestCase {
             // a diagram that is already drawn.
             "C4Context\n  Person(a)",
             "C4Context\n  System_Boundary(b, \"B\") {\n  System(a, \"A\")",
-            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"red\")",
+            // A restyling of something nobody wrote, a colour that is no colour,
+            // and a setting nobody knows.
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(b, $bgColor=\"red\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartreuse\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
-            // A boundary inside a boundary: the elements would all land in the
-            // innermost frame and the outer one would quietly vanish.
-            "C4Context\n  Enterprise_Boundary(b0, \"Bank\") {\n"
-                + "    System_Boundary(b1, \"Core\") {\n      System(a, \"A\")\n    }\n  }",
             "C4Context",
             // An icon from a pack has to be fetched, and this fetches nothing.
             "architecture-beta\n  service a(logos:aws)[A]\n  service b(server)[B]\n  a:R -- L:b",
@@ -1103,6 +1130,34 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// The lines that repaint a C4 diagram after it has been written.
+    func testAC4DiagramIsRepaintedByItsUpdateLines() throws {
+        guard
+            case .flowchart(let chart)? = MermaidDiagram.parse(
+                """
+                C4Context
+                  Enterprise_Boundary(b0, "Bank") {
+                    System_Boundary(b1, "Core") {
+                      System(a, "A")
+                    }
+                  }
+                  System(c, "C")
+                  Rel(a, c, "Calls")
+                  UpdateElementStyle(a, $bgColor="blue", $fontColor="white")
+                  UpdateBoundaryStyle(b0, $borderColor="red")
+                  UpdateRelStyle(a, c, $textColor="red", $offsetY="-40")
+                  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+                """)
+        else { return XCTFail("a C4 diagram is read into a flowchart") }
+        // A boundary inside a boundary is a frame inside a frame.
+        XCTAssertEqual(chart.groups.map(\.title), ["Bank", "Core"])
+        XCTAssertEqual(chart.groups.map(\.parent), [nil, 0])
+        XCTAssertEqual(chart.nodes[0].style.fill, Flowchart.Colour(red: 0, green: 0, blue: 1))
+        XCTAssertEqual(chart.nodes[0].style.text, Flowchart.Colour(red: 1, green: 1, blue: 1))
+        XCTAssertEqual(chart.groups[0].style.stroke, Flowchart.Colour(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(chart.edges[0].style.text, Flowchart.Colour(red: 1, green: 0, blue: 0))
     }
 
     func testC4AndArchitectureAreDrawnWhole() throws {

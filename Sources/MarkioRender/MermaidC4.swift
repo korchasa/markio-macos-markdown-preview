@@ -67,21 +67,25 @@ enum C4Diagram {
                 title = line.dropFirst("title ".count).trimmingCharacters(in: .whitespaces)
                 continue
             }
-            // `UpdateElementStyle` and friends restyle a diagram that is already
-            // drawn, which is not something this reads.
-            guard !line.hasPrefix("Update") else { return nil }
-
             let keyword = String(line.prefix(while: { $0 != "(" && !$0.isWhitespace }))
-            guard let arguments = arguments(of: line, after: keyword) else { return nil }
+            guard let (arguments, settings) = arguments(of: line, after: keyword),
+                let painted = style(from: settings)
+            else { return nil }
 
+            // `UpdateRelStyle` and its siblings repaint what has already been
+            // written, so they are applied to the diagram as it stands.
+            if keyword.hasPrefix("Update") {
+                guard restyle(keyword, arguments, painted, in: &chart, named: identifiers) else {
+                    return nil
+                }
+                continue
+            }
             if boundaries.contains(keyword) {
                 guard arguments.count >= 2, line.hasSuffix("{") else { return nil }
-                // A boundary inside a boundary needs a frame inside a frame. The
-                // elements would all land in the innermost one and the outer
-                // frame would quietly vanish, which is worse than a fence of
-                // source — so it is the same answer a nested subgraph gets.
-                guard open.isEmpty else { return nil }
-                chart.groups.append(Flowchart.Group(title: arguments[1], members: []))
+                var group = Flowchart.Group(
+                    title: arguments[1], members: [], id: arguments[0], parent: open.last)
+                group.style.merge(painted)
+                chart.groups.append(group)
                 open.append(chart.groups.count - 1)
                 continue
             }
@@ -97,6 +101,7 @@ enum C4Diagram {
                 chart.nodes[node].label = label
                 chart.nodes[node].shape = shape
                 if keyword.hasSuffix("_Ext") { chart.nodes[node].style.fill = outside }
+                chart.nodes[node].style.merge(painted)
                 if let group = open.last { chart.groups[group].members.append(node) }
                 continue
             }
@@ -106,13 +111,15 @@ enum C4Diagram {
                 let from = index(of: arguments[backwards ? 1 : 0])
                 let to = index(of: arguments[backwards ? 0 : 1])
                 let words = arguments.count > 2 ? arguments[2] : ""
-                chart.edges.append(
-                    Flowchart.Edge(
-                        from: from, to: to, label: words, stroke: .solid, arrow: true))
+                var edge = Flowchart.Edge(
+                    from: from, to: to, label: words, stroke: .solid, arrow: true)
+                edge.style.merge(painted)
+                chart.edges.append(edge)
                 if keyword == "BiRel" {
-                    chart.edges.append(
-                        Flowchart.Edge(
-                            from: to, to: from, label: "", stroke: .solid, arrow: true))
+                    var back = Flowchart.Edge(
+                        from: to, to: from, label: "", stroke: .solid, arrow: true)
+                    back.style.merge(painted)
+                    chart.edges.append(back)
                 }
                 continue
             }
@@ -122,8 +129,101 @@ enum C4Diagram {
         return (title, chart)
     }
 
-    /// The comma-separated arguments inside `Keyword(…)`, quotes removed.
-    private static func arguments(of line: Substring, after keyword: String) -> [String]? {
+    /// The colours a line's `$key="value"` arguments ask for.
+    ///
+    /// A key that paints something is painted. The rest — where Mermaid nudges
+    /// a word, how many shapes it packs into a row, the sprite it draws, the
+    /// legend it writes, the tag or link it hangs off a box — is read and let
+    /// go, for the same reason `Rel_U` is: this ranks and draws its own graph,
+    /// so a hint about someone else's layout says nothing about this picture. A
+    /// key nobody knows, or a colour that is no colour, gives nil, because
+    /// either may be the thing the author cared about.
+    private static func style(from settings: [String]) -> Flowchart.Style? {
+        /// Which part of a thing each key paints, or nothing at all.
+        enum Paint {
+            case fill
+            case text
+            case border
+            case ignored
+        }
+        let paints: [String: Paint] = [
+            "$bgColor": .fill, "$fontColor": .text, "$borderColor": .border,
+            "$textColor": .text, "$lineColor": .border,
+            "$offsetX": .ignored, "$offsetY": .ignored,
+            "$c4ShapeInRow": .ignored, "$c4BoundaryInRow": .ignored,
+            "$shadowing": .ignored, "$sprite": .ignored, "$tags": .ignored, "$link": .ignored,
+            "$legendText": .ignored, "$legendSprite": .ignored,
+        ]
+        var style = Flowchart.Style()
+        for setting in settings {
+            guard let equals = setting.firstIndex(of: "=") else { return nil }
+            let key = String(setting[setting.startIndex..<equals])
+                .trimmingCharacters(in: .whitespaces)
+            let value = String(setting[setting.index(after: equals)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            guard let paint = paints[key] else { return nil }
+            switch paint {
+            case .ignored: continue
+            case .fill:
+                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                style.fill = colour
+            case .text:
+                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                style.text = colour
+            case .border:
+                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                style.stroke = colour
+            }
+        }
+        return style
+    }
+
+    /// The `Update…` lines a C4 author writes under the diagram to repaint it.
+    ///
+    /// `UpdateElementStyle`, `UpdateBoundaryStyle` and `UpdateRelStyle` name
+    /// something already written and give it colours; `UpdateLayoutConfig` says
+    /// how many shapes Mermaid should pack into a row, which is a hint about a
+    /// layout this does not use. A line that names something nobody wrote is
+    /// refused rather than quietly ignored.
+    private static func restyle(
+        _ keyword: String, _ targets: [String], _ style: Flowchart.Style, in chart: inout Flowchart,
+        named identifiers: [String: Int]
+    ) -> Bool {
+        switch keyword {
+        case "UpdateLayoutConfig":
+            return true
+        case "UpdateElementStyle":
+            guard let first = targets.first, let node = identifiers[first] else { return false }
+            chart.nodes[node].style.merge(style)
+            return true
+        case "UpdateBoundaryStyle":
+            guard let first = targets.first,
+                let group = chart.groups.firstIndex(where: { $0.id == first })
+            else { return false }
+            chart.groups[group].style.merge(style)
+            return true
+        case "UpdateRelStyle":
+            guard targets.count >= 2, let from = identifiers[targets[0]],
+                let to = identifiers[targets[1]]
+            else { return false }
+            // The line is named by its ends, and a pair may be joined twice.
+            var found = false
+            for index in chart.edges.indices
+            where chart.edges[index].from == .node(from) && chart.edges[index].to == .node(to) {
+                chart.edges[index].style.merge(style)
+                found = true
+            }
+            return found
+        default:
+            return false
+        }
+    }
+
+    /// The comma-separated arguments inside `Keyword(…)`, quotes removed: what
+    /// the line says, and separately the `$key="value"` settings hung off it.
+    private static func arguments(of line: Substring, after keyword: String)
+        -> (plain: [String], settings: [String])?
+    {
         var rest = line.dropFirst(keyword.count).trimmingCharacters(in: .whitespaces)
         guard rest.hasPrefix("(") else { return nil }
         guard let close = rest.lastIndex(of: ")") else { return nil }
@@ -143,9 +243,9 @@ enum C4Diagram {
         }
         guard !quoted else { return nil }
         arguments.append(field.trimmingCharacters(in: .whitespaces))
-        // `$tags="v1.0"` and the other named arguments describe styling this
-        // does not draw, so they are dropped rather than shown as text.
-        return arguments.filter { !$0.hasPrefix("$") }
+        return (
+            arguments.filter { !$0.hasPrefix("$") }, arguments.filter { $0.hasPrefix("$") }
+        )
     }
 }
 

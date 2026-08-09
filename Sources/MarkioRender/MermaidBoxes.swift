@@ -45,8 +45,16 @@ struct BoxDiagram {
         var toCount: String
     }
 
+    /// A `note`: a slip of paper with words on it, either standing on its own or
+    /// tied to one box by a dotted line.
+    struct Note {
+        var text: String
+        var attached: Int?
+    }
+
     var boxes: [Box]
     var links: [Link]
+    var notes: [Note] = []
     /// A class diagram is drawn with the parent above; an entity diagram reads
     /// across the page.
     var direction: Flowchart.Direction
@@ -93,7 +101,11 @@ enum ClassDiagram {
             case "class":
                 guard declared(rest, in: &diagram, opening: &open) else { return nil }
                 continue
-            case "note", "click", "callback", "link", "style", "classDef", "cssClass", "namespace":
+            case "note":
+                guard let note = note(rest, in: &diagram) else { return nil }
+                diagram.notes.append(note)
+                continue
+            case "click", "callback", "link", "style", "classDef", "cssClass", "namespace":
                 return nil
             default:
                 break
@@ -124,6 +136,26 @@ enum ClassDiagram {
         }
         guard open == nil, !diagram.boxes.isEmpty else { return nil }
         return diagram
+    }
+
+    /// `note "words"` stands on its own; `note for Duck "words"` is tied to the
+    /// box it names. The words are always quoted, and a note with none of them
+    /// says nothing, so both forms are refused when the quotes are missing.
+    private static func note(_ rest: String, in diagram: inout BoxDiagram) -> BoxDiagram.Note? {
+        var text = rest
+        var attached: Int?
+        if text.hasPrefix("for ") {
+            let body = String(text.dropFirst("for ".count)).trimmingCharacters(in: .whitespaces)
+            guard let quote = body.firstIndex(of: "\"") else { return nil }
+            let name = String(body[body.startIndex..<quote]).trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, !name.contains(" ") else { return nil }
+            attached = diagram.index(of: name)
+            text = String(body[quote...])
+        }
+        guard text.hasPrefix("\""), text.hasSuffix("\""), text.count >= 2 else { return nil }
+        let words = String(text.dropFirst().dropLast())
+        guard !words.isEmpty else { return nil }
+        return BoxDiagram.Note(text: words, attached: attached)
     }
 
     /// `class Animal`, `class Animal {`, `class Animal["A nicer name"]`.

@@ -297,6 +297,10 @@ enum MermaidLayout {
             }
         }
 
+        let slips = notes(
+            diagram.notes, beside: entities.map(\.frame), theme: theme, font: rowFont,
+            metrics: metrics)
+
         var decorations: [BlockBox.Decoration] = []
         for link in diagram.links {
             guard link.from < entities.count, link.to < entities.count else { continue }
@@ -308,11 +312,77 @@ enum MermaidLayout {
             decorations += self.entity(
                 entity, theme: theme, padding: padding, metrics: metrics)
         }
+        decorations += slips
         return Drawing(
             decorations: decorations,
             size: CGSize(width: width, height: content.height + metrics.padding * 2),
             contentWidth: content.width
         )
+    }
+
+    /// The notes of a class diagram, drawn where they will not cover a box.
+    ///
+    /// A note tied to a box stands to its left, and is slid further left until
+    /// it covers nothing — a note laid over the picture says less than no note
+    /// at all. A note standing on its own has nowhere it belongs, so it goes in
+    /// a row above everything. Both may end up outside the rectangle the boxes
+    /// were laid out in; the drawing is measured by what was drawn, so the
+    /// picture grows to hold them.
+    private static func notes(
+        _ notes: [BoxDiagram.Note], beside frames: [CGRect], theme: Theme, font: CTFont,
+        metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        guard !notes.isEmpty else { return [] }
+        let padding = 8 * metrics.scale
+        let gap = 24 * metrics.scale
+        var taken = frames
+        var decorations: [BlockBox.Decoration] = []
+        let top = frames.map(\.minY).min() ?? metrics.padding
+        var free = frames.map(\.minX).min() ?? metrics.padding
+        for note in notes {
+            let (lines, size) = labelLines(note.text, font: font, color: theme.palette.text)
+            let width = size.width + padding * 2
+            let height = size.height + padding * 2
+            var rect: CGRect
+            if let attached = note.attached, attached < frames.count {
+                let box = frames[attached]
+                rect = CGRect(
+                    x: box.minX - gap - width, y: box.minY, width: width, height: height)
+                // Slide left of whatever it lands on, and of whatever that
+                // uncovers, until the slip stands clear.
+                for _ in 0..<taken.count {
+                    guard let hit = taken.first(where: { $0.intersects(rect) }) else { break }
+                    rect.origin.x = hit.minX - gap - width
+                }
+                decorations.append(
+                    .path(
+                        dashed(
+                            from: CGPoint(x: rect.maxX, y: rect.midY),
+                            to: CGPoint(x: box.minX, y: box.midY), dash: 3 * metrics.scale,
+                            gap: 3 * metrics.scale),
+                        color: theme.palette.secondaryText, lineWidth: 1, filled: false))
+            } else {
+                rect = CGRect(x: free, y: top - gap - height, width: width, height: height)
+                free = rect.maxX + gap
+            }
+            taken.append(rect)
+            let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+            decorations.append(
+                .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            var y = rect.minY + padding
+            for line in lines {
+                let size = measure(line)
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(x: rect.minX + padding, y: y + size.height - descent(line)))
+                )
+                y += size.height
+            }
+        }
+        return decorations
     }
 
     private static func entity(
@@ -2827,14 +2897,18 @@ enum MermaidLayout {
     ) -> [BlockBox.Decoration] {
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
         var decorations: [BlockBox.Decoration] = [
-            .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true),
-            .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
+            .path(
+                path, color: group.style.fill.map(cgColor) ?? theme.palette.codeBackground,
+                lineWidth: 0, filled: true),
+            .path(
+                path, color: group.style.stroke.map(cgColor) ?? theme.palette.tableBorder,
+                lineWidth: group.style.strokeWidth ?? 1, filled: false),
         ]
         guard !group.title.isEmpty else { return decorations }
         let line = text(
             group.title,
             font: scaled(theme.controlLabel, by: metrics.scale),
-            color: theme.palette.secondaryText
+            color: group.style.text.map(cgColor) ?? theme.palette.secondaryText
         )
         let size = measure(line)
         decorations.append(
@@ -3209,7 +3283,7 @@ enum MermaidLayout {
         }
         let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
         var decorations: [BlockBox.Decoration] = []
-        let color = theme.palette.secondaryText
+        let color = edge.style.stroke.map(cgColor) ?? theme.palette.secondaryText
         let width: CGFloat = (edge.stroke == .thick ? 2.5 : 1.3) * metrics.scale
         let shaft = CGMutablePath()
         let head = edge.arrow ? metrics.arrowLength : 0
@@ -3246,7 +3320,7 @@ enum MermaidLayout {
         let line = text(
             edge.label,
             font: scaled(theme.controlLabel, by: metrics.scale),
-            color: theme.palette.secondaryText
+            color: edge.style.text.map(cgColor) ?? theme.palette.secondaryText
         )
         let size = measure(line)
         // An edge between neighbouring ranks is labelled in the middle; one that
