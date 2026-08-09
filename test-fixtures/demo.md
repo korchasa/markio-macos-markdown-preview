@@ -250,6 +250,43 @@ C4Context
 ```
 
 ```mermaid
+radar-beta
+    title Renderer trade-offs
+    axis speed["Speed"], memory["Memory"], fidelity["Fidelity"], reach["Reach"]
+    curve native["Native"]{9, 9, 7, 5}
+    curve webview["Web view"]{4, 3, 9, 9}
+    max 10
+    graticule polygon
+```
+
+```mermaid
+block-beta
+    columns 3
+    doc["Whole document"]:3
+    bytes["Bytes"] blocks["Blocks"] inline("Inline")
+    space boxes["Boxes"]:2
+    blocks --> boxes
+    inline --> boxes
+```
+
+```mermaid
+zenuml
+    title Opening a document
+    @Actor Reader
+    @Database Cache
+    @Starter(Reader)
+    Window.open(path) {
+        Cache.lookup(path)
+        if (miss) {
+            Cache.fill(boxes)
+        } else {
+            Cache.hit()
+        }
+        return shown
+    }
+```
+
+```mermaid
 architecture-beta
     group app(cloud)[Viewer]
     service parser(server)[Parser] in app

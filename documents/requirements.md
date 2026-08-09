@@ -76,14 +76,17 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   the default date format, a `quadrantChart`, an `xychart-beta`, a `gitGraph`
   whose lanes run across the page, a `packet-beta`, a `kanban` board, a
   `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
-  (`C4Context` and its four siblings) or an `architecture-beta` whose services
-  use the icons Mermaid ships. Every other diagram kind, and every construct
+  (`C4Context` and its four siblings), an `architecture-beta` whose services
+  use the icons Mermaid ships, a `radar-beta`, a `block-beta` or a `zenuml`
+  written as calls, replies and the blocks around them. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a nested subgraph, a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
   an excluded weekday, a cherry-pick, a gap between packet fields, a flow that
   returns to where it came from, a C4 restyling, an icon from a downloaded pack,
-  a group inside a group, or architecture edges that send two services to the
-  same place — is not read, and the fence stays a fenced block.
+  a group inside a group, architecture edges that send two services to the
+  same place, a radar curve short of a value, a block inside a block, or a
+  ZenUML call with nobody calling it — is not read, and the fence stays a
+  fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 
@@ -170,8 +173,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   days it takes, a square cut in four with points scattered over it, bars and
   lines over named categories, commits along a lane per branch, a row of bit
   fields per word, a column of cards per board list, ribbons as thick as what
-  they carry, nested rectangles each as big a share as its value, or tiles on
-  the grid their edges put them on — centred in
+  they carry, nested rectangles each as big a share as its value, tiles on
+  the grid their edges put them on, a closed shape per curve over a spoke per
+  axis, or cells filling a grid of the width the author counted out — centred in
   the reading column, in the current theme's
   colours except where the diagram names its own, and with a colour per branch
   or section where the diagram's own meaning is carried by colour. A picture too

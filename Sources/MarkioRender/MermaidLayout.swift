@@ -85,6 +85,10 @@ enum MermaidLayout {
             return treemap(map, theme: theme, width: width, metrics: metrics)
         case .architecture(let diagram):
             return architecture(diagram, theme: theme, width: width, metrics: metrics)
+        case .radar(let chart):
+            return radar(chart, theme: theme, width: width, metrics: metrics)
+        case .blocks(let diagram):
+            return blocks(diagram, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -2705,7 +2709,16 @@ enum MermaidLayout {
         let boxHeight = (sizes.map { $0.height }.max() ?? 16) + metrics.nodePaddingY * 2
         let step = boxWidth + metrics.columnGap
         let content = step * CGFloat(max(0, diagram.participants.count - 1)) + boxWidth
-        let top = metrics.padding
+        var titleLine: CTLine?
+        var titleRoom: CGFloat = 0
+        if !diagram.title.isEmpty {
+            let line = text(
+                diagram.title, font: scaled(theme.bodyBold, by: metrics.scale * 1.1),
+                color: theme.palette.text)
+            titleLine = line
+            titleRoom = measure(line).height + 12 * metrics.scale
+        }
+        let top = metrics.padding + titleRoom
         let firstMessage = top + boxHeight + metrics.messageGap
 
         // The body is walked before anything is drawn: a lifeline has to reach
@@ -2722,6 +2735,15 @@ enum MermaidLayout {
         let height = body.bottom + metrics.padding
 
         var decorations: [BlockBox.Decoration] = []
+        if let titleLine {
+            let size = measure(titleLine)
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: left + (content - size.width) / 2,
+                        y: metrics.padding + size.height - descent(titleLine))))
+        }
         for (index, centre) in centres.enumerated() {
             let lifeline = dashed(
                 from: CGPoint(x: centre, y: top + boxHeight),
@@ -3084,6 +3106,210 @@ enum MermaidLayout {
         let length = (point.x * point.x + point.y * point.y).squareRoot()
         guard length > 0 else { return CGPoint(x: 0, y: 1) }
         return CGPoint(x: point.x / length, y: point.y / length)
+    }
+
+    // MARK: - Radar
+
+    /// A spoke per axis and a closed shape per curve.
+    private static func radar(
+        _ chart: RadarChart, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale)
+        let names = chart.axes.map { text($0, font: font, color: theme.palette.secondaryText) }
+        let nameSizes = names.map(measure)
+        let widest = nameSizes.map(\.width).max() ?? 0
+        let radius = 130 * metrics.scale
+        // The names stand outside the outer ring, so the picture is wider than
+        // the circle by the longest of them on either side.
+        let content = (radius + widest + 14 * metrics.scale) * 2
+        let centre = CGPoint(x: max(metrics.padding, (width - content) / 2) + content / 2, y: 0)
+
+        var decorations: [BlockBox.Decoration] = []
+        var top = metrics.padding
+        if !chart.title.isEmpty {
+            let line = text(chart.title, font: titleFont, color: theme.palette.text)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: centre.x - size.width / 2, y: top + size.height - descent(line))
+                ))
+            top += size.height + 12 * metrics.scale
+        }
+        let middle = CGPoint(x: centre.x, y: top + radius + nameSizes[0].height)
+
+        func point(axis: Int, at fraction: CGFloat) -> CGPoint {
+            let angle = -CGFloat.pi / 2 + 2 * .pi * CGFloat(axis) / CGFloat(chart.axes.count)
+            return CGPoint(
+                x: middle.x + cos(angle) * radius * fraction,
+                y: middle.y + sin(angle) * radius * fraction)
+        }
+
+        // The rings, then the spokes, then the curves on top of both.
+        for tick in 1...chart.ticks {
+            let fraction = CGFloat(tick) / CGFloat(chart.ticks)
+            let ring = CGMutablePath()
+            if chart.polygon {
+                for axis in chart.axes.indices {
+                    let at = point(axis: axis, at: fraction)
+                    if axis == 0 { ring.move(to: at) } else { ring.addLine(to: at) }
+                }
+                ring.closeSubpath()
+            } else {
+                ring.addEllipse(
+                    in: CGRect(
+                        x: middle.x - radius * fraction, y: middle.y - radius * fraction,
+                        width: radius * fraction * 2, height: radius * fraction * 2))
+            }
+            decorations.append(
+                .path(ring, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+        }
+        let spokes = CGMutablePath()
+        for axis in chart.axes.indices {
+            spokes.move(to: middle)
+            spokes.addLine(to: point(axis: axis, at: 1))
+        }
+        decorations.append(
+            .path(spokes, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+
+        let outer = chart.high ?? 1
+        let span = outer - chart.low
+        for (index, curve) in chart.curves.enumerated() {
+            let shape = CGMutablePath()
+            for (axis, value) in curve.values.enumerated() {
+                let fraction = max(0, min(1, CGFloat((value - chart.low) / span)))
+                let at = point(axis: axis, at: fraction)
+                if axis == 0 { shape.move(to: at) } else { shape.addLine(to: at) }
+            }
+            shape.closeSubpath()
+            let colour = wheel[index % wheel.count]
+            decorations.append(
+                .path(shape, color: colour.copy(alpha: 0.22) ?? colour, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(shape, color: colour, lineWidth: 2 * metrics.scale, filled: false))
+        }
+
+        // Each axis is named just outside its own tip, pulled towards whichever
+        // side of the circle it is on so the words never cross the drawing.
+        for (axis, line) in names.enumerated() {
+            let tip = point(axis: axis, at: 1)
+            let size = nameSizes[axis]
+            let away = CGPoint(x: tip.x - middle.x, y: tip.y - middle.y)
+            let anchor = CGPoint(
+                x: tip.x
+                    + (away.x > 1
+                        ? 6 * metrics.scale
+                        : away.x < -1 ? -6 * metrics.scale - size.width : -size.width / 2),
+                y: tip.y
+                    + (away.y > 1
+                        ? size.height : away.y < -1 ? -3 * metrics.scale : size.height / 2)
+            )
+            decorations.append(
+                .glyphs(line, origin: CGPoint(x: anchor.x, y: anchor.y - descent(line))))
+        }
+
+        var height = middle.y + radius + nameSizes[0].height + metrics.padding
+        if chart.showLegend {
+            var y = height
+            let swatch = 10 * metrics.scale
+            // Every entry starts at the same edge, so the swatches make a column
+            // rather than a ragged stack of centred rows.
+            let entries = chart.curves.map { text($0.label, font: font, color: theme.palette.text) }
+            let entryWidth = entries.map { measure($0).width }.max() ?? 0
+            let start = middle.x - (entryWidth + swatch + 6 * metrics.scale) / 2
+            for (index, line) in entries.enumerated() {
+                let size = measure(line)
+                let box = CGRect(x: start, y: y, width: swatch, height: swatch)
+                decorations.append(
+                    .fill(rect: box, color: wheel[index % wheel.count], cornerRadius: 2))
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: box.maxX + 6 * metrics.scale, y: y + size.height - descent(line))))
+                y += max(swatch, size.height) + 4 * metrics.scale
+            }
+            height = y + metrics.padding
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Block diagram
+
+    /// Cells filling a grid of a stated width, with arrows between them.
+    private static func blocks(
+        _ diagram: BlockDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale)
+        var labels: [(lines: [CTLine], size: CGSize)] = []
+        for node in diagram.chart.nodes {
+            let colour = node.style.text.map(cgColor) ?? theme.palette.text
+            labels.append(labelLines(node.label, font: font, color: colour))
+        }
+        // Every column is the same width: a grid whose columns drifted would
+        // stop being the grid the author counted out.
+        let cellWidth = max(
+            metrics.minimumNodeWidth,
+            (labels.map(\.size.width).max() ?? 0) + metrics.nodePaddingX * 2)
+        let cellHeight = (labels.map(\.size.height).max() ?? 0) + metrics.nodePaddingY * 2
+        let gap = 10 * metrics.scale
+        let content = cellWidth * CGFloat(diagram.columns) + gap * CGFloat(diagram.columns - 1)
+        let left = max(metrics.padding, (width - content) / 2)
+
+        // Cells fill the row until the next one would not fit, and then wrap.
+        var boxes: [Int: Placed] = [:]
+        var column = 0
+        var row = 0
+        for cell in diagram.cells {
+            let span = min(cell.span, diagram.columns)
+            if column + span > diagram.columns {
+                column = 0
+                row += 1
+            }
+            if let node = cell.node {
+                let frame = CGRect(
+                    x: left + CGFloat(column) * (cellWidth + gap),
+                    y: metrics.padding + CGFloat(row) * (cellHeight + gap),
+                    width: cellWidth * CGFloat(span) + gap * CGFloat(span - 1),
+                    height: cellHeight)
+                boxes[node] = Placed(
+                    frame: frame, lines: labels[node].lines, labelSize: labels[node].size,
+                    shape: diagram.chart.nodes[node].shape, style: diagram.chart.nodes[node].style)
+            }
+            column += span
+            if column >= diagram.columns {
+                column = 0
+                row += 1
+            }
+        }
+        let rows = column == 0 ? row : row + 1
+        let height =
+            metrics.padding * 2 + CGFloat(rows) * cellHeight + CGFloat(max(0, rows - 1)) * gap
+
+        var decorations: [BlockBox.Decoration] = []
+        var labelDecorations: [BlockBox.Decoration] = []
+        for edge in diagram.chart.edges {
+            guard let from = boxes[edge.from], let to = boxes[edge.to] else { continue }
+            let drawn = self.edge(
+                edge, from: from, to: to, theme: theme, metrics: metrics, order: 0, side: 1)
+            decorations += drawn.shaft
+            labelDecorations += drawn.label
+        }
+        for index in diagram.chart.nodes.indices {
+            guard let box = boxes[index] else { continue }
+            decorations += node(box, theme: theme, metrics: metrics)
+        }
+        return Drawing(
+            decorations: decorations + labelDecorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
     }
 
     // MARK: - Architecture

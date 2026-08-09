@@ -998,6 +998,149 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testARadarTakesOneValuePerAxisPerCurve() throws {
+        guard
+            case .radar(let chart)? = MermaidDiagram.parse(
+                """
+                radar-beta
+                  title Trade-offs
+                  axis speed["Speed"], memory["Memory"], reach
+                  curve native["Native"]{9, 8, 4}
+                  curve web{3, 2, 9}
+                  max 10
+                  ticks 4
+                  graticule polygon
+                """
+            )
+        else { return XCTFail("expected a radar chart") }
+        XCTAssertEqual(chart.title, "Trade-offs")
+        // An axis with no words of its own is named by its identifier.
+        XCTAssertEqual(chart.axes, ["Speed", "Memory", "reach"])
+        XCTAssertEqual(chart.curves.map(\.label), ["Native", "web"])
+        XCTAssertEqual(chart.curves[1].values, [3, 2, 9])
+        XCTAssertEqual(chart.high, 10)
+        XCTAssertEqual(chart.ticks, 4)
+        XCTAssertTrue(chart.polygon)
+        // With no `max`, the outer ring is the largest value written.
+        guard
+            case .radar(let open)? = MermaidDiagram.parse(
+                "radar-beta\n  axis a, b, c\n  curve one{1, 5, 3}")
+        else { return XCTFail("expected a radar chart") }
+        XCTAssertEqual(open.high, 5)
+    }
+
+    func testABlockDiagramFillsItsGridAndWraps() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                """
+                block-beta
+                  columns 3
+                  doc["Whole document"]:3
+                  bytes["Bytes"] blocks["Blocks"] inline("Inline")
+                  space boxes["Boxes"]:2
+                  blocks --> boxes
+                """
+            )
+        else { return XCTFail("expected a block diagram") }
+        XCTAssertEqual(diagram.columns, 3)
+        XCTAssertEqual(
+            diagram.chart.nodes.map(\.id), ["doc", "bytes", "blocks", "inline", "boxes"])
+        XCTAssertEqual(diagram.chart.nodes[3].shape, .rounded)
+        XCTAssertEqual(diagram.chart.nodes[0].label, "Whole document")
+        XCTAssertEqual(diagram.cells.map(\.span), [3, 1, 1, 1, 1, 2])
+        // The blank cell holds a place and names nothing.
+        XCTAssertNil(diagram.cells[4].node)
+        XCTAssertEqual(diagram.chart.edges.count, 1)
+        XCTAssertEqual(diagram.chart.edges[0].from, 2)
+        XCTAssertEqual(diagram.chart.edges[0].to, 4)
+    }
+
+    func testZenUmlKeepsTrackOfWhoIsCalling() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  title Opening
+                  @Actor Reader
+                  @Starter(Reader)
+                  Window.open(path) {
+                    Cache.lookup(path)
+                    if (miss) {
+                      Cache.fill()
+                    } else {
+                      Cache.hit()
+                    }
+                    return shown
+                  }
+                  Reader->Window: scrolls
+                """
+            )
+        )
+        XCTAssertEqual(diagram.title, "Opening")
+        XCTAssertEqual(diagram.participants.map(\.id), ["Reader", "Window", "Cache"])
+        let messages = diagram.messages
+        XCTAssertEqual(
+            messages.map(\.text),
+            [
+                "open(path)", "lookup(path)", "fill()", "hit()", "shown", "scrolls",
+            ])
+        // Inside the braces the window is the one calling, and the reply goes
+        // back to whoever was waiting.
+        XCTAssertEqual(messages[1].from, 1)
+        XCTAssertEqual(messages[1].to, 2)
+        XCTAssertEqual(messages[4].from, 1)
+        XCTAssertEqual(messages[4].to, 0)
+        XCTAssertTrue(messages[4].dashed)
+        // The braces after a call put a bar on the callee, not a frame round the
+        // calls inside, so the alternative sits at the top level beside them.
+        guard case .block(let block) = diagram.items[2] else { return XCTFail("expected a block") }
+        XCTAssertEqual(block.kind, "alt")
+        XCTAssertEqual(block.sections.map(\.title), ["miss", ""])
+    }
+
+    func testWhatRadarBlocksAndZenUmlRefuse() {
+        for source in [
+            // A curve short of a value would have to have one invented for it,
+            // and two axes make no shape.
+            "radar-beta\n  axis a, b, c\n  curve one{1, 2}",
+            "radar-beta\n  axis a, b\n  curve one{1, 2}",
+            "radar-beta\n  axis a, b, c",
+            "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  ticks 0",
+            "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
+            "radar-beta",
+            // A block inside a block needs a frame inside a frame.
+            "block-beta\n  columns 2\n  block:group:2\n    a b\n  end",
+            "block-beta\n  columns 2\n  a:0 b",
+            "block-beta\n  columns 2\n  a b\n  a --> nothing",
+            "block-beta",
+            // A call with nobody calling it, and a reply with nobody waiting.
+            "zenuml\n  Window.open()",
+            "zenuml\n  @Starter(A)\n  return done",
+            "zenuml\n  @Starter(A)\n  B.open() {",
+            "zenuml\n  @Starter(A)\n  B.open()\n  }",
+            "zenuml\n  @Starter(A)\n  try {\n    B.open()\n  }",
+            "zenuml",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testRadarBlocksAndZenUmlAreDrawnWhole() throws {
+        for source in [
+            "radar-beta\n  axis a, b, c\n  curve one{1, 5, 3}\n  curve two{4, 2, 5}",
+            "block-beta\n  columns 2\n  a[\"One\"] b[\"Two\"]\n  c[\"Three\"]:2\n  a --> c",
+            "zenuml\n  @Starter(A)\n  B.open()\n  A->B: again",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 6, source)
+            XCTAssertGreaterThan(box.height, 50, source)
+        }
+    }
+
     func testALabelIsBrokenWhereTheAuthorBrokeIt() throws {
         let chart = try XCTUnwrap(flowchart("flowchart TD\n  A[First<br/>Second] --> B[Plain]"))
         XCTAssertEqual(chart.nodes[0].label, "First<br/>Second")

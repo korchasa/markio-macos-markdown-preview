@@ -27,6 +27,8 @@ enum MermaidDiagram {
     case sankey(SankeyDiagram)
     case treemap(Treemap)
     case architecture(ArchitectureDiagram)
+    case radar(RadarChart)
+    case blocks(BlockDiagram)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -78,6 +80,16 @@ enum MermaidDiagram {
         }
         if header == "packet-beta" || header == "packet" {
             return PacketDiagram.parse(rest).map(MermaidDiagram.packet)
+        }
+        if header == "zenuml" {
+            // ZenUML says what a sequence diagram says, so it is read into one.
+            return ZenUML.parse(rest).map(MermaidDiagram.sequence)
+        }
+        if header == "radar-beta" || header == "radar" {
+            return RadarChart.parse(rest).map(MermaidDiagram.radar)
+        }
+        if header == "block-beta" || header == "block" {
+            return BlockDiagram.parse(rest).map(MermaidDiagram.blocks)
         }
         if header == "architecture-beta" || header == "architecture" {
             return ArchitectureDiagram.parse(rest).map(MermaidDiagram.architecture)
@@ -516,6 +528,14 @@ struct Flowchart {
         return index
     }
 
+    /// One written cell — `a`, `a["Words"]`, `a(("Round"))` — read the way a
+    /// flowchart reads its nodes.
+    static func cell(_ text: Substring) -> (id: String, label: String?, shape: Shape?)? {
+        var reader = Reader(Array(text))
+        guard let read = reader.readBare(), reader.atEnd else { return nil }
+        return read
+    }
+
     private struct Reader {
         let chars: [Character]
         var index = 0
@@ -532,7 +552,10 @@ struct Flowchart {
             while index < chars.count, chars[index] == " " || chars[index] == "\t" { index += 1 }
         }
 
-        mutating func readNode(into chart: inout Flowchart) -> Int? {
+        /// The identifier and, where the text gives one, the shape and the words
+        /// that go in it. Knows nothing about a chart, so a block diagram can
+        /// read its cells with the same spellings a flowchart uses.
+        mutating func readBare() -> (id: String, label: String?, shape: Shape?)? {
             skipSpaces()
             var id = ""
             while let char = peek(), char.isLetter || char.isNumber || char == "_" || char == "-",
@@ -557,6 +580,11 @@ struct Flowchart {
                 }
                 index = mark
             }
+            return (id, label, shape)
+        }
+
+        mutating func readNode(into chart: inout Flowchart) -> Int? {
+            guard let (id, label, shape) = readBare() else { return nil }
             // `A:::warning` names a class defined by `classDef`.
             var className: String?
             if starts(with: [":", ":", ":"]) {
@@ -802,6 +830,9 @@ struct SequenceDiagram {
     var participants: [Participant]
     var items: [Item]
     var autonumber = false
+    /// Written above the participants. Mermaid's own `sequenceDiagram` has no
+    /// title; a ZenUML one does, and it is read into this.
+    var title = ""
 
     /// Every message in the diagram, whatever it is nested inside. Handy for
     /// tests and for deciding whether there is a diagram at all.

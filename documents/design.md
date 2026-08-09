@@ -375,6 +375,27 @@ Mermaid ships are drawn as filled silhouettes with their detail cut back out in
 the page's own colour; an icon from a downloadable pack would have to be fetched,
 and this app fetches nothing.
 
+A radar chart is a spoke per axis and a closed shape per curve, with the rings
+drawn either as circles or as polygons through the spokes, whichever the source
+asked for. A curve short of a value would have to have one invented for it, so
+it is refused; with no `max` written the outer ring is the largest value there
+is, which is what fills the circle.
+
+A block diagram fills a grid of a stated width, cell by cell in reading order,
+wrapping when the next cell would not fit and again when the row is full. Every
+column is the same width, because a grid whose columns drifted would stop being
+the grid its author counted out. The blocks themselves are `Flowchart.Node`s, so
+the shapes, the `classDef` colouring and the arrow drawing are the ones a
+flowchart already has.
+
+A ZenUML diagram is a sequence diagram written as code, and it is read into one.
+The work is the stack of callers: `B.method()` is a call from wherever the reader
+has got to, the braces after it put `B` on top until they close, and `return`
+goes back to whoever is one step down. The braces also raise the bar on the
+callee's lifeline, which is what the sequence layout already draws for
+`activate`. A call with nobody calling it is refused rather than given an
+invented sender.
+
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which
 slice is which by colour, so the colours have to stay apart from each other on
