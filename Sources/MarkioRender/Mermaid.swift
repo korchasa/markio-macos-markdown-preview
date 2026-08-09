@@ -116,11 +116,10 @@ enum MermaidDiagram {
                 // A title with nothing after it is no title at all.
                 if here == ["title"] { continue }
                 // A key with nothing after it opens what is written under it.
+                // Which sections a preamble may open is Mermaid's business and
+                // grows with every release, so any of them may be opened and
+                // the keys inside are read for the ones that say what to draw.
                 path.append((indent, key))
-                guard
-                    here == ["config"] || here == ["config", "kanban"]
-                        || here == ["config", "gantt"]
-                else { return nil }
                 continue
             }
             switch here {
