@@ -418,10 +418,35 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.edges[1].label, "open")
     }
 
+    /// `state Big { … }` is a machine inside a machine, drawn in a frame of its
+    /// own, with a beginning and an end that are its own and not the diagram's.
+    func testACompositeStateHoldsItsOwnMachine() throws {
+        guard
+            case .flowchart(let chart)? = MermaidDiagram.parse(
+                """
+                stateDiagram-v2
+                    [*] --> First
+                    state First {
+                        [*] --> second
+                        second --> [*]
+                    }
+                    First: A composite
+                """)
+        else { return XCTFail("a state machine is read into a flowchart") }
+        XCTAssertEqual(chart.groups.map(\.id), ["First"])
+        // The name the state was given is what the frame wears.
+        XCTAssertEqual(chart.groups.map(\.title), ["A composite"])
+        // Two beginnings: the diagram's own, and the one inside the frame.
+        XCTAssertEqual(chart.nodes.filter { $0.shape == .point }.count, 2)
+        XCTAssertEqual(chart.groups[0].members.count, 3)
+        // An edge to the composite ends on its frame, not on any state in it.
+        XCTAssertEqual(chart.edges.first?.to, .frame(0))
+    }
+
     func testWhatAStateMachineRefuses() {
         for source in [
-            // A machine inside a machine, a fork bar, a note, a plain word.
-            "stateDiagram-v2\n state Big {\n [*] --> A\n }",
+            // A machine left open, a fork bar, a note, a plain word.
+            "stateDiagram-v2\n state Big {\n [*] --> A",
             "stateDiagram-v2\n state fork <<fork>>\n [*] --> fork",
             "stateDiagram-v2\n [*] --> A\n note right of A: waiting",
             "stateDiagram-v2\n A",
@@ -591,10 +616,23 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(timeline.periods[2].events, ["Release", "Site"])
     }
 
+    /// `::icon(fa fa-book)` asks for a glyph out of a font nobody here has, and
+    /// Mermaid draws nothing for it either. It belongs to the node above it.
+    func testAMindmapIconIsReadAndDrawsNothing() throws {
+        guard
+            case .mindmap(let map)? = MermaidDiagram.parse(
+                "mindmap\n  root\n    Origins\n      ::icon(fa fa-book)\n    Tools")
+        else { return XCTFail("a mindmap with an icon is still a mindmap") }
+        XCTAssertEqual(map.nodes.map(\.label), ["root", "Origins", "Tools"])
+        XCTAssertEqual(map.nodes[0].children, [1, 2])
+    }
+
     func testWhatTheTreeDiagramsRefuse() {
         for source in [
-            // An icon and a class are decoration the layout has no place for.
-            "mindmap\n  root\n    ::icon(fa fa-book)",
+            // A class is decoration the layout has no place for, and an icon
+            // with no node over it belongs to nothing.
+            "mindmap\n  root\n    class a b",
+            "mindmap\n  ::icon(fa fa-book)",
             "mindmap\n  root\n    a\n  second root",
             // A cloud and a bang need paths this does not draw.
             "mindmap\n  root\n    id)Cloud(",
@@ -1286,8 +1324,10 @@ final class MermaidTests: XCTestCase {
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  ticks 0",
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
             "radar-beta",
-            // A block inside a block needs a frame inside a frame.
-            "block-beta\n  columns 2\n  block:group:2\n    a b\n  end",
+            // A block left open, one closed twice, and one named twice.
+            "block-beta\n  columns 2\n  block:group\n    a b",
+            "block-beta\n  columns 2\n  a b\n  end",
+            "block-beta\n  columns 2\n  block:g\n    a\n  end\n  block:g\n    b\n  end",
             "block-beta\n  columns 2\n  a:0 b",
             "block-beta\n  columns 2\n  a b\n  a --> nothing",
             "block-beta",
@@ -1301,6 +1341,33 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// `block:ID … end` is a grid inside a cell of the grid, and an edge may
+    /// name it. `blockArrowId<[…]>(down)` is a fat arrow with words in it.
+    func testABlockHoldsABlockAndAFatArrow() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                """
+                block-beta
+                columns 1
+                  wide<["go"]>(down)
+                  block:ID
+                    A
+                    B["In the middle"]
+                  end
+                  D
+                  ID --> D
+                """)
+        else { return XCTFail("a block diagram with a block inside it is still one") }
+        XCTAssertEqual(diagram.blocks.map(\.id), ["ID"])
+        XCTAssertEqual(diagram.blocks[0].cells.compactMap(\.node).count, 2)
+        // The arrow, the framed block and `D` are the diagram's own three cells.
+        XCTAssertEqual(diagram.cells.count, 3)
+        XCTAssertEqual(diagram.chart.nodes[0].shape, .arrowDown)
+        XCTAssertEqual(diagram.chart.nodes[0].label, "go")
+        // The edge ends on the frame, not on any box inside it.
+        XCTAssertEqual(diagram.chart.edges[0].from, .frame(0))
     }
 
     func testRadarBlocksAndZenUmlAreDrawnWhole() throws {
@@ -1349,11 +1416,35 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(withTitle.decorations.count, without.decorations.count + 1)
     }
 
+    /// The one `config` setting a preamble may carry: where a board's tickets
+    /// live, which turns every ticket id into a link.
+    func testAKanbanPreambleSaysWhereItsTicketsLive() throws {
+        let source = """
+            ---
+            config:
+              kanban:
+                ticketBaseUrl: 'https://example.com/browse/#TICKET#'
+            ---
+            kanban
+              todo[Todo]
+                id4[Write it]@{ ticket: MC-1, assigned: 'kim' }
+            """
+        guard case .kanban(let board)? = MermaidDiagram.parse(source) else {
+            return XCTFail("a board with a ticket url is still a board")
+        }
+        XCTAssertEqual(board.ticketBaseUrl, "https://example.com/browse/#TICKET#")
+        XCTAssertEqual(board.columns[0].cards[0].ticket, "MC-1")
+        XCTAssertEqual(board.columns[0].cards[0].details, ["kim"])
+    }
+
     func testWhatAPreambleRefuses() {
         for source in [
             // `config` changes how Mermaid draws, and drawing it another way
             // would be answering a question the author did not ask.
             "---\nconfig:\n  theme: forest\n---\npie\n  \"A\" : 1",
+            "---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\n  a[A]",
+            // A board's setting over something that is not a board.
+            "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'x'\n---\npie\n  \"A\" : 1",
             "---\ndisplayMode: compact\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
             // A name in the preamble and a name in the diagram: two names, and
             // no way to know which one Mermaid would show.

@@ -63,7 +63,11 @@ struct PacketDiagram {
 struct KanbanBoard {
     struct Card {
         var label: String
-        /// The `@{ assigned: … }` metadata, already in the order it is drawn.
+        /// `@{ ticket: MC-2038 }`: what the work is called wherever it is
+        /// tracked. Drawn as a link when the preamble says where that is.
+        var ticket: String = ""
+        /// The rest of the `@{ assigned: … }` metadata, in the order it is
+        /// drawn.
         var details: [String]
         var priority: String
     }
@@ -74,9 +78,14 @@ struct KanbanBoard {
     }
 
     var columns: [Column]
+    /// `config.kanban.ticketBaseUrl` from the preamble. With one, a ticket id is
+    /// a link, and Mermaid draws it as one.
+    var ticketBaseUrl: String = ""
 
-    static func parse(_ lines: [(indent: Int, text: Substring)]) -> KanbanBoard? {
-        var board = KanbanBoard(columns: [])
+    static func parse(_ lines: [(indent: Int, text: Substring)], ticketBaseUrl: String = "")
+        -> KanbanBoard?
+    {
+        var board = KanbanBoard(columns: [], ticketBaseUrl: ticketBaseUrl)
         // The first line's indent is what a column is written at; anything
         // deeper is a card in the column above it.
         guard let columnIndent = lines.first?.indent else { return nil }
@@ -111,6 +120,7 @@ struct KanbanBoard {
 
     private static func card(_ text: Substring) -> Card? {
         var body = text
+        var ticket = ""
         var details: [String] = []
         var priority = ""
         if let brace = body.range(of: "@{") {
@@ -124,7 +134,7 @@ struct KanbanBoard {
                 guard !value.isEmpty else { return nil }
                 switch key {
                 case "assigned": details.append(value)
-                case "ticket": details.append(value)
+                case "ticket": ticket = value
                 case "priority": priority = value
                 // Anything else changes how the card looks in ways this does
                 // not draw, so the board falls back to its source.
@@ -136,6 +146,6 @@ struct KanbanBoard {
         guard let label = title(of: Substring(body.trimmingCharacters(in: .whitespaces))) else {
             return nil
         }
-        return Card(label: label, details: details, priority: priority)
+        return Card(label: label, ticket: ticket, details: details, priority: priority)
     }
 }

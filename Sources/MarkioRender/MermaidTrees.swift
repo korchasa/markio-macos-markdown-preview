@@ -21,7 +21,16 @@ struct Mindmap {
         // Each open ancestor, with the indent it was written at.
         var stack: [(indent: Int, index: Int)] = []
         for line in lines {
-            // An icon or a class is decoration this does not draw.
+            // `::icon(fa fa-book)` asks for a glyph out of a font that has to be
+            // fetched, and Mermaid draws nothing for it on a page that has not
+            // already loaded that font — which is every page here. So the line
+            // belongs to the node above it and adds nothing to the picture. A
+            // `class` is styling this does not draw.
+            if line.text.hasPrefix("::icon("), line.text.hasSuffix(")") {
+                // It has to stand under a node, like anything else indented.
+                guard !stack.isEmpty else { return nil }
+                continue
+            }
             guard !line.text.hasPrefix("::"), !line.text.hasPrefix("class") else { return nil }
             guard let read = node(line.text) else { return nil }
             while let last = stack.last, last.indent >= line.indent { stack.removeLast() }

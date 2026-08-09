@@ -7,37 +7,28 @@ every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2
 on the right, drawing the same source with CoreText and `CGPath`: no web view, no
 diagram library.
 
-Of the 36 examples, Markio 2 draws 28 and shows 8 as source. A fence it
-cannot draw whole stays a fenced code block rather than becoming a picture that
-asserts something its author did not write, so every “shown as source” line below
-says which construct stopped it.
+Of the 36 examples, Markio 2 draws all 36. A fence it cannot draw whole stays
+a fenced code block rather than becoming a picture that asserts something its
+author did not write, and nothing here is left as source any more.
 
-The example chosen for each kind is that documentation page's headline one. Where
-it is not drawn, the page's next-simplest example is shown as well, so every kind
-appears drawn at least once — except C4, where none of Mermaid's six examples is
-drawable and the drawn one below was written here instead.
-
-## What is missing
-
-The 8 refusals are constructs Markio 2 deliberately does not draw — a frame
-inside a frame, a machine inside a machine, a note beside a class, an icon fetched
-from a font, a restyling applied to a picture already drawn, a preamble that
-configures Mermaid rather than naming the diagram — and one it cannot place: an
-edge that names a subgraph ends on that frame in Mermaid, and Markio 2 has no way
-to end an edge anywhere but on a box.
+The example chosen for each kind is that documentation page's headline one, and
+for several kinds a second, harder example is shown as well — the one that used to
+be refused. The C4 diagram written here is kept for the same reason: it was added
+when no example on that page could be drawn.
 
 ## What this comparison turned up
 
 Putting the two pictures side by side found faults that looking at ours alone
 never did: a reader who has only one drawing cannot see what is missing from it.
-Three rounds of comparison went through every example here, and every defect they
-found is closed. They fell into four kinds.
+Four rounds of comparison went through every example here, and every defect they
+found is closed. They fell into five kinds.
 
 **A picture that said something its source did not.** `--->` lost its arrowhead.
 An edge naming a subgraph invented a box with the frame's name, so the picture held
-both a frame and a box called `one`; it is refused now, and so is a C4 boundary
-inside a boundary, which used to put every element in the innermost frame and drop
-the outer one. A cycle pushed every state in it onto one rank, so a machine that
+both a frame and a box called `one`; the word names the frame now, and the edge
+ends on it. A C4 boundary inside a boundary put every element in the innermost
+frame and dropped the outer one; both frames are drawn now.
+A cycle pushed every state in it onto one rank, so a machine that
 returns to its start collapsed into a single row. A node declared inside a frame
 stayed in whichever frame had named it first. A commit marked `REVERSE` and a merge
 commit were both drawn as ordinary commits. A treemap showed neither its root nor
@@ -65,12 +56,24 @@ source says type first, a requirement's rows carried the source's keywords inste
 of words a person would say, and a relation between two boxes standing one over the
 other was drawn leaning.
 
+**A construct not drawn at all.** Eight examples here used to be shown as source,
+and the reason was almost always the same one: something written inside something
+else. A subgraph now holds a subgraph, a composite state holds its own machine, a
+C4 boundary holds a boundary and a block holds a block, because each of them is
+laid out as a picture of its own and then placed as if it were a single box. A
+frame is a place an edge can end, so `outside --> subgraph1` stops on its border;
+a `direction` line turns the frame it stands in; a `note` is a slip of paper laid
+beside a class; C4's `Update…` lines repaint what has already been written; and a
+board's preamble may say where its tickets live, which draws every ticket id as
+the link it has become.
+
 Mermaid's YAML preamble — `---` / `title:` / `---` — was not read at all, and it
-accounted for most of the refusals. Its `title` is read now and set above the
-drawing, whatever kind the drawing is. A preamble carrying anything else, `config`
-above all, still leaves the fence as source: those keys change how Mermaid draws,
-and a picture drawn to settings other than the ones its author wrote is not the
-picture they asked for.
+accounted for a run of the refusals. Its `title` is read now and set above the
+drawing, whatever kind the drawing is. `config` carries one setting this
+understands, a board's ticket URL; a preamble carrying anything else still leaves
+the fence as source, because those keys change how Mermaid draws, and a picture
+drawn to settings other than the ones its author wrote is not the picture they
+asked for.
 
 ## Flowchart
 
@@ -127,9 +130,7 @@ flowchart TB
     two --> c2
 ```
 
-**Markio 2 shows this as source**, because of `one --> two`, an edge that ends on a frame rather than on a box.
-
-![Mermaid's own drawing](images/mermaid/flowchart-frame-edge.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-frame-edge.png)
 
 ## Flowchart with a direction inside a subgraph
 
@@ -154,9 +155,7 @@ flowchart LR
     outside ---> top2
 ```
 
-**Markio 2 shows this as source**, because of `direction TB`, which turns one frame's own contents, and `outside --> subgraph1`, which ends on a frame.
-
-![Mermaid's own drawing](images/mermaid/flowchart-direction.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-direction.png)
 
 ## Sequence diagram
 
@@ -228,9 +227,7 @@ classDiagram
     }
 ```
 
-**Markio 2 shows this as source**, because of the two `note` lines.
-
-![Mermaid's own drawing](images/mermaid/class-notes.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/class-notes.png)
 
 ## State diagram
 
@@ -270,9 +267,7 @@ stateDiagram-v2
     }
 ```
 
-**Markio 2 shows this as source**, because of `state First { … }` — a machine inside a machine.
-
-![Mermaid's own drawing](images/mermaid/state-composite.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/state-composite.png)
 
 ## Entity relationship diagram
 
@@ -489,9 +484,7 @@ mindmap
       Mermaid
 ```
 
-**Markio 2 shows this as source**, because of `::icon(fa fa-book)`.
-
-![Mermaid's own drawing](images/mermaid/mindmap-icons.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap-icons.png)
 
 ## Timeline
 
@@ -589,9 +582,7 @@ columns 1
   style B fill:#969,stroke:#333,stroke-width:4px
 ```
 
-**Markio 2 shows this as source**, because of `block:ID … end` — a frame inside a frame — and the `blockArrowId6<[…]>(down)` arrow.
-
-![Mermaid's own drawing](images/mermaid/block-nested.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/block-nested.png)
 
 ## Packet diagram
 
@@ -681,9 +672,7 @@ kanban
     id3[Weird flickering in Firefox]
 ```
 
-**Markio 2 shows this as source**, because of the `config:` block in its preamble, which turns every ticket id into a link.
-
-![Mermaid's own drawing](images/mermaid/kanban-config.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/kanban-config.png)
 
 ## Architecture diagram
 
@@ -728,9 +717,7 @@ From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/
     UpdateRelStyle(c3, c4, $textColor="red", $offsetY="-40", $offsetX="10")
 ```
 
-**Markio 2 shows this as source**, because of the `UpdateRelStyle` and `UpdateLayoutConfig` lines, which restyle a picture already drawn.
-
-![Mermaid's own drawing](images/mermaid/c4.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/c4.png)
 
 ## C4 diagram, written here
 

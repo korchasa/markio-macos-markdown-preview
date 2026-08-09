@@ -1820,14 +1820,25 @@ enum MermaidLayout {
         /// A card's words start past its priority stripe, so the room they need
         /// is the stripe as well as the padding on both sides.
         let inset = pad * 2 + 4 * metrics.scale
+        /// The widest a card is allowed to grow before its words wrap. A board
+        /// is read by glancing across its columns, and a column as wide as its
+        /// longest sentence stops being something anyone glances at.
+        let cardWidth = 150 * metrics.scale
 
         struct Card {
-            var label: CTLine
+            var label: [CTLine]
             var labelSize: CGSize
+            /// The ticket id, kept apart from the rest so it can be drawn as
+            /// the link it is when the board says where tickets live.
+            var ticket: CTLine?
+            var ticketSize: CGSize
             var details: CTLine?
             var detailsSize: CGSize
             var priority: String
             var height: CGFloat
+            /// The whole second line: the ticket, then everything else.
+            var footWidth: CGFloat
+            var footHeight: CGFloat
         }
         struct Column {
             var head: CTLine
@@ -1841,7 +1852,21 @@ enum MermaidLayout {
             var cards: [Card] = []
             var stack: CGFloat = 0
             for card in column.cards {
-                let label = text(card.label, font: font, color: theme.palette.text)
+                let (label, labelSize) = wrapped(
+                    card.label, font: font, color: theme.palette.text, within: cardWidth - inset)
+                var ticket: CTLine?
+                var ticketSize = CGSize.zero
+                if !card.ticket.isEmpty {
+                    // A board with somewhere to send its tickets shows them the
+                    // way Mermaid does: in the colour a link is written in, and
+                    // underlined.
+                    let line = text(
+                        card.ticket, font: smallFont,
+                        color: board.ticketBaseUrl.isEmpty
+                            ? theme.palette.secondaryText : theme.palette.link)
+                    ticket = line
+                    ticketSize = measure(line)
+                }
                 var details: CTLine?
                 var detailsSize = CGSize.zero
                 if !card.details.isEmpty {
@@ -1851,13 +1876,16 @@ enum MermaidLayout {
                     details = line
                     detailsSize = measure(line)
                 }
-                let labelSize = measure(label)
-                let height =
-                    pad * 2 + labelSize.height + (details == nil ? 0 : detailsSize.height + 2)
+                let footWidth =
+                    ticketSize.width + detailsSize.width
+                    + (ticket != nil && details != nil ? 10 * metrics.scale : 0)
+                let footHeight = max(ticketSize.height, detailsSize.height)
+                let height = pad * 2 + labelSize.height + (footHeight == 0 ? 0 : footHeight + 2)
                 cards.append(
                     Card(
-                        label: label, labelSize: labelSize, details: details,
-                        detailsSize: detailsSize, priority: card.priority, height: height))
+                        label: label, labelSize: labelSize, ticket: ticket, ticketSize: ticketSize,
+                        details: details, detailsSize: detailsSize, priority: card.priority,
+                        height: height, footWidth: footWidth, footHeight: footHeight))
                 stack += height + 6 * metrics.scale
             }
             columns.append(
@@ -1865,17 +1893,16 @@ enum MermaidLayout {
         }
         let headHeight = (columns.map(\.headSize.height).max() ?? 0) + pad * 2
         let bodyHeight = columns.map(\.height).max() ?? 0
-        // A card's words are not wrapped — a title is one line, the way its
-        // author wrote it — so the column is made wide enough to hold the
-        // longest of them. Every column takes the same width, because a board
-        // whose columns are different widths reads as a board with a column
-        // that matters more.
+        // A card's words wrap at a readable measure, so one long title makes a
+        // tall card rather than a board six times too wide. Every column takes
+        // the same width, because a board whose columns are different widths
+        // reads as a board with a column that matters more.
         let columnWidth = max(
             150 * metrics.scale,
             columns.map { column in
                 max(
                     column.headSize.width + pad * 2,
-                    column.cards.map { inset + max($0.labelSize.width, $0.detailsSize.width) }.max()
+                    column.cards.map { inset + max($0.labelSize.width, $0.footWidth) }.max()
                         ?? 0)
             }.max() ?? 0)
         let content = CGFloat(columns.count) * columnWidth + CGFloat(columns.count - 1) * gap
@@ -1922,20 +1949,45 @@ enum MermaidLayout {
                             color: priorityColour(card.priority, theme: theme),
                             cornerRadius: 2 * metrics.scale))
                 }
-                decorations.append(
-                    .glyphs(
-                        card.label,
-                        origin: CGPoint(
-                            x: frame.minX + pad + 4 * metrics.scale,
-                            y: frame.minY + pad + card.labelSize.height - descent(card.label))))
+                var wordsY = frame.minY + pad
+                for line in card.label {
+                    let size = measure(line)
+                    decorations.append(
+                        .glyphs(
+                            line,
+                            origin: CGPoint(
+                                x: frame.minX + pad + 4 * metrics.scale,
+                                y: wordsY + size.height - descent(line))))
+                    wordsY += size.height
+                }
+                let footLeft = frame.minX + pad + 4 * metrics.scale
+                let footBase = frame.minY + pad + card.labelSize.height + 2 + card.footHeight
+                if let ticket = card.ticket {
+                    let origin = CGPoint(x: footLeft, y: footBase - descent(ticket))
+                    decorations.append(.glyphs(ticket, origin: origin))
+                    if !board.ticketBaseUrl.isEmpty {
+                        let rule = CGMutablePath()
+                        rule.move(to: CGPoint(x: origin.x, y: origin.y + 1.5 * metrics.scale))
+                        rule.addLine(
+                            to: CGPoint(
+                                x: origin.x + card.ticketSize.width,
+                                y: origin.y + 1.5 * metrics.scale))
+                        decorations.append(
+                            .path(rule, color: theme.palette.link, lineWidth: 1, filled: false))
+                    }
+                }
                 if let details = card.details {
+                    // The rest of the metadata is set against the card's far
+                    // edge, which is where Mermaid puts it.
                     decorations.append(
                         .glyphs(
                             details,
                             origin: CGPoint(
-                                x: frame.minX + pad + 4 * metrics.scale,
-                                y: frame.minY + pad + card.labelSize.height + 2
-                                    + card.detailsSize.height - descent(details))))
+                                x: max(
+                                    footLeft + card.ticketSize.width
+                                        + (card.ticket == nil ? 0 : 10 * metrics.scale),
+                                    frame.maxX - pad - card.detailsSize.width),
+                                y: footBase - descent(details))))
                 }
                 y = frame.maxY + 6 * metrics.scale
             }
@@ -1944,6 +1996,37 @@ enum MermaidLayout {
             decorations: decorations,
             size: CGSize(width: width, height: height),
             contentWidth: content
+        )
+    }
+
+    /// Words broken into lines no wider than the room given, breaking between
+    /// words and never inside one. A word longer than the room is left whole and
+    /// overhangs, because a word cut in half reads as a different word.
+    private static func wrapped(
+        _ words: String, font: CTFont, color: CGColor, within room: CGFloat
+    ) -> (lines: [CTLine], size: CGSize) {
+        var lines: [CTLine] = []
+        var current = ""
+        func settle() {
+            guard !current.isEmpty else { return }
+            lines.append(text(current, font: font, color: color))
+            current = ""
+        }
+        for word in words.split(separator: " ", omittingEmptySubsequences: true) {
+            let candidate = current.isEmpty ? String(word) : current + " " + word
+            if !current.isEmpty, measure(text(candidate, font: font, color: color)).width > room {
+                settle()
+                current = String(word)
+            } else {
+                current = candidate
+            }
+        }
+        settle()
+        let sizes = lines.map(measure)
+        return (
+            lines,
+            CGSize(
+                width: sizes.map(\.width).max() ?? 0, height: sizes.reduce(0) { $0 + $1.height })
         )
     }
 
@@ -2486,6 +2569,10 @@ enum MermaidLayout {
             case .point, .endPoint:
                 let side = 16 * metrics.scale
                 box = CGSize(width: side, height: side)
+            case .arrowUp, .arrowDown:
+                box.height += size.height * 1.4
+            case .arrowLeft, .arrowRight:
+                box.width += size.width * 0.6 + 20 * metrics.scale
             case .rectangle, .rounded, .stadium:
                 break
             }
@@ -2539,7 +2626,13 @@ enum MermaidLayout {
         func rect(_ end: Flowchart.End) -> CGRect? {
             switch end {
             case .node(let index): return boxes.indices.contains(index) ? boxes[index].frame : nil
-            case .frame(let group): return frames[group]
+            case .frame(let group):
+                // The strip the frame's name is written in belongs to the frame:
+                // a line stopping at the border alone would cross the name.
+                guard let rect = frames[group] else { return nil }
+                return CGRect(
+                    x: rect.minX, y: rect.minY - titleRoom, width: rect.width,
+                    height: rect.height + titleRoom)
             }
         }
         // Two labelled edges leaving one node run side by side, so their words
@@ -3080,6 +3173,29 @@ enum MermaidLayout {
                 CGPoint(x: frame.maxX, y: frame.maxY),
                 CGPoint(x: frame.minX, y: frame.maxY),
                 CGPoint(x: frame.minX + lean, y: frame.midY),
+            ])
+        case .arrowUp, .arrowDown, .arrowLeft, .arrowRight:
+            // A fat arrow: a shaft half the width across, and a head that takes
+            // the last third of the length.
+            let along = box.shape == .arrowUp || box.shape == .arrowDown
+            let length = along ? frame.height : frame.width
+            let across = along ? frame.width : frame.height
+            let head = min(length * 0.42, across / 2)
+            let shaft = across * 0.24
+            // Points along the arrow measured from its tail, then turned to
+            // face whichever way it points.
+            func at(_ forward: CGFloat, _ side: CGFloat) -> CGPoint {
+                switch box.shape {
+                case .arrowDown: return CGPoint(x: frame.midX + side, y: frame.minY + forward)
+                case .arrowUp: return CGPoint(x: frame.midX + side, y: frame.maxY - forward)
+                case .arrowRight: return CGPoint(x: frame.minX + forward, y: frame.midY + side)
+                default: return CGPoint(x: frame.maxX - forward, y: frame.midY + side)
+                }
+            }
+            return polygon([
+                at(0, -shaft), at(length - head, -shaft), at(length - head, -across / 2),
+                at(length, 0), at(length - head, across / 2), at(length - head, shaft),
+                at(0, shaft),
             ])
         case .cylinder:
             // A drum seen from the side: an ellipse for the lid, straight sides,
@@ -3999,51 +4115,109 @@ enum MermaidLayout {
             (labels.map(\.size.width).max() ?? 0) + metrics.nodePaddingX * 2)
         let cellHeight = (labels.map(\.size.height).max() ?? 0) + metrics.nodePaddingY * 2
         let gap = 10 * metrics.scale
-        let content = cellWidth * CGFloat(diagram.columns) + gap * CGFloat(diagram.columns - 1)
+        // A framed block holds a row of its own, so the grid is measured in the
+        // narrowest column any of them needs and a plain cell takes several of
+        // them. The author's own column count still says where a row wraps.
+        let unit = max(1, diagram.cells.map { columnsWide(of: $0, in: diagram) }.max() ?? 1)
+        let columns = diagram.columns * unit
+        let content = cellWidth * CGFloat(columns) + gap * CGFloat(columns - 1)
         let left = max(metrics.padding, (width - content) / 2)
 
-        // Cells fill the row until the next one would not fit, and then wrap.
+        // Cells fill the row until the next one would not fit, and then wrap. A
+        // framed block is laid out the same way inside its own share of the
+        // grid, so a block inside a block is one more turn of the same routine.
         var boxes: [Int: Placed] = [:]
-        var column = 0
-        var row = 0
-        for cell in diagram.cells {
-            let span = min(cell.span, diagram.columns)
-            if column + span > diagram.columns {
-                column = 0
-                row += 1
-            }
-            if let node = cell.node {
-                let frame = CGRect(
-                    x: left + CGFloat(column) * (cellWidth + gap),
-                    y: metrics.padding + CGFloat(row) * (cellHeight + gap),
-                    width: cellWidth * CGFloat(span) + gap * CGFloat(span - 1),
-                    height: cellHeight)
-                boxes[node] = Placed(
-                    frame: frame, lines: labels[node].lines, labelSize: labels[node].size,
-                    shape: diagram.chart.nodes[node].shape, style: diagram.chart.nodes[node].style)
-            }
-            column += span
-            if column >= diagram.columns {
-                column = 0
-                row += 1
-            }
+        var frames: [Int: CGRect] = [:]
+        func rect(column: Int, row: Int, wide: Int, tall: Int) -> CGRect {
+            CGRect(
+                x: left + CGFloat(column) * (cellWidth + gap),
+                y: metrics.padding + CGFloat(row) * (cellHeight + gap),
+                width: cellWidth * CGFloat(wide) + gap * CGFloat(wide - 1),
+                height: cellHeight * CGFloat(tall) + gap * CGFloat(tall - 1))
         }
-        let rows = column == 0 ? row : row + 1
+        /// Lays a container's cells out from a corner of the grid, and says how
+        /// many rows it took.
+        func place(
+            _ cells: [BlockDiagram.Cell], columns: Int, atColumn: Int, atRow: Int, unit: Int
+        ) -> Int {
+            var column = 0
+            var row = 0
+            for cell in cells {
+                let wide = min(
+                    cell.block == nil
+                        ? cell.span * unit : columnsWide(of: cell, in: diagram), columns)
+                if column + wide > columns {
+                    column = 0
+                    row += 1
+                }
+                let tall = rowsTall(of: cell, in: diagram)
+                if let node = cell.node {
+                    var frame = rect(
+                        column: atColumn + column, row: atRow + row, wide: wide, tall: tall)
+                    // A fat arrow keeps its own girth: stretched across a whole
+                    // row it would read as a band rather than an arrow.
+                    switch diagram.chart.nodes[node].shape {
+                    case .arrowUp, .arrowDown:
+                        let side = min(frame.width, frame.height * 1.6)
+                        frame = CGRect(
+                            x: frame.midX - side / 2, y: frame.minY, width: side,
+                            height: frame.height)
+                    default:
+                        break
+                    }
+                    boxes[node] = Placed(
+                        frame: frame,
+                        lines: labels[node].lines, labelSize: labels[node].size,
+                        shape: diagram.chart.nodes[node].shape,
+                        style: diagram.chart.nodes[node].style)
+                } else if let block = cell.block {
+                    let inner = diagram.blocks[block]
+                    frames[block] = rect(
+                        column: atColumn + column, row: atRow + row, wide: wide, tall: tall
+                    )
+                    .insetBy(dx: -gap / 2, dy: -gap / 2)
+                    _ = place(
+                        inner.cells, columns: inner.columns ?? wide, atColumn: atColumn + column,
+                        atRow: atRow + row, unit: 1)
+                }
+                column += wide
+                if column >= columns {
+                    column = 0
+                    row += 1
+                }
+            }
+            return column == 0 ? row : row + 1
+        }
+        let rows = place(diagram.cells, columns: columns, atColumn: 0, atRow: 0, unit: unit)
         let height =
             metrics.padding * 2 + CGFloat(rows) * cellHeight + CGFloat(max(0, rows - 1)) * gap
 
         var decorations: [BlockBox.Decoration] = []
         var labelDecorations: [BlockBox.Decoration] = []
+        // A frame first: everything written inside it stands on top of it.
+        for block in diagram.blocks.indices.sorted(by: {
+            depth(of: $0, in: diagram) < depth(of: $1, in: diagram)
+        }) {
+            guard let frame = frames[block] else { continue }
+            let path = CGPath(roundedRect: frame, cornerWidth: 6, cornerHeight: 6, transform: nil)
+            decorations.append(
+                .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+        }
+        func end(_ end: Flowchart.End) -> CGRect? {
+            switch end {
+            case .node(let node): return boxes[node]?.frame
+            case .frame(let block): return frames[block]
+            }
+        }
         for edge in diagram.chart.edges {
-            guard let start = edge.from.node, let finish = edge.to.node,
-                let from = boxes[start], let to = boxes[finish]
-            else { continue }
+            guard let from = end(edge.from), let to = end(edge.to) else { continue }
             let drawn = self.edge(
-                edge, from: from.frame, to: to.frame, theme: theme, metrics: metrics, order: 0,
+                edge, from: from, to: to, theme: theme, metrics: metrics, order: 0,
                 side: 1, lane: 0,
-                obstacles: diagram.chart.nodes.indices.compactMap {
-                    $0 == start || $0 == finish ? nil : boxes[$0]?.frame
-                })
+                obstacles: boxes.values.map(\.frame).filter { !$0.intersects(from) }
+                    .filter { !$0.intersects(to) })
             decorations += drawn.shaft
             labelDecorations += drawn.label
         }
@@ -4056,6 +4230,62 @@ enum MermaidLayout {
             size: CGSize(width: width, height: height),
             contentWidth: content
         )
+    }
+
+    /// How many columns of the grid a cell takes: its own span, or, for a framed
+    /// block, as many as the widest row written inside it.
+    private static func columnsWide(of cell: BlockDiagram.Cell, in diagram: BlockDiagram) -> Int {
+        guard let block = cell.block else { return cell.span }
+        let inner = diagram.blocks[block]
+        let total = inner.cells.reduce(0) { $0 + columnsWide(of: $1, in: diagram) }
+        return max(1, min(total, inner.columns ?? total))
+    }
+
+    /// How many rows of the grid a cell takes: one, or, for a framed block, as
+    /// many as its own cells wrap into.
+    private static func rowsTall(of cell: BlockDiagram.Cell, in diagram: BlockDiagram) -> Int {
+        guard let block = cell.block else { return 1 }
+        let inner = diagram.blocks[block]
+        let columns =
+            inner.columns ?? inner.cells.reduce(0) { $0 + columnsWide(of: $1, in: diagram) }
+        guard columns > 0 else { return 1 }
+        var column = 0
+        var rows = 0
+        var tallest = 1
+        for cell in inner.cells {
+            let wide = min(columnsWide(of: cell, in: diagram), columns)
+            if column + wide > columns {
+                column = 0
+                rows += tallest
+                tallest = 1
+            }
+            tallest = max(tallest, rowsTall(of: cell, in: diagram))
+            column += wide
+            if column >= columns {
+                column = 0
+                rows += tallest
+                tallest = 1
+            }
+        }
+        return max(1, column == 0 ? rows : rows + tallest)
+    }
+
+    /// How many frames a block stands inside, so the outermost is drawn first.
+    private static func depth(of block: Int, in diagram: BlockDiagram) -> Int {
+        var depth = 0
+        var walk = block
+        var steps = 0
+        while steps <= diagram.blocks.count {
+            guard
+                let holder = diagram.blocks.firstIndex(where: { candidate in
+                    candidate.cells.contains { $0.block == walk }
+                })
+            else { return depth }
+            depth += 1
+            walk = holder
+            steps += 1
+        }
+        return depth
     }
 
     // MARK: - Architecture

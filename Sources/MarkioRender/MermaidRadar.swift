@@ -114,6 +114,15 @@ struct BlockDiagram {
     struct Cell {
         var node: Int?
         var span: Int
+        /// `block:ID … end`: a grid of its own, framed, standing in this cell.
+        var block: Int?
+    }
+
+    /// A `block:ID … end` and what is written inside it.
+    struct Block {
+        var id: String
+        var columns: Int?
+        var cells: [Cell]
     }
 
     var columns: Int
@@ -122,6 +131,9 @@ struct BlockDiagram {
     var chart: Flowchart
     /// Every cell in reading order, blank ones included.
     var cells: [Cell]
+    /// Every framed block, held flat and named by index, so a block inside a
+    /// block is one more entry rather than a type that holds itself.
+    var blocks: [Block] = []
 
     static func parse(_ lines: [Substring]) -> BlockDiagram? {
         var columns: Int?
@@ -129,21 +141,60 @@ struct BlockDiagram {
         var identifiers: [String: Int] = [:]
         var classes: [String: Flowchart.Style] = [:]
         var cells: [Cell] = []
+        var blocks: [Block] = []
+        /// The blocks currently open, innermost last.
+        var open: [Int] = []
         var edgeLines: [Substring] = []
+
+        /// Where a cell written now belongs: the innermost open block, or the
+        /// diagram itself.
+        func add(_ cell: Cell) {
+            if let block = open.last {
+                blocks[block].cells.append(cell)
+            } else {
+                cells.append(cell)
+            }
+        }
 
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
             if word == "columns" {
-                guard let value = Int(rest), value > 0, value <= 32, columns == nil else {
-                    return nil
+                guard let value = Int(rest), value > 0, value <= 32 else { return nil }
+                if let block = open.last {
+                    guard blocks[block].columns == nil else { return nil }
+                    blocks[block].columns = value
+                } else {
+                    guard columns == nil else { return nil }
+                    columns = value
                 }
-                columns = value
                 continue
             }
-            // A block inside a block needs a frame inside a frame, which is the
-            // same thing a nested subgraph asks for and the same answer.
-            guard word != "block:", !word.hasPrefix("block:"), word != "end" else { return nil }
+            if word.hasPrefix("block:") {
+                var id = String(word.dropFirst("block:".count))
+                // `block:group:2` takes two of the row's columns, the same way
+                // `a["Wide"]:2` does.
+                var span = 1
+                if let colon = id.lastIndex(of: ":") {
+                    guard let read = Int(id[id.index(after: colon)...]), read > 0 else {
+                        return nil
+                    }
+                    span = read
+                    id = String(id[id.startIndex..<colon])
+                }
+                guard !id.isEmpty, rest.isEmpty, identifiers[id] == nil,
+                    !blocks.contains(where: { $0.id == id })
+                else { return nil }
+                blocks.append(Block(id: id, columns: nil, cells: []))
+                add(Cell(node: nil, span: span, block: blocks.count - 1))
+                open.append(blocks.count - 1)
+                continue
+            }
+            if word == "end" {
+                guard rest.isEmpty, !open.isEmpty else { return nil }
+                open.removeLast()
+                continue
+            }
             if word == "classDef" {
                 let parts = rest.split(
                     separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
@@ -188,10 +239,16 @@ struct BlockDiagram {
                     text = String(text[text.startIndex..<colon])
                 }
                 if text == "space" {
-                    cells.append(Cell(node: nil, span: span))
+                    add(Cell(node: nil, span: span, block: nil))
                     continue
                 }
-                guard let read = Flowchart.cell(Substring(text)) else { return nil }
+                var read: (id: String, label: String?, shape: Flowchart.Shape?)?
+                if let arrow = blockArrow(text) {
+                    read = arrow
+                } else {
+                    read = Flowchart.cell(Substring(text))
+                }
+                guard let read else { return nil }
                 let index: Int
                 if let existing = identifiers[read.id] {
                     index = existing
@@ -205,13 +262,20 @@ struct BlockDiagram {
                     index = chart.nodes.count - 1
                     identifiers[read.id] = index
                 }
-                cells.append(Cell(node: index, span: span))
+                add(Cell(node: index, span: span, block: nil))
             }
         }
+        guard open.isEmpty else { return nil }
 
+        /// An edge may name a block as well as a box, and a block is drawn as a
+        /// frame, which the flowchart already knows how to end a line on.
+        func end(_ name: String) -> Flowchart.End? {
+            if let node = identifiers[name] { return .node(node) }
+            if let block = blocks.firstIndex(where: { $0.id == name }) { return .frame(block) }
+            return nil
+        }
         for line in edgeLines {
-            guard let read = link(line), let from = identifiers[read.from],
-                let to = identifiers[read.to]
+            guard let read = link(line), let from = end(read.from), let to = end(read.to)
             else { return nil }
             chart.edges.append(
                 Flowchart.Edge(
@@ -222,7 +286,35 @@ struct BlockDiagram {
         // Mermaid's `auto` comes to for the rows people actually write.
         let width = columns ?? cells.reduce(0) { $0 + $1.span }
         guard width > 0 else { return nil }
-        return BlockDiagram(columns: width, chart: chart, cells: cells)
+        return BlockDiagram(columns: width, chart: chart, cells: cells, blocks: blocks)
+    }
+
+    /// `blockArrowId6<["words"]>(down)`: a fat arrow with words in it.
+    ///
+    /// `&nbsp;` is how a Mermaid author writes an arrow with nothing to say, so
+    /// it becomes the space it stands for rather than being shown as itself.
+    private static func blockArrow(_ text: String)
+        -> (id: String, label: String?, shape: Flowchart.Shape?)?
+    {
+        let directions: [String: Flowchart.Shape] = [
+            "up": .arrowUp, "down": .arrowDown, "left": .arrowLeft, "right": .arrowRight,
+            "x": .arrowRight, "y": .arrowUp,
+        ]
+        guard let open = text.range(of: "<["), let close = text.range(of: "]>"),
+            open.upperBound <= close.lowerBound, text.hasSuffix(")")
+        else { return nil }
+        let id = String(text[text.startIndex..<open.lowerBound])
+        guard !id.isEmpty else { return nil }
+        let inner = String(text[open.upperBound..<close.lowerBound])
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        let tail = text[close.upperBound...]
+        guard tail.hasPrefix("("),
+            let shape = directions[
+                String(tail.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                    .lowercased()]
+        else { return nil }
+        return (id, inner.trimmingCharacters(in: .whitespaces), shape)
     }
 
     /// `a --> b`, `a -->|words| b`, `a --- b`, `a -.-> b`.

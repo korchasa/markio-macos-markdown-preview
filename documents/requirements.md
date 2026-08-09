@@ -72,34 +72,38 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   nested, turned by a `direction` line of their own, and named by edges —
   `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
-  `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram` with the
-  notes beside its classes, an
+  `autonumber`), a `pie` chart, a `stateDiagram-v2` with the machines inside its
+  states, a `classDiagram` with the notes beside its classes, an
   `erDiagram`, a `mindmap`, a `timeline`, a `journey`, a `gantt` chart written in
   the default date format, a `quadrantChart`, an `xychart-beta`, a `gitGraph`
   whose lanes run across the page, a `packet-beta`, a `kanban` board, a
   `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
   (`C4Context` and its four siblings, with the `Update…` lines that repaint
   it), an `architecture-beta` whose services
-  use the icons Mermaid ships, a `radar-beta`, a `block-beta` or a `zenuml`
+  use the icons Mermaid ships, a `radar-beta`, a `block-beta` with the blocks
+  inside its blocks and its fat arrows, or a `zenuml`
   written as calls, replies and the blocks around them. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a
-  composite state, a namespace, a tinted band, a click handler, a mindmap icon,
+  namespace, a tinted band, a click handler,
   an excluded weekday, a cherry-pick, a commit of a kind it has no mark for, a
   gap between packet fields, a flow that
   returns to where it came from,
   an icon from a downloaded
   pack, a group inside a group, architecture edges that send two services to the
-  same place, a radar curve short of a value, a block inside a block, or a
+  same place, a radar curve short of a value, or a
   ZenUML call with nobody calling it — is not read, and the fence stays a
   fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 - **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
-  is read for one key, `title`, which names the picture and is set above it
-  whatever kind it is. A preamble carrying anything else, `config` above all,
-  changes how Mermaid draws rather than what it draws, and the fence stays a
-  fenced block; so does a diagram named twice, once in the preamble and once in
-  a `title` line of its own.
+  is read for two keys. `title` names the picture and is set above it whatever
+  kind it is. `config.kanban.ticketBaseUrl` says where a board's tickets live,
+  and every ticket id on the board is then drawn as the link it has become.
+  A preamble carrying anything else — a theme, a gantt's display mode, any other
+  `config` — changes how Mermaid draws rather than what it draws, and the fence
+  stays a fenced block; so does a diagram named twice, once in the preamble and
+  once in a `title` line of its own, and a board's setting written over a
+  diagram that is not a board.
 
 ## VIEW — What the reader sees
 

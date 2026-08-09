@@ -353,7 +353,10 @@ it opens, which is what makes a branch read as one thing however deep it goes. A
 root taller than everything it opens would land above the top of the picture, so
 the whole tree is dropped back into view once it is placed. Each top-level
 branch keeps one colour to its last leaf, and a connector near the root is drawn
-thicker than one near a twig.
+thicker than one near a twig. `::icon(fa fa-book)` belongs to the node above it
+and adds nothing to the picture: it asks for a glyph out of a font that has to
+be fetched, and Mermaid itself draws nothing for it on a page that has not
+already loaded that font, which is every page here.
 
 A timeline is columns. A section is a band over the run of periods it owns, so
 its span says which columns belong to it without a line joining them; under the
@@ -413,10 +416,16 @@ A kanban board is a column per list and a card per item, and the indentation is
 what separates the two — the first line's indent is the column level, and
 anything deeper is a card. A line shallower than the first would leave it unclear
 what is a column and what is a card, so it is refused. A card's priority tints
-its left edge. A card's words are not wrapped — a title is one line, the way its
-author wrote it — so the columns are made wide enough to hold the longest of
-them, and every column takes the same width: a board whose columns differ in
-width reads as a board with a column that matters more.
+its left edge. A card's words wrap at a readable measure and break only between
+words, so one long title makes a tall card rather than a board six times too
+wide to look at; every column takes the same width, because a board whose
+columns differ in width reads as a board with a column that matters more. A
+card's ticket id is
+kept apart from the rest of its metadata, because a preamble may say where
+tickets live — `config.kanban.ticketBaseUrl` — and then the id is a link, drawn
+in the colour a link is written in and underlined, the way Mermaid shows it. The
+rest of the metadata is set against the card's far edge. The picture shows a
+link but does not follow one: nothing in a drawn diagram is clickable here.
 
 A requirement diagram is read into the same `BoxDiagram` a class diagram uses: a
 requirement is a titled box with its id, its text and its verification method in
@@ -491,6 +500,17 @@ the grid its author counted out. The blocks themselves are `Flowchart.Node`s, so
 the shapes, the `classDef` colouring and the arrow drawing are the ones a
 flowchart already has.
 
+`block:ID … end` is a grid inside a cell of the grid, and the same routine lays
+it out, which is why a block inside a block needs no case of its own. The grid
+is measured in the narrowest column any framed block needs, and a plain cell
+takes several of those columns at once, so the author's own column count still
+says where a row wraps while what is written inside a frame still fits. A frame
+is drawn in the gap around the cells it holds, and an edge may name it — the
+same `Flowchart.End` a subgraph gets. `blockArrowId<["words"]>(down)` is a fat
+arrow with words in it: a shaft and a head worked out from the cell it stands
+in, and kept to its own girth rather than stretched across a whole row, where it
+would read as a band and not an arrow.
+
 A ZenUML diagram is a sequence diagram written as code, and it is read into one.
 The work is the stack of callers: `B.method()` is a call from wherever the reader
 has got to, the braces after it put `B` on top until they close, and `return`
@@ -504,7 +524,11 @@ colours are written down rather than taken from the theme: a pie says which
 slice is which by colour, so the colours have to stay apart from each other on
 either background. A state machine has no layout of its own at all — it is read
 into a `Flowchart` whose start and end are a filled dot and a ring, because that
-is the only thing about it a flowchart cannot already draw.
+is the only thing about it a flowchart cannot already draw. `state Big { … }` is
+written out as a `subgraph`, so a machine inside a machine is a frame inside a
+frame. `[*]` inside one is that machine's own beginning and end rather than the
+whole diagram's, so the points are named after the state that holds them — two
+composite states each get their own dot and their own ring.
 
 A sequence diagram is columns with dashed lifelines, walked in document order.
 A column is as wide as the longest message written across it — divided by how

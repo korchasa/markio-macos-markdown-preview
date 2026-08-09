@@ -32,9 +32,15 @@ enum MermaidDiagram {
     /// A diagram with the name its YAML preamble gave it, set above it.
     indirect case titled(String, MermaidDiagram)
 
+    /// What a diagram's preamble said, beyond its name.
+    struct Settings {
+        /// `config.kanban.ticketBaseUrl`: what a card's ticket id points at.
+        var ticketBaseUrl = ""
+    }
+
     static func parse(_ source: String) -> MermaidDiagram? {
         guard let front = frontMatter(source) else { return nil }
-        guard let diagram = parse(body: front.body) else { return nil }
+        guard let diagram = parse(body: front.body, settings: front.settings) else { return nil }
         guard !front.title.isEmpty else { return diagram }
         // A title in the preamble and a `title` line in the diagram are two
         // names for one picture, and which of them Mermaid shows is not
@@ -45,35 +51,60 @@ enum MermaidDiagram {
 
     /// Mermaid's YAML preamble: `---`, some keys, `---`, and then the diagram.
     ///
-    /// The one key read here is `title`, because it names the picture and the
-    /// drawing can show it. `config` and its neighbours change how Mermaid draws
-    /// — the theme, a ticket's link, a gantt's display mode — and a picture drawn
-    /// to settings other than the ones its author wrote is not the picture they
-    /// asked for, so the fence stays source instead.
+    /// Two keys are read. `title` names the picture, and the drawing shows it.
+    /// `config` changes how Mermaid draws rather than what it draws — the theme,
+    /// a gantt's display mode — and a picture drawn to settings other than the
+    /// ones its author wrote is not the picture they asked for, so a `config`
+    /// holding anything but the settings named in `Settings` refuses the fence.
     ///
     /// A source with no preamble is returned untouched; nil means there was one
     /// and it said something this does not understand.
-    private static func frontMatter(_ source: String) -> (title: String, body: String)? {
+    private static func frontMatter(_ source: String)
+        -> (title: String, settings: Settings, body: String)?
+    {
         let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
         var index = 0
         while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
             index += 1
         }
         guard index < lines.count, lines[index].trimmingCharacters(in: .whitespaces) == "---" else {
-            return ("", source)
+            return ("", Settings(), source)
         }
         var title = ""
+        var settings = Settings()
+        /// The keys open above this line, outermost first, with the indent each
+        /// was written at — which is all the YAML nesting a preamble ever has.
+        var path: [(indent: Int, key: String)] = []
         index += 1
         while index < lines.count {
-            let line = lines[index].trimmingCharacters(in: .whitespaces)
+            let raw = lines[index]
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            let indent = raw.prefix(while: { $0 == " " || $0 == "\t" }).count
             index += 1
             if line == "---" {
-                return (title, lines[index...].joined(separator: "\n"))
+                return (title, settings, lines[index...].joined(separator: "\n"))
             }
             if line.isEmpty || line.hasPrefix("#") { continue }
-            guard title.isEmpty, line.hasPrefix("title:") else { return nil }
-            title = scalar(line.dropFirst("title:".count))
-            guard !title.isEmpty else { return nil }
+            guard let colon = line.firstIndex(of: ":") else { return nil }
+            let key = String(line[line.startIndex..<colon])
+            let value = scalar(line[line.index(after: colon)...])
+            while let last = path.last, last.indent >= indent { path.removeLast() }
+            let here = path.map(\.key) + [key]
+            if value.isEmpty {
+                // A key with nothing after it opens what is written under it.
+                path.append((indent, key))
+                guard here == ["config"] || here == ["config", "kanban"] else { return nil }
+                continue
+            }
+            switch here {
+            case ["title"]:
+                guard title.isEmpty else { return nil }
+                title = value
+            case ["config", "kanban", "ticketBaseUrl"]:
+                settings.ticketBaseUrl = value
+            default:
+                return nil
+            }
         }
         // Opened and never closed, which is neither a preamble nor a diagram.
         return nil
@@ -101,7 +132,7 @@ enum MermaidDiagram {
         }
     }
 
-    private static func parse(body source: String) -> MermaidDiagram? {
+    private static func parse(body source: String, settings: Settings) -> MermaidDiagram? {
         var lines: [Substring] = []
         /// How far each line was indented. A mindmap is the one diagram whose
         /// meaning lives in the leading spaces, so they are measured here rather
@@ -115,6 +146,9 @@ enum MermaidDiagram {
             indents.append(raw.prefix(while: { $0 == " " || $0 == "\t" }).count)
         }
         guard let header = lines.first else { return nil }
+        // A kanban setting over a diagram that is not a board says the author
+        // meant something this has not understood.
+        guard settings.ticketBaseUrl.isEmpty || header == "kanban" else { return nil }
         let rest = Array(lines.dropFirst())
         if header == "mindmap" || header == "kanban" || header == "treemap-beta"
             || header == "treemap"
@@ -122,7 +156,9 @@ enum MermaidDiagram {
             let body = zip(indents.dropFirst(), rest).map { (indent: $0, text: $1) }
             switch header {
             case "mindmap": return Mindmap.parse(body).map(MermaidDiagram.mindmap)
-            case "kanban": return KanbanBoard.parse(body).map(MermaidDiagram.kanban)
+            case "kanban":
+                return KanbanBoard.parse(body, ticketBaseUrl: settings.ticketBaseUrl)
+                    .map(MermaidDiagram.kanban)
             default: return Treemap.parse(body).map(MermaidDiagram.treemap)
             }
         }
@@ -256,6 +292,10 @@ enum StateDiagram {
         var direction = Flowchart.Direction.down
         var body: [Substring] = []
         var names: [String: String] = [:]
+        /// The composite states currently open, innermost last. `[*]` inside one
+        /// is that machine's own beginning and end, not the whole diagram's, so
+        /// the points are named after the state that holds them.
+        var open: [String] = []
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
@@ -265,21 +305,45 @@ enum StateDiagram {
                 direction = read
                 continue
             }
+            if line == "}" {
+                guard !open.isEmpty else { return nil }
+                open.removeLast()
+                body.append("end")
+                continue
+            }
             if word == "state" {
-                // `state "Long name" as id` is a label; `state id { … }` is a
-                // machine inside a machine, and `<<fork>>` is a bar this does
-                // not draw.
-                guard rest.hasPrefix("\""), let close = rest.dropFirst().firstIndex(of: "\"")
-                else { return nil }
-                let label = String(rest[rest.index(after: rest.startIndex)..<close])
-                let tail = rest[rest.index(after: close)...].trimmingCharacters(in: .whitespaces)
-                guard tail.hasPrefix("as ") else { return nil }
-                names[String(tail.dropFirst(3)).trimmingCharacters(in: .whitespaces)] = label
+                // `state "Long name" as id` names a state; `state id { … }` is a
+                // machine inside a machine; `<<fork>>` is a bar this does not
+                // draw.
+                if rest.hasPrefix("\"") {
+                    guard let close = rest.dropFirst().firstIndex(of: "\"") else { return nil }
+                    let label = String(rest[rest.index(after: rest.startIndex)..<close])
+                    let tail = rest[rest.index(after: close)...]
+                        .trimmingCharacters(in: .whitespaces)
+                    guard tail.hasPrefix("as ") else { return nil }
+                    names[String(tail.dropFirst(3)).trimmingCharacters(in: .whitespaces)] = label
+                    continue
+                }
+                guard rest.hasSuffix("{") else { return nil }
+                let name = String(rest.dropLast()).trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains(" ") else { return nil }
+                open.append(name)
+                body.append(Substring("subgraph \(name)"))
                 continue
             }
             guard !["note", "end", "class", "classDef", "click"].contains(word) else { return nil }
             // `A --> B : go` is the same edge a flowchart writes `A -->|go| B`.
-            guard let arrow = line.range(of: "-->") else { return nil }
+            guard let arrow = line.range(of: "-->") else {
+                // `id: Words` is what the state is called on the page.
+                guard let colon = line.firstIndex(of: ":") else { return nil }
+                let name = String(line[line.startIndex..<colon]).trimmingCharacters(
+                    in: .whitespaces)
+                let label = String(line[line.index(after: colon)...])
+                    .trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains(" "), !label.isEmpty else { return nil }
+                names[name] = label
+                continue
+            }
             var from = String(line[line.startIndex..<arrow.lowerBound])
                 .trimmingCharacters(in: .whitespaces)
             var tail = String(line[arrow.upperBound...]).trimmingCharacters(in: .whitespaces)
@@ -290,26 +354,29 @@ enum StateDiagram {
                 tail = String(tail[tail.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
             }
             guard !from.isEmpty, !tail.isEmpty else { return nil }
-            if from == "[*]" { from = "__start" }
-            if tail == "[*]" { tail = "__end" }
+            let scope = open.last ?? ""
+            if from == "[*]" { from = "__start\(scope)" }
+            if tail == "[*]" { tail = "__end\(scope)" }
             let arrowText = label.isEmpty ? "-->" : "-->|\(label)|"
             body.append(Substring("\(from) \(arrowText) \(tail)"))
         }
-        guard !body.isEmpty, var chart = Flowchart.parse(body, direction: direction) else {
-            return nil
-        }
+        guard open.isEmpty, !body.isEmpty, var chart = Flowchart.parse(body, direction: direction)
+        else { return nil }
         for index in chart.nodes.indices {
-            switch chart.nodes[index].id {
-            case "__start":
-                chart.nodes[index] = Flowchart.Node(id: "__start", label: "", shape: .point)
-            case "__end":
-                chart.nodes[index] = Flowchart.Node(id: "__end", label: "", shape: .endPoint)
-            default:
+            let id = chart.nodes[index].id
+            if id.hasPrefix("__start") {
+                chart.nodes[index] = Flowchart.Node(id: id, label: "", shape: .point)
+            } else if id.hasPrefix("__end") {
+                chart.nodes[index] = Flowchart.Node(id: id, label: "", shape: .endPoint)
+            } else {
                 chart.nodes[index].shape = .rounded
-                if let label = names[chart.nodes[index].id] {
-                    chart.nodes[index].label = label
-                }
+                if let label = names[id] { chart.nodes[index].label = label }
             }
+        }
+        // A composite state wears the name it was given, the same way a plain
+        // state does.
+        for index in chart.groups.indices {
+            if let label = names[chart.groups[index].id] { chart.groups[index].title = label }
         }
         return chart
     }
@@ -348,6 +415,12 @@ struct Flowchart {
         /// it ends. No flowchart writes these; the state reader does.
         case point
         case endPoint
+        /// A block diagram's `blockArrowId<[…]>(down)`: a fat arrow with words
+        /// in it, pointing one of four ways.
+        case arrowUp
+        case arrowDown
+        case arrowLeft
+        case arrowRight
     }
 
     enum Stroke {

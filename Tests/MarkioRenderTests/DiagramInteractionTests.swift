@@ -34,12 +34,12 @@ final class DiagramInteractionTests: XCTestCase {
     }
 
     func testNothingInAPictureIsCutOffByItsOwnEdge() throws {
-        // A machine that returns to its start bows one edge around the boxes, and
-        // a card title longer than its card widens the column. Both used to reach
-        // past the width the drawing claimed and be clipped by the bitmap, so the
-        // check is that the picture grew rather than that it looks a certain way.
-        // The same five states either way, so the only difference between the
-        // two pictures is the one edge that has to bow around three boxes.
+        // A machine that returns to its start bows one edge around the boxes,
+        // which used to reach past the width the drawing claimed and be clipped
+        // by the bitmap, so the check is that the picture grew rather than that
+        // it looks a certain way. The same five states either way, so the only
+        // difference between the two pictures is the one edge that has to bow
+        // around three boxes.
         let straightOnly = """
             stateDiagram-v2
                 [*] --> Still
@@ -55,21 +55,27 @@ final class DiagramInteractionTests: XCTestCase {
                 width: 700))
         XCTAssertGreaterThan(bowed.width, straight.width)
 
+    }
+
+    /// A board is read by glancing across its columns, so a long title makes a
+    /// taller card and not a column as wide as the sentence.
+    func testALongCardTitleMakesATallerCardAndNotAWiderBoard() throws {
         let board = """
             kanban
             todo[Todo]
               id3[A card title far longer than any column would be by default]
             """
-        let wide = try XCTUnwrap(
+        let wordy = try XCTUnwrap(
             DocumentRenderer.diagram(source: board, theme: Theme(isDark: false), width: 900))
         let short = """
             kanban
             todo[Todo]
               id3[Short]
             """
-        let narrow = try XCTUnwrap(
+        let brief = try XCTUnwrap(
             DocumentRenderer.diagram(source: short, theme: Theme(isDark: false), width: 900))
-        XCTAssertGreaterThan(wide.width, narrow.width)
+        XCTAssertEqual(wordy.width, brief.width)
+        XCTAssertGreaterThan(wordy.height, brief.height)
     }
 
     func testADiagramFillsTheRoomItNeedsAndNoMore() throws {
