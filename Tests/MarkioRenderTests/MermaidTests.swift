@@ -951,11 +951,13 @@ final class MermaidTests: XCTestCase {
             "journey\n  Make tea: 9: Me",
             "journey\n  Make tea: 5",
             "journey",
-            // Excluded days move every bar after them, so the chart would be
-            // drawn on days its author did not ask for.
-            "gantt\n  excludes weekends\n  Draft :3d",
-            // Another date format would put the bars on the wrong days.
-            "gantt\n  dateFormat DD-MM-YYYY\n  Draft :3d",
+            // A day off nobody can name, and a tick as long as nothing.
+            "gantt\n  excludes someday\n  Draft :3d",
+            "gantt\n  includes weekends\n  Draft :3d",
+            "gantt\n  tickInterval 1fortnight\n  Draft :3d",
+            "gantt\n  displayMode roomy\n  Draft :3d",
+            // A date that does not fit the format the chart declared.
+            "gantt\n  dateFormat DD-MM-YYYY\n  Draft :a1, 2026-01-01",
             // A reference to a task that was never named.
             "gantt\n  Draft :after nothing, 3d",
             // A unit this does not know.
@@ -964,6 +966,53 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A chart written around the working week, in a date format of its own.
+    func testAGanttSkipsTheDaysNobodyWorks() throws {
+        guard
+            case .gantt(let chart)? = MermaidDiagram.parse(
+                """
+                gantt
+                    dateFormat DD-MM-YYYY
+                    axisFormat %d %b
+                    tickInterval 1week
+                    excludes weekends
+                    todayMarker off
+                    section Writing
+                    Draft :02-01-2026, 3d
+                """)
+        else { return XCTFail("a gantt written around the working week is read") }
+        // 2026-01-02 is a Friday, so three working days reach into Tuesday and
+        // the bar spans five days of calendar.
+        XCTAssertEqual(chart.tasks[0].start, 0)
+        XCTAssertEqual(chart.tasks[0].length, 5)
+        XCTAssertEqual(chart.excluded, [1, 2])
+        XCTAssertFalse(chart.marksToday)
+        XCTAssertEqual(chart.tickInterval?.unit, "week")
+        XCTAssertEqual(
+            GanttChart.date(
+                GanttChart.day("02-01-2026", format: "DD-MM-YYYY")!,
+                format: "%d %b"), "02 Jan")
+    }
+
+    /// `displayMode compact` puts tasks that do not overlap on one row.
+    func testACompactGanttSharesItsRows() throws {
+        let board = """
+            gantt
+                dateFormat YYYY-MM-DD
+                section Work
+                One :2026-01-01, 1d
+                Two :2026-01-05, 1d
+            """
+        let roomy = try XCTUnwrap(
+            DocumentRenderer.diagram(source: board, theme: Theme(isDark: false), width: 700))
+        let packed = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: board.replacingOccurrences(
+                    of: "    dateFormat", with: "    displayMode compact\n    dateFormat"),
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertLessThan(packed.height, roomy.height)
     }
 
     func testTheChartsAreDrawnWhole() throws {

@@ -1348,9 +1348,11 @@ enum MermaidLayout {
         // The axis carries whole dates, so how wide one is decides both how wide
         // the plot has to be and how many ticks can be labelled without the
         // dates running into each other.
-        let sample =
-            chart.origin.map { GanttChart.date($0 + Int(span.rounded())) }
-            ?? "day \(Int(span.rounded()))"
+        func axisLabel(_ day: Double) -> String {
+            guard let origin = chart.origin else { return "day \(Int(day.rounded()))" }
+            return GanttChart.date(origin + Int(day.rounded()), format: chart.axisFormat)
+        }
+        let sample = axisLabel(span)
         let dateWidth =
             measure(text(sample, font: smallFont, color: theme.palette.text)).width
             + 14 * metrics.scale
@@ -1359,7 +1361,23 @@ enum MermaidLayout {
         let plotWidth = max(
             240 * metrics.scale, dateWidth * 3,
             min(430 * metrics.scale, span * 14 * metrics.scale))
-        let ticks = max(2, min(4, Int(plotWidth / dateWidth)))
+        // How far apart the ticks stand: what the chart asked for when it asked,
+        // and otherwise as many as fit without the dates running together.
+        var tickStep = span / Double(max(2, min(4, Int(plotWidth / dateWidth))))
+        if let interval = chart.tickInterval {
+            let days: Double
+            switch interval.unit {
+            case "week": days = 7
+            case "month": days = 30
+            case "hour": days = 1 / 24
+            case "minute": days = 1 / 1440
+            case "second": days = 1 / 86400
+            case "millisecond": days = 1 / 86_400_000
+            default: days = 1
+            }
+            tickStep = max(days * Double(interval.count), span / 60)
+        }
+        let ticks = max(1, Int((span / max(tickStep, 0.0001)).rounded(.down)))
         let perDay = span > 0 ? plotWidth / span : plotWidth
         let content = gutter + plotWidth
 
@@ -1374,12 +1392,31 @@ enum MermaidLayout {
         let axisHeight =
             measure(text(sample, font: smallFont, color: theme.palette.text)).height
             + 10 * metrics.scale
+        // Which row each task stands on. `displayMode compact` puts tasks that
+        // do not overlap on one row; otherwise every task has a row to itself.
         // A section takes a row of its own before the tasks under it.
-        var rows = chart.tasks.count
+        var rowOf = [Int](repeating: 0, count: chart.tasks.count)
+        var rows = 0
         var lastSection: Int?
-        for task in chart.tasks where task.section != lastSection {
+        /// The first row of the section being filled, and where each of its
+        /// rows is free from.
+        var sectionStart = 0
+        var free: [Double] = []
+        for (index, task) in chart.tasks.enumerated() {
+            if task.section != lastSection {
+                lastSection = task.section
+                rows += 1
+                sectionStart = rows
+                free = []
+            }
+            if chart.compact, let landed = free.firstIndex(where: { $0 <= task.start }) {
+                rowOf[index] = sectionStart + landed
+                free[landed] = task.start + max(task.length, 0.5)
+                continue
+            }
+            rowOf[index] = rows
             rows += 1
-            lastSection = task.section
+            free.append(task.start + max(task.length, 0.5))
         }
         let height = metrics.padding * 2 + titleRoom + axisHeight + CGFloat(rows) * rowHeight
 
@@ -1403,18 +1440,26 @@ enum MermaidLayout {
         let axisTop = metrics.padding + titleRoom
         let bodyTop = axisTop + axisHeight
         let bodyBottom = bodyTop + CGFloat(rows) * rowHeight
+        // The days nobody works are shaded behind everything, so a bar that
+        // spans a weekend is seen to span it.
+        for off in chart.excluded.sorted() where Double(off) <= span {
+            decorations.append(
+                .fill(
+                    rect: CGRect(
+                        x: plotLeft + CGFloat(off) * perDay, y: bodyTop,
+                        width: max(1, perDay), height: bodyBottom - bodyTop),
+                    color: theme.palette.tableBorder.copy(alpha: 0.35)
+                        ?? theme.palette.tableBorder, cornerRadius: 0))
+        }
         for step in 0...ticks {
-            let day = span * Double(step) / Double(ticks)
+            let day = min(span, tickStep * Double(step))
             let x = plotLeft + CGFloat(day) * perDay
             let rule = CGMutablePath()
             rule.move(to: CGPoint(x: x, y: bodyTop))
             rule.addLine(to: CGPoint(x: x, y: bodyBottom))
             decorations.append(
                 .path(rule, color: theme.palette.tableBorder, lineWidth: 0.5, filled: false))
-            let words =
-                chart.origin.map { GanttChart.date($0 + Int(day.rounded())) }
-                ?? "day \(Int(day.rounded()))"
-            let line = text(words, font: smallFont, color: theme.palette.secondaryText)
+            let line = text(axisLabel(day), font: smallFont, color: theme.palette.secondaryText)
             let size = measure(line)
             decorations.append(
                 .glyphs(
@@ -1429,16 +1474,32 @@ enum MermaidLayout {
             )
         }
 
-        var y = bodyTop
+        // The line where the reader stands, if today falls inside the chart.
+        if chart.marksToday, let origin = chart.origin {
+            let today = Double(GanttChart.today() - origin)
+            if today >= 0, today <= span {
+                let rule = CGMutablePath()
+                let x = plotLeft + CGFloat(today) * perDay
+                rule.move(to: CGPoint(x: x, y: bodyTop))
+                rule.addLine(to: CGPoint(x: x, y: bodyBottom))
+                decorations.append(
+                    .path(
+                        rule, color: CGColor(red: 0.85, green: 0.33, blue: 0.33, alpha: 0.8),
+                        lineWidth: 1.5 * metrics.scale, filled: false))
+            }
+        }
+
         lastSection = nil
         for (index, task) in chart.tasks.enumerated() {
+            let y = bodyTop + CGFloat(rowOf[index]) * rowHeight
             if task.section != lastSection {
                 lastSection = task.section
                 if let section = task.section {
                     let line = sectionNames[section]
                     let size = measure(line)
                     let band = CGRect(
-                        x: left, y: y, width: content, height: rowHeight - 2 * metrics.scale)
+                        x: left, y: y - rowHeight, width: content,
+                        height: rowHeight - 2 * metrics.scale)
                     decorations.append(
                         .fill(
                             rect: band,
@@ -1451,7 +1512,6 @@ enum MermaidLayout {
                                 x: left + 6 * metrics.scale,
                                 y: band.midY + size.height / 2 - descent(line))))
                 }
-                y += rowHeight
             }
             let line = names[index]
             let size = measure(line)
@@ -1496,7 +1556,6 @@ enum MermaidLayout {
                         rect: bar, color: task.done ? (colour.copy(alpha: 0.45) ?? colour) : colour,
                         cornerRadius: 3 * metrics.scale))
             }
-            y += rowHeight
         }
         return Drawing(
             decorations: decorations,
