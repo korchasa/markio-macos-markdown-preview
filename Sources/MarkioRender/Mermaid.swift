@@ -391,13 +391,39 @@ struct Flowchart {
         var style = Style()
     }
 
+    /// What an edge joins. `outside --> subgraph1` ends on the frame's border,
+    /// not on any one box inside it, so a frame is an endpoint in its own right.
+    enum End: Hashable {
+        case node(Int)
+        case frame(Int)
+
+        /// The box this end names, when it names a box rather than a frame.
+        var node: Int? {
+            if case .node(let index) = self { return index }
+            return nil
+        }
+    }
+
     struct Edge {
-        var from: Int
-        var to: Int
+        var from: End
+        var to: End
         var label: String
         var stroke: Stroke
         /// `---` joins without an arrowhead; `-->` points.
         var arrow: Bool
+
+        init(from: End, to: End, label: String, stroke: Stroke, arrow: Bool) {
+            self.from = from
+            self.to = to
+            self.label = label
+            self.stroke = stroke
+            self.arrow = arrow
+        }
+
+        /// The common case, where both ends are boxes.
+        init(from: Int, to: Int, label: String, stroke: Stroke, arrow: Bool) {
+            self.init(from: .node(from), to: .node(to), label: label, stroke: stroke, arrow: arrow)
+        }
     }
 
     /// A `subgraph`: a titled frame drawn around the nodes declared inside it.
@@ -405,8 +431,13 @@ struct Flowchart {
         var title: String
         var members: [Int]
         /// What the frame is called in the source. An edge may name it, and an
-        /// edge to a frame is not an edge to a box, so it has to be noticed.
+        /// edge that names a frame reaches every box the frame holds.
         var id: String = ""
+        /// The frame this one was written inside, if any.
+        var parent: Int?
+        /// `direction TB` inside the frame turns the frame's own contents. A
+        /// frame that does not say keeps the direction of whatever holds it.
+        var direction: Direction?
     }
 
     var direction: Direction
@@ -415,7 +446,10 @@ struct Flowchart {
     var groups: [Group] = []
     /// `classDef` definitions, used while parsing and of no interest afterwards.
     private var classes: [String: Style] = [:]
-    private var openGroup: Int?
+    /// The frames currently open, innermost last. A frame inside a frame is an
+    /// ordinary thing to write, so what is open is a stack and not one slot.
+    private var openGroups: [Int] = []
+    private var openGroup: Int? { openGroups.last }
 
     /// A graph put together by some other reader — a C4 diagram, a state
     /// machine — where the nodes, the edges and the frames are already known.
@@ -449,14 +483,73 @@ struct Flowchart {
         }
         // An unclosed `subgraph` means the author's picture has a frame this
         // one does not.
-        guard chart.openGroup == nil, !chart.nodes.isEmpty else { return nil }
-        // `outside --> subgraph1` joins a frame, not a box. Drawing it as a box
-        // would put a node on the page that the author never wrote, so a graph
-        // whose edges name a frame is shown as source instead.
-        let frames = Set(chart.groups.map(\.id).filter { !$0.isEmpty })
-        guard !chart.nodes.contains(where: { frames.contains($0.id) }) else { return nil }
-        chart.groups.removeAll { $0.members.isEmpty }
+        guard chart.openGroups.isEmpty, !chart.nodes.isEmpty else { return nil }
+        chart.dropEmptyGroups()
+        chart.joinFramesNamedByEdges()
+        guard !chart.nodes.isEmpty else { return nil }
         return chart
+    }
+
+    /// A frame with nothing in it and nothing inside it is not drawn.
+    ///
+    /// Removing one renumbers the rest, so the parents are renumbered with them
+    /// — a frame pointing at the wrong parent would be drawn inside a stranger.
+    private mutating func dropEmptyGroups() {
+        while true {
+            let holds = Set(groups.compactMap(\.parent))
+            guard
+                let empty = groups.indices.first(where: {
+                    groups[$0].members.isEmpty && !holds.contains($0)
+                })
+            else { return }
+            groups.remove(at: empty)
+            for index in groups.indices {
+                guard let parent = groups[index].parent else { continue }
+                groups[index].parent =
+                    parent == empty ? nil : (parent > empty ? parent - 1 : parent)
+            }
+        }
+    }
+
+    /// `outside --> subgraph1` names a frame, and reading it as a box invents a
+    /// node the author never wrote.
+    ///
+    /// A frame is only ever named by an edge, never declared, so the box that
+    /// carries the name has no label of its own and no other statement about
+    /// it: taking it out and pointing the edge at the frame loses nothing.
+    private mutating func joinFramesNamedByEdges() {
+        let named = Dictionary(
+            groups.enumerated().filter { !$0.element.id.isEmpty }.map {
+                ($0.element.id, $0.offset)
+            },
+            uniquingKeysWith: { first, _ in first })
+        let standIns = nodes.indices.filter { named[nodes[$0].id] != nil }
+        guard !standIns.isEmpty else { return }
+        let dropped = Set(standIns)
+        // Taking nodes out renumbers the rest, so everything that holds a node
+        // number is renumbered with them.
+        var moved = [Int: Int]()
+        var next = 0
+        for index in nodes.indices where !dropped.contains(index) {
+            moved[index] = next
+            next += 1
+        }
+        func end(_ end: End) -> End {
+            guard case .node(let index) = end else { return end }
+            if let frame = named[nodes[index].id], dropped.contains(index) { return .frame(frame) }
+            return .node(moved[index] ?? index)
+        }
+        edges = edges.map {
+            Edge(
+                from: end($0.from), to: end($0.to), label: $0.label, stroke: $0.stroke,
+                arrow: $0.arrow)
+        }
+        // An edge to a frame that is also an edge from it says nothing.
+        edges.removeAll { $0.from == $0.to }
+        for index in groups.indices {
+            groups[index].members = groups[index].members.compactMap { moved[$0] }
+        }
+        nodes = nodes.indices.filter { !dropped.contains($0) }.map { nodes[$0] }
     }
 
     /// A whole line: a subgraph boundary, a styling directive, or a statement.
@@ -465,21 +558,26 @@ struct Flowchart {
         let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
         switch word {
         case "subgraph":
-            // A subgraph inside a subgraph needs frames inside frames, and a
-            // frame drawn in the wrong place is worse than a fence of source.
-            guard openGroup == nil else { return false }
             groups.append(
-                Group(title: title(ofSubgraph: rest), members: [], id: id(ofSubgraph: rest)))
-            openGroup = groups.count - 1
+                Group(
+                    title: title(ofSubgraph: rest), members: [], id: id(ofSubgraph: rest),
+                    parent: openGroups.last))
+            openGroups.append(groups.count - 1)
             return true
         case "end":
-            guard openGroup != nil, rest.isEmpty else { return false }
-            openGroup = nil
+            guard !openGroups.isEmpty, rest.isEmpty else { return false }
+            openGroups.removeLast()
             return true
         case "direction":
-            // A direction inside a subgraph turns that frame's own contents; the
-            // layout has one axis per graph, so this is not drawable here.
-            return false
+            // Inside a frame this turns that frame's own contents; at the top
+            // level it is the same word the header carries.
+            guard let turn = Flowchart.direction(word: Substring(rest)) else { return false }
+            if let group = openGroups.last {
+                groups[group].direction = turn
+            } else {
+                direction = turn
+            }
+            return true
         case "classDef":
             return defineClass(rest)
         case "class":

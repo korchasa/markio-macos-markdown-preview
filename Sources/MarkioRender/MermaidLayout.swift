@@ -2430,195 +2430,106 @@ enum MermaidLayout {
             )
         }
 
-        let ranks = self.ranks(chart)
-        let down = chart.direction == .down || chart.direction == .up
         // An edge's words are written across the gap between two ranks, so the
-        // gap has to be wide enough to hold them.
+        // gap has to be wide enough to hold them. The gap holds the words *and*
+        // the line: an arrowhead at one end, and a visible run of line on both
+        // sides of the label. A gap sized to the words alone leaves a labelled
+        // edge looking like a chip with a stub either side of it.
         let labelFont = scaled(theme.controlLabel, by: metrics.scale)
-        let labelRoom =
+        let labelSizes =
             chart.edges.filter { !$0.label.isEmpty }
             .map { measure(text($0.label, font: labelFont, color: theme.palette.text)) }
-            .map { down ? $0.height : $0.width }.max() ?? 0
-        // The gap holds the words *and* the line: an arrowhead at one end, and a
-        // visible run of line on both sides of the label. A gap sized to the
-        // words alone leaves a labelled edge looking like a chip with a stub
-        // either side of it.
-        let rankGap = max(
-            metrics.rankGap * (chart.groups.isEmpty ? 1 : 1.6),
-            labelRoom + metrics.arrowLength + 40 * metrics.scale
-        )
-        // Rank runs down the page for `TD` and across it for `LR`; laying the
-        // graph out in rank and cross axes and swapping at the end is what keeps
-        // one placement routine instead of two. Every rank is measured before
-        // any is placed, because a rank is centred against the widest one and
-        // that is not known until the last has been measured.
-        let depths = ranks.map { rank in
-            rank.map { down ? boxes[$0].frame.height : boxes[$0].frame.width }.max() ?? 0
-        }
-        func extent(_ index: Int) -> CGFloat {
-            down ? boxes[index].frame.width : boxes[index].frame.height
-        }
-        func span(_ indices: [Int]) -> CGFloat {
-            indices.reduce(0) { $0 + extent($1) }
-                + metrics.siblingGap * CGFloat(max(0, indices.count - 1))
-        }
-
-        // A subgraph gets a strip of the cross axis to itself, the same strip on
-        // every rank. That is what makes its frame enclose its own members and
-        // nothing else: no node outside the group is ever placed in the strip.
-        var groupOf = [Int?](repeating: nil, count: boxes.count)
-        for (index, group) in chart.groups.enumerated() {
-            for member in group.members where member < groupOf.count { groupOf[member] = index }
-        }
-        let perRank = ranks.map { rank in
-            (
-                grouped: chart.groups.indices.map { group in
-                    rank.filter { groupOf[$0] == group }
-                },
-                loose: rank.filter { groupOf[$0] == nil }
-            )
-        }
-        let groupWidths = chart.groups.indices.map { group in
-            perRank.map { span($0.grouped[group]) }.max() ?? 0
-        }
-        let looseWidth = perRank.map { span($0.loose) }.max() ?? 0
-        // Strips are laid out in the order the flow reaches them, so a graph
-        // still reads from its first node onwards instead of jumping about.
-        var strips: [(group: Int?, width: CGFloat, rank: Int, order: Int)] = []
-        for group in chart.groups.indices where groupWidths[group] > 0 {
-            let rank = perRank.firstIndex { !$0.grouped[group].isEmpty } ?? 0
-            strips.append((group, groupWidths[group], rank, strips.count))
-        }
-        if looseWidth > 0 {
-            let rank = perRank.firstIndex { !$0.loose.isEmpty } ?? 0
-            strips.append((nil, looseWidth, rank, strips.count))
-        }
-        strips.sort { ($0.rank, $0.order) < ($1.rank, $1.order) }
-
-        var starts = [CGFloat](repeating: 0, count: chart.groups.count)
-        var looseStart: CGFloat = 0
-        var cursor: CGFloat = 0
-        for strip in strips {
-            if let group = strip.group { starts[group] = cursor } else { looseStart = cursor }
-            cursor += strip.width + metrics.siblingGap * 2
-        }
-        // A subgraph's title is written above its frame, so the room for it is
-        // on whichever axis runs down the page.
         let titleRoom = chart.groups.isEmpty ? 0 : 20 * metrics.scale
-        let crossBase = down ? 0 : titleRoom
-        let crossExtent = crossBase + max(0, cursor - metrics.siblingGap * 2)
+        let placement = placed(
+            chart: chart, boxes: boxes, labels: labelSizes, metrics: metrics, titleRoom: titleRoom)
+        for (index, frame) in placement.nodes { boxes[index].frame = frame }
+        let content = placement.size
 
-        var rankOffset = metrics.padding + (down ? titleRoom : 0)
-        for level in ranks.indices {
-            func place(_ index: Int, at cross: CGFloat) {
-                let size = boxes[index].frame.size
-                boxes[index].frame.origin =
-                    down
-                    ? CGPoint(
-                        x: crossBase + cross, y: rankOffset + (depths[level] - size.height) / 2)
-                    : CGPoint(
-                        x: rankOffset + (depths[level] - size.width) / 2, y: crossBase + cross)
-            }
-            for group in chart.groups.indices {
-                let members = perRank[level].grouped[group]
-                var cross = starts[group] + (groupWidths[group] - span(members)) / 2
-                for index in members {
-                    place(index, at: cross)
-                    cross += extent(index) + metrics.siblingGap
-                }
-            }
-            let loose = perRank[level].loose
-            var cross = looseStart + (looseWidth - span(loose)) / 2
-            for index in loose {
-                place(index, at: cross)
-                cross += extent(index) + metrics.siblingGap
-            }
-            rankOffset += depths[level] + rankGap
-        }
-
-        let along = rankOffset - rankGap - metrics.padding
-        // `BT` and `RL` are the same graph read from the other end, so the rank
-        // axis is turned over once every box has been placed.
-        if chart.direction == .up || chart.direction == .left {
-            for index in boxes.indices {
-                let frame = boxes[index].frame
-                if down {
-                    boxes[index].frame.origin.y =
-                        metrics.padding * 2 + along - frame.maxY
-                } else {
-                    boxes[index].frame.origin.x =
-                        metrics.padding * 2 + along - frame.maxX
-                }
-            }
-        }
-        // A subgraph's frame stands a little outside the boxes it holds, and the
-        // picture has to be that much wider or the frame runs off the column.
-        let groupInset = chart.groups.isEmpty ? 0 : metrics.siblingGap
-        let content = CGSize(
-            width: (down ? crossExtent : along) + groupInset,
-            height: (down ? along : crossExtent) + groupInset
-        )
         // Centre the picture in the reading column, and never let it run out of
         // it: a diagram wider than the column starts at the margin instead of
         // being pushed off the left edge.
         let left = max(metrics.padding, (width - content.width) / 2)
-        for index in boxes.indices {
-            if down {
-                boxes[index].frame.origin.x += left
-            } else {
-                boxes[index].frame.origin.x += left - metrics.padding
-                boxes[index].frame.origin.y += metrics.padding
-            }
-        }
+        for index in boxes.indices { boxes[index].frame.origin.x += left }
+        let frames = placement.frames.mapValues { $0.offsetBy(dx: left, dy: 0) }
 
         var decorations: [BlockBox.Decoration] = []
-        // Frames first: everything else in the diagram stands on top of them.
-        for group in chart.groups {
+        // Frames first: everything else in the diagram stands on top of them,
+        // and an inner frame after the one that holds it.
+        for group in chart.groups.indices.sorted(by: {
+            depth(of: $0, in: chart) < depth(of: $1, in: chart)
+        }) {
+            guard let rect = frames[group] else { continue }
             decorations += frame(
-                group, boxes: boxes, theme: theme, metrics: metrics, titleRoom: titleRoom)
+                chart.groups[group], rect: rect, theme: theme, metrics: metrics,
+                titleRoom: titleRoom)
         }
         var labels: [BlockBox.Decoration] = []
+        // Where an edge starts and stops: a box's own frame, or the border of
+        // the frame it names.
+        func rect(_ end: Flowchart.End) -> CGRect? {
+            switch end {
+            case .node(let index): return boxes.indices.contains(index) ? boxes[index].frame : nil
+            case .frame(let group): return frames[group]
+            }
+        }
         // Two labelled edges leaving one node run side by side, so their words
         // are spaced out along the line instead of landing on each other.
-        var written: [Int: Int] = [:]
+        var written: [Flowchart.End: Int] = [:]
         // Two nodes joined both ways — a state and the state it goes back to —
         // have their words laid either side of the line rather than on top of
         // each other.
-        func pair(_ edge: Flowchart.Edge) -> Int {
-            min(edge.from, edge.to) &* 100_003 &+ max(edge.from, edge.to)
+        struct Pair: Hashable {
+            var one: Flowchart.End
+            var other: Flowchart.End
+
+            init(_ edge: Flowchart.Edge) {
+                let ends = [edge.from, edge.to].sorted { Pair.order($0) < Pair.order($1) }
+                one = ends[0]
+                other = ends[1]
+            }
+
+            private static func order(_ end: Flowchart.End) -> Int {
+                switch end {
+                case .node(let index): return index
+                case .frame(let group): return 1_000_000 + group
+                }
+            }
         }
-        var pairs: [Int: Int] = [:]
+        var pairs: [Pair: Int] = [:]
         for edge in chart.edges where !edge.label.isEmpty {
-            pairs[pair(edge), default: 0] += 1
+            pairs[Pair(edge), default: 0] += 1
         }
         // Every edge between the same two nodes, labelled or not: two states
         // that go back and forth would otherwise be one line drawn twice.
-        var lanes: [Int: Int] = [:]
-        for edge in chart.edges { lanes[pair(edge), default: 0] += 1 }
-        var lanesSeen: [Int: Int] = [:]
-        var seen: [Int: Int] = [:]
+        var lanes: [Pair: Int] = [:]
+        for edge in chart.edges { lanes[Pair(edge), default: 0] += 1 }
+        var lanesSeen: [Pair: Int] = [:]
+        var seen: [Pair: Int] = [:]
         for edge in chart.edges {
-            guard edge.from < boxes.count, edge.to < boxes.count else { continue }
+            guard let from = rect(edge.from), let to = rect(edge.to) else { continue }
             var order = 0
             var side: CGFloat = 0
             if !edge.label.isEmpty {
                 order = written[edge.from, default: 0]
                 written[edge.from] = order + 1
-                let key = pair(edge)
+                let key = Pair(edge)
                 let index = seen[key, default: 0]
                 seen[key] = index + 1
                 let count = pairs[key] ?? 1
                 side = CGFloat(index) - CGFloat(count - 1) / 2
             }
-            let key = pair(edge)
+            let key = Pair(edge)
             let taken = lanesSeen[key, default: 0]
             lanesSeen[key] = taken + 1
             let lane = CGFloat(taken) - CGFloat((lanes[key] ?? 1) - 1) / 2
+            // A frame's own boxes are not obstacles for an edge that ends on
+            // that frame: the line stops at the border and never reaches them.
+            let inside = held(by: edge, chart: chart)
             let obstacles = boxes.indices
-                .filter { $0 != edge.from && $0 != edge.to }
+                .filter { !inside.contains($0) && boxes[$0].frame != from && boxes[$0].frame != to }
                 .map { boxes[$0].frame }
             let drawn = self.edge(
-                edge, from: boxes[edge.from], to: boxes[edge.to], theme: theme, metrics: metrics,
+                edge, from: from, to: to, theme: theme, metrics: metrics,
                 order: order, side: side, lane: lane, obstacles: obstacles)
             decorations += drawn.shaft
             labels += drawn.label
@@ -2634,11 +2545,208 @@ enum MermaidLayout {
         )
     }
 
-    /// Longest-path ranking: a node sits one rank below everything that points
-    /// at it. Relaxing the edges `|V|` times gives the same answer as a
-    /// topological sweep and, unlike one, cannot spin on a cycle.
-    private static func ranks(_ chart: Flowchart) -> [[Int]] {
-        ranks(count: chart.nodes.count, edges: chart.edges.map { ($0.from, $0.to) })
+    /// Whether one frame holds another, however deep.
+    private static func reaches(_ outer: Int, _ inner: Int, in chart: Flowchart) -> Bool {
+        var walk = chart.groups[inner].parent
+        var steps = 0
+        while let parent = walk, steps <= chart.groups.count {
+            if parent == outer { return true }
+            walk = chart.groups[parent].parent
+            steps += 1
+        }
+        return false
+    }
+
+    /// Every box inside a frame either end of an edge names.
+    private static func held(by edge: Flowchart.Edge, chart: Flowchart) -> Set<Int> {
+        var inside: Set<Int> = []
+        for end in [edge.from, edge.to] {
+            guard case .frame(let group) = end else { continue }
+            var wanted = [group]
+            while let next = wanted.popLast() {
+                inside.formUnion(chart.groups[next].members)
+                wanted += chart.groups.indices.filter { chart.groups[$0].parent == next }
+            }
+        }
+        return inside
+    }
+
+    /// How many frames a frame is written inside.
+    private static func depth(of group: Int, in chart: Flowchart) -> Int {
+        var depth = 0
+        var walk = chart.groups[group].parent
+        while let parent = walk, depth < chart.groups.count {
+            depth += 1
+            walk = chart.groups[parent].parent
+        }
+        return depth
+    }
+
+    /// Where every box and every frame of a flowchart ends up.
+    private struct Placement {
+        var size: CGSize
+        var nodes: [Int: CGRect]
+        /// A frame's own box — what gets drawn — without the strip above it
+        /// that its title is written in.
+        var frames: [Int: CGRect]
+    }
+
+    /// A flowchart placed frame by frame.
+    ///
+    /// A frame is a graph in its own right: it is laid out on its own, in its
+    /// own direction, and then stands in whatever holds it as a single block
+    /// the size of everything it came to. That is what lets a frame hold a
+    /// frame, and what lets `direction TB` inside one turn that frame's
+    /// contents without turning the graph around it. An edge between two boxes
+    /// in different frames is, at this level, an edge between the two blocks,
+    /// so the frames themselves fall into ranks the same way boxes do.
+    private static func placed(
+        chart: Flowchart, boxes: [Placed], labels: [CGSize], metrics: Metrics, titleRoom: CGFloat
+    ) -> Placement {
+        var owner = [Int?](repeating: nil, count: boxes.count)
+        for (index, group) in chart.groups.enumerated() {
+            for member in group.members where member < owner.count { owner[member] = index }
+        }
+        // Every box a frame holds, however deep — what an edge crossing frames
+        // has to be resolved against.
+        var reach = [Set<Int>](repeating: [], count: chart.groups.count)
+        for index in boxes.indices {
+            var walk = owner[index]
+            while let group = walk {
+                reach[group].insert(index)
+                walk = chart.groups[group].parent
+            }
+        }
+        let inset = metrics.siblingGap / 2
+
+        func layout(container: Int?) -> Placement {
+            let children = chart.groups.indices.filter { chart.groups[$0].parent == container }
+            let loose = boxes.indices.filter { owner[$0] == container }
+            enum Unit {
+                case node(Int)
+                case frame(Int)
+            }
+            let units: [Unit] = loose.map { .node($0) } + children.map { .frame($0) }
+            var inner: [Int: Placement] = [:]
+            var sizes: [CGSize] = []
+            for unit in units {
+                switch unit {
+                case .node(let index):
+                    sizes.append(boxes[index].frame.size)
+                case .frame(let group):
+                    let laid = layout(container: group)
+                    inner[group] = laid
+                    sizes.append(
+                        CGSize(
+                            width: laid.size.width + inset * 2,
+                            height: laid.size.height + inset * 2 + titleRoom))
+                }
+            }
+            // Which block of this container each end of an edge belongs to, so
+            // an edge between two boxes deep in different frames ranks the
+            // frames, and an edge that names a frame ranks the frame itself.
+            var unitOf: [Flowchart.End: Int] = [:]
+            for (index, unit) in units.enumerated() {
+                switch unit {
+                case .node(let node): unitOf[.node(node)] = index
+                case .frame(let group):
+                    unitOf[.frame(group)] = index
+                    for member in reach[group] { unitOf[.node(member)] = index }
+                    for inner in chart.groups.indices where reaches(group, inner, in: chart) {
+                        unitOf[.frame(inner)] = index
+                    }
+                }
+            }
+            let edges = chart.edges.compactMap { edge -> (from: Int, to: Int)? in
+                guard let from = unitOf[edge.from], let to = unitOf[edge.to], from != to
+                else { return nil }
+                return (from, to)
+            }
+            let ranks = self.ranks(count: units.count, edges: edges)
+            let turn =
+                container.map { chart.groups[$0].direction ?? chart.direction }
+                ?? chart.direction
+            let down = turn == .down || turn == .up
+            let labelRoom = labels.map { down ? $0.height : $0.width }.max() ?? 0
+            let rankGap = max(
+                metrics.rankGap * (chart.groups.isEmpty ? 1 : 1.6),
+                labelRoom + metrics.arrowLength + 40 * metrics.scale
+            )
+            func extent(_ unit: Int) -> CGFloat {
+                down ? sizes[unit].width : sizes[unit].height
+            }
+            func span(_ indices: [Int]) -> CGFloat {
+                indices.reduce(0) { $0 + extent($1) }
+                    + metrics.siblingGap * CGFloat(max(0, indices.count - 1))
+            }
+            let depths = ranks.map { rank in
+                rank.map { down ? sizes[$0].height : sizes[$0].width }.max() ?? 0
+            }
+            let crossExtent = ranks.map(span).max() ?? 0
+            var origins = [CGPoint](repeating: .zero, count: units.count)
+            var rankOffset: CGFloat = 0
+            for level in ranks.indices {
+                var cross = (crossExtent - span(ranks[level])) / 2
+                for unit in ranks[level] {
+                    origins[unit] =
+                        down
+                        ? CGPoint(
+                            x: cross, y: rankOffset + (depths[level] - sizes[unit].height) / 2)
+                        : CGPoint(x: rankOffset + (depths[level] - sizes[unit].width) / 2, y: cross)
+                    cross += extent(unit) + metrics.siblingGap
+                }
+                rankOffset += depths[level] + rankGap
+            }
+            let along = max(0, rankOffset - rankGap)
+            // `BT` and `RL` are the same graph read from the other end, so the
+            // rank axis is turned over once every block is placed.
+            if turn == .up || turn == .left {
+                for unit in origins.indices {
+                    if down {
+                        origins[unit].y = along - origins[unit].y - sizes[unit].height
+                    } else {
+                        origins[unit].x = along - origins[unit].x - sizes[unit].width
+                    }
+                }
+            }
+            var placement = Placement(
+                size: CGSize(
+                    width: down ? crossExtent : along, height: down ? along : crossExtent),
+                nodes: [:], frames: [:])
+            for (index, unit) in units.enumerated() {
+                switch unit {
+                case .node(let node):
+                    placement.nodes[node] = CGRect(
+                        origin: origins[index], size: boxes[node].frame.size)
+                case .frame(let group):
+                    guard let laid = inner[group] else { continue }
+                    let box = CGRect(
+                        x: origins[index].x, y: origins[index].y + titleRoom,
+                        width: sizes[index].width, height: sizes[index].height - titleRoom)
+                    placement.frames[group] = box
+                    let shift = CGPoint(x: box.minX + inset, y: box.minY + inset)
+                    for (node, rect) in laid.nodes {
+                        placement.nodes[node] = rect.offsetBy(dx: shift.x, dy: shift.y)
+                    }
+                    for (frame, rect) in laid.frames {
+                        placement.frames[frame] = rect.offsetBy(dx: shift.x, dy: shift.y)
+                    }
+                }
+            }
+            return placement
+        }
+
+        var placement = layout(container: nil)
+        // The whole picture sits inside the block's own margin. A frame's name
+        // needs no room reserved here: the strip it is written in is already
+        // part of the block the frame stands in.
+        let margin = metrics.padding
+        placement.nodes = placement.nodes.mapValues { $0.offsetBy(dx: margin, dy: margin) }
+        placement.frames = placement.frames.mapValues { $0.offsetBy(dx: margin, dy: margin) }
+        placement.size = CGSize(
+            width: placement.size.width + margin * 2,
+            height: placement.size.height + margin * 2)
+        return placement
     }
 
     private static func ranks(count: Int, edges: [(from: Int, to: Int)]) -> [[Int]] {
@@ -2714,13 +2822,9 @@ enum MermaidLayout {
 
     /// The titled frame a `subgraph` draws around its own nodes.
     private static func frame(
-        _ group: Flowchart.Group, boxes: [Placed], theme: Theme, metrics: Metrics,
+        _ group: Flowchart.Group, rect bounds: CGRect, theme: Theme, metrics: Metrics,
         titleRoom: CGFloat
     ) -> [BlockBox.Decoration] {
-        let frames = group.members.filter { $0 < boxes.count }.map { boxes[$0].frame }
-        guard var bounds = frames.first else { return [] }
-        for frame in frames.dropFirst() { bounds = bounds.union(frame) }
-        bounds = bounds.insetBy(dx: -metrics.siblingGap / 2, dy: -metrics.siblingGap / 2)
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
         var decorations: [BlockBox.Decoration] = [
             .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true),
@@ -3086,10 +3190,10 @@ enum MermaidLayout {
     /// Clipping to the boxes rather than joining named sides is what lets the
     /// same routine draw an edge down a rank, across one, or back up the graph.
     private static func edge(
-        _ edge: Flowchart.Edge, from: Placed, to: Placed, theme: Theme, metrics: Metrics,
+        _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
         order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect]
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
-        var (start, end) = joined(from.frame, to.frame)
+        var (start, end) = joined(from, to)
         // An edge that skips a rank would otherwise run straight through
         // whatever stands between, which reads as an edge to that box; and two
         // nodes joined both ways would put one line exactly on top of the other.
@@ -3100,8 +3204,8 @@ enum MermaidLayout {
             let across = normal(from: start, to: end)
             control = CGPoint(
                 x: control.x + across.x * curveOut * 2, y: control.y + across.y * curveOut * 2)
-            start = exit(of: from.frame, towards: control)
-            end = exit(of: to.frame, towards: control)
+            start = exit(of: from, towards: control)
+            end = exit(of: to, towards: control)
         }
         let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
         var decorations: [BlockBox.Decoration] = []
@@ -3857,12 +3961,14 @@ enum MermaidLayout {
         var decorations: [BlockBox.Decoration] = []
         var labelDecorations: [BlockBox.Decoration] = []
         for edge in diagram.chart.edges {
-            guard let from = boxes[edge.from], let to = boxes[edge.to] else { continue }
+            guard let start = edge.from.node, let finish = edge.to.node,
+                let from = boxes[start], let to = boxes[finish]
+            else { continue }
             let drawn = self.edge(
-                edge, from: from, to: to, theme: theme, metrics: metrics, order: 0, side: 1,
-                lane: 0,
+                edge, from: from.frame, to: to.frame, theme: theme, metrics: metrics, order: 0,
+                side: 1, lane: 0,
                 obstacles: diagram.chart.nodes.indices.compactMap {
-                    $0 == edge.from || $0 == edge.to ? nil : boxes[$0]?.frame
+                    $0 == start || $0 == finish ? nil : boxes[$0]?.frame
                 })
             decorations += drawn.shaft
             labelDecorations += drawn.label

@@ -41,7 +41,8 @@ final class MermaidTests: XCTestCase {
         let chart = try XCTUnwrap(flowchart("graph LR\n  A --> B --> C"))
         XCTAssertEqual(chart.direction, .right)
         XCTAssertEqual(chart.nodes.count, 3)
-        XCTAssertEqual(chart.edges.map { [$0.from, $0.to] }, [[0, 1], [1, 2]])
+        XCTAssertEqual(
+            chart.edges.map { [$0.from, $0.to] }, [[.node(0), .node(1)], [.node(1), .node(2)]])
     }
 
     func testTheKindsOfLine() throws {
@@ -64,12 +65,11 @@ final class MermaidTests: XCTestCase {
         // ignoring the rest would be a different diagram.
         for source in [
             "flowchart TD\n A ~~~ B",
-            // A frame inside a frame, a subgraph left open, and one closed twice.
-            "flowchart TD\n subgraph a\n subgraph b\n A --> B\n end\n end",
+            // A subgraph left open, and one closed twice.
             "flowchart TD\n subgraph a\n A --> B",
             "flowchart TD\n A --> B\n end",
-            // A direction inside a subgraph turns that frame's own contents.
-            "flowchart TD\n subgraph a\n direction LR\n A --> B\n end",
+            // A direction nobody knows.
+            "flowchart TD\n subgraph a\n direction sideways\n A --> B\n end",
             // A colour and a property this cannot draw.
             "flowchart TD\n A --> B\n style A fill:chartreuse",
             "flowchart TD\n A --> B\n style A opacity:0.5",
@@ -83,6 +83,48 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    /// A frame written inside a frame is drawn inside it.
+    func testAFrameHoldsAFrame() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    subgraph outer
+                        subgraph inner
+                            A --> B
+                        end
+                        C --> A
+                    end
+                """))
+        XCTAssertEqual(chart.groups.map(\.title), ["outer", "inner"])
+        XCTAssertEqual(chart.groups.map(\.parent), [nil, 0])
+        // A box belongs to the innermost frame it was written in, and the frame
+        // around that one reaches it through its child rather than directly.
+        XCTAssertEqual(chart.groups[1].members.count, 2)
+        XCTAssertEqual(chart.groups[0].members.count, 1)
+    }
+
+    /// `direction` turns whatever it is written in and nothing else.
+    func testAFrameCanTurnItsOwnContents() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart LR
+                    subgraph one
+                        direction TB
+                        a --> b
+                    end
+                    subgraph two
+                        c --> d
+                    end
+                """))
+        XCTAssertEqual(chart.direction, .right)
+        XCTAssertEqual(chart.groups.map(\.direction), [.down, nil])
+        // At the top level the same word is the header's own.
+        let turned = try XCTUnwrap(flowchart("flowchart TD\n direction LR\n a --> b"))
+        XCTAssertEqual(turned.direction, .right)
+    }
+
     /// A longer line is the same line, and it keeps its head: `--->` points.
     func testALongerArrowStillPoints() throws {
         let chart = try XCTUnwrap(
@@ -91,19 +133,26 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.edges.map(\.stroke), [.solid, .solid, .solid, .thick])
     }
 
-    /// An edge to a `subgraph` joins its frame, and a frame is not a box.
-    func testAnEdgeThatNamesAFrameIsRefused() {
-        XCTAssertNil(
-            MermaidDiagram.parse(
-                "flowchart LR\n subgraph one\n a --> b\n end\n outside --> one"))
+    /// An edge to a `subgraph` ends on the frame's border, not on any box.
+    func testAnEdgeCanNameAFrame() throws {
+        let chart = try XCTUnwrap(
+            flowchart("flowchart LR\n subgraph one\n a --> b\n end\n outside --> one"))
+        // The word `one` is the frame, so it makes no box of its own: only the
+        // two boxes inside the frame and the one outside it.
+        XCTAssertEqual(chart.nodes.map(\.id), ["a", "b", "outside"])
+        XCTAssertEqual(chart.edges.last?.from, .node(2))
+        XCTAssertEqual(chart.edges.last?.to, .frame(0))
+
         // A frame with a title of its own is still named by its identifier.
-        XCTAssertNil(
-            MermaidDiagram.parse(
-                "flowchart LR\n subgraph one[First]\n a --> b\n end\n outside --> one"))
+        let titled = try XCTUnwrap(
+            flowchart("flowchart LR\n subgraph one[First]\n a --> b\n end\n outside --> one"))
+        XCTAssertEqual(titled.groups.map(\.title), ["First"])
+        XCTAssertEqual(titled.edges.last?.to, .frame(0))
+
         // A title in quotes names no frame, so a node may share the words.
-        XCTAssertNotNil(
-            MermaidDiagram.parse(
-                "flowchart LR\n subgraph \"First step\"\n a --> b\n end\n c --> a"))
+        let quoted = try XCTUnwrap(
+            flowchart("flowchart LR\n subgraph \"First step\"\n a --> b\n end\n c --> a"))
+        XCTAssertEqual(quoted.edges.last?.to, .node(0))
     }
 
     func testTheOtherTwoDirections() throws {
@@ -990,10 +1039,10 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.groups[0].members, [1, 2, 3])
         // `Rel_Back` points the other way, and `BiRel` is two arrows.
         XCTAssertEqual(chart.edges.count, 4)
-        XCTAssertEqual(chart.edges[1].from, 1)
-        XCTAssertEqual(chart.edges[1].to, 2)
-        XCTAssertEqual(chart.edges[2].to, 4)
-        XCTAssertEqual(chart.edges[3].to, 1)
+        XCTAssertEqual(chart.edges[1].from, .node(1))
+        XCTAssertEqual(chart.edges[1].to, .node(2))
+        XCTAssertEqual(chart.edges[2].to, .node(4))
+        XCTAssertEqual(chart.edges[3].to, .node(1))
     }
 
     func testAnArchitectureTakesItsGridFromTheSidesItsEdgesUse() throws {
@@ -1125,8 +1174,8 @@ final class MermaidTests: XCTestCase {
         // The blank cell holds a place and names nothing.
         XCTAssertNil(diagram.cells[4].node)
         XCTAssertEqual(diagram.chart.edges.count, 1)
-        XCTAssertEqual(diagram.chart.edges[0].from, 2)
-        XCTAssertEqual(diagram.chart.edges[0].to, 4)
+        XCTAssertEqual(diagram.chart.edges[0].from, .node(2))
+        XCTAssertEqual(diagram.chart.edges[0].to, .node(4))
     }
 
     func testZenUmlKeepsTrackOfWhoIsCalling() throws {

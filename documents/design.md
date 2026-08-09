@@ -261,7 +261,7 @@ both.
 
 `MermaidDiagram.parse` reads a fence into one of the diagrams below and returns
 nil for everything else, including the constructs inside those it does read that
-the layout cannot draw — a subgraph inside a subgraph, a tinted band, a click
+the layout cannot draw — a tinted band, a click
 handler, a mindmap icon, a colour it does not know. The rule is the same one the
 formula
 typesetter follows: a diagram is drawn whole or shown as source, because half a
@@ -306,14 +306,29 @@ the two never overlap. The gap between ranks is sized from those words plus an
 arrowhead plus a visible run of line on either side — a gap sized to the words
 alone leaves a labelled edge looking like a chip with a stub beside it.
 
-A subgraph is given a strip of the cross axis to itself — the same strip on
-every rank — and that is what makes its frame enclose its own members and
-nothing else: no node outside the group is ever placed in the strip. The strips
-are ordered by the rank their contents first appear on, so the graph still reads
-from its first node onwards. A node belongs to the frame it is *written* inside,
-which is not always the frame that named it first: a node mentioned by an edge
-in one subgraph and then declared inside another belongs to the second, because
-that is where its author drew it.
+A subgraph is laid out as a picture of its own and then placed as if it were a
+single box. `placed(chart:…)` calls itself once per frame: the boxes and frames
+written directly inside a container are its units, a frame unit is measured by
+what it came back holding plus its inset and the strip its name is written in,
+and the units are ranked and placed by the same routine the whole chart uses.
+That is what makes a frame enclose its own members and nothing else — nothing
+outside it was ever laid out in its rectangle — and it is why a frame inside a
+frame needs no separate case. A node belongs to the frame it is *written*
+inside, which is not always the frame that named it first: a node mentioned by
+an edge in one subgraph and then declared inside another belongs to the second,
+because that is where its author drew it. A `direction` line inside a frame
+turns that frame's own contents and nothing else, so each recursion reads its
+container's direction and falls back to the header's.
+
+Ranking works on units rather than boxes, so an edge between two boxes deep in
+different frames ranks the frames that hold them, and an edge that names a frame
+— `outside --> one` — ranks the frame itself. A frame is an endpoint in its own
+right for that reason: `Flowchart.End` is either a box or a frame, an edge that
+names one starts or stops on its border, and the boxes it holds are left out of
+the obstacles the line is bowed around, because the line stops before it reaches
+them. A word that names a frame makes no box: a stand-in node parsed before the
+frame was known is folded into the frame it names once the whole source has been
+read.
 
 A class diagram and an entity–relationship diagram are one layout: titled boxes
 with rows in them, ranked the same way a flowchart is, joined by lines whose

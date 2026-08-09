@@ -68,7 +68,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `colspan` included. Anything the reader cannot resolve into a grid stays raw
   HTML.
 - **PARSE-12** A ```mermaid fence is read as a diagram when it is a flowchart
-  (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs,
+  (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs —
+  nested, turned by a `direction` line of their own, and named by edges —
   `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
   (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
   `autonumber`), a `pie` chart, a `stateDiagram-v2`, a `classDiagram`, an
@@ -79,11 +80,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   (`C4Context` and its four siblings), an `architecture-beta` whose services
   use the icons Mermaid ships, a `radar-beta`, a `block-beta` or a `zenuml`
   written as calls, replies and the blocks around them. Every other diagram kind, and every construct
-  inside the ones it reads that the layout cannot draw — a nested subgraph, a
+  inside the ones it reads that the layout cannot draw — a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
   an excluded weekday, a cherry-pick, a commit of a kind it has no mark for, a
   gap between packet fields, a flow that
-  returns to where it came from, an edge that names a subgraph instead of a box,
+  returns to where it came from,
   a C4 restyling, a C4 boundary inside a boundary, an icon from a downloaded
   pack, a group inside a group, architecture edges that send two services to the
   same place, a radar curve short of a value, a block inside a block, or a
