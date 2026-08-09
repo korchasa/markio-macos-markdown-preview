@@ -501,12 +501,67 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.edges.first?.to, .frame(0))
     }
 
+    /// A fork is a bar, a choice is a diamond, and a note is a slip of paper on
+    /// a dotted line.
+    func testAStateMachineForksChoosesAndCarriesNotes() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                stateDiagram-v2
+                    state split <<fork>>
+                    state pick <<choice>>
+                    state gather <<join>>
+                    [*] --> split
+                    split --> A
+                    split --> B
+                    A --> gather
+                    B --> gather
+                    gather --> pick
+                    note right of A : waiting
+                    note left of B
+                        two lines
+                        of words
+                    end note
+                """))
+        let byId = Dictionary(uniqueKeysWithValues: chart.nodes.map { ($0.id, $0) })
+        XCTAssertEqual(byId["split"]?.shape, .bar)
+        XCTAssertEqual(byId["gather"]?.shape, .bar)
+        XCTAssertEqual(byId["pick"]?.shape, .diamond)
+        XCTAssertEqual(byId["__note0"]?.shape, .note)
+        XCTAssertEqual(byId["__note0"]?.label, "waiting")
+        XCTAssertEqual(byId["__note1"]?.label, "two lines<br/>of words")
+        // A note hangs on a dotted line with no head on it.
+        let dotted = chart.edges.filter { $0.stroke == .dotted }
+        XCTAssertEqual(dotted.count, 2)
+        XCTAssertTrue(dotted.allSatisfy { !$0.arrow })
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "stateDiagram-v2\n [*] --> A\n note right of A : waiting",
+                theme: Theme(isDark: false), width: 700))
+    }
+
+    /// A state machine paints its states with the same words a flowchart does.
+    func testAStateIsPaintedByItsClass() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                stateDiagram-v2
+                    [*] --> Crash
+                    classDef bad fill:#ff0000
+                    class Crash bad
+                """))
+        let crash = try XCTUnwrap(chart.nodes.first { $0.id == "Crash" })
+        XCTAssertEqual(crash.style.fill, Flowchart.Colour(red: 1, green: 0, blue: 0))
+    }
+
     func testWhatAStateMachineRefuses() {
         for source in [
-            // A machine left open, a fork bar, a note, a plain word.
+            // A machine left open, and a note left open.
             "stateDiagram-v2\n state Big {\n [*] --> A",
-            "stateDiagram-v2\n state fork <<fork>>\n [*] --> fork",
-            "stateDiagram-v2\n [*] --> A\n note right of A: waiting",
+            "stateDiagram-v2\n [*] --> A\n note right of A",
+            // A note with no words, and a kind of state nobody knows.
+            "stateDiagram-v2\n [*] --> A\n note right of A:",
+            "stateDiagram-v2\n state pause <<wobble>>\n [*] --> pause",
             "stateDiagram-v2\n A",
             "stateDiagram-v2",
         ] {
@@ -737,15 +792,33 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(map.nodes[0].children, [1, 2])
     }
 
+    /// The two shapes a mindmap has that nothing else does, and its painting.
+    func testAMindmapHasCloudsBangsAndPaintedNodes() throws {
+        guard
+            case .mindmap(let map)? = MermaidDiagram.parse(
+                """
+                mindmap
+                  root((Markio))
+                    puff)A cloud(
+                    boom))A bang((
+                    classDef pale fill:#eeeeee
+                    class puff pale
+                """)
+        else { return XCTFail("a mindmap with clouds and bangs is read") }
+        XCTAssertEqual(map.nodes.map(\.shape), [.circle, .cloud, .bang])
+        XCTAssertEqual(map.nodes.map(\.label), ["Markio", "A cloud", "A bang"])
+        XCTAssertEqual(map.nodes[1].style.fill?.red, 238.0 / 255)
+        XCTAssertNil(map.nodes[2].style.fill)
+    }
+
     func testWhatTheTreeDiagramsRefuse() {
         for source in [
-            // A class is decoration the layout has no place for, and an icon
-            // with no node over it belongs to nothing.
-            "mindmap\n  root\n    class a b",
+            // A class of styles nobody defined, and one naming no node.
+            "mindmap\n  root\n    class root missing",
+            "mindmap\n  root\n    classDef pale fill:#eee\n    class nobody pale",
+            // An icon with no node over it belongs to nothing.
             "mindmap\n  ::icon(fa fa-book)",
             "mindmap\n  root\n    a\n  second root",
-            // A cloud and a bang need paths this does not draw.
-            "mindmap\n  root\n    id)Cloud(",
             "mindmap",
             "timeline",
             "timeline\n    section",

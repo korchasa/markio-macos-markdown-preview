@@ -862,13 +862,20 @@ enum MermaidLayout {
             )
             if node.shape == .circle { box.width = max(box.width, box.height) }
             if node.shape == .hexagon { box.width += size.width * 0.2 }
+            if node.shape == .cloud || node.shape == .bang {
+                box.width += size.width * 0.4 + 20 * metrics.scale
+                box.height += size.height * 0.8
+            }
+            // The branch's colour is the outline unless the author painted one.
+            var style = Flowchart.Style(stroke: colour(wheel[branch[index] % wheel.count]))
+            style.merge(node.style)
             boxes.append(
                 Placed(
                     frame: CGRect(origin: .zero, size: box),
                     lines: lines,
                     labelSize: size,
                     shape: node.shape,
-                    style: Flowchart.Style(stroke: colour(wheel[branch[index] % wheel.count]))
+                    style: style
                 )
             )
         }
@@ -2676,6 +2683,16 @@ enum MermaidLayout {
             case .point, .endPoint:
                 let side = 16 * metrics.scale
                 box = CGSize(width: side, height: side)
+            case .bar:
+                // A fork carries no words: it is the bar itself that is read.
+                box = CGSize(width: 70 * metrics.scale, height: 8 * metrics.scale)
+            case .cloud, .bang:
+                // The bumps stand outside the words, so the words need room.
+                box.width += size.width * 0.4 + 20 * metrics.scale
+                box.height += size.height * 0.8
+            case .note:
+                box.width += 10 * metrics.scale
+                box.height += 6 * metrics.scale
             case .arrowUp, .arrowDown:
                 box.height += size.height * 1.4
             case .arrowLeft, .arrowRight:
@@ -3156,6 +3173,15 @@ enum MermaidLayout {
             }
             return decorations
         }
+        // A fork is read as a bar and nothing else, so it is drawn solid.
+        if box.shape == .bar {
+            return [
+                .path(
+                    path,
+                    color: faded(box.style.fill.map(cgColor) ?? theme.palette.text, by: box.style),
+                    lineWidth: 0, filled: true)
+            ]
+        }
         var decorations: [BlockBox.Decoration] = []
         // A `fill:transparent` is the author asking for the page to show
         // through, which is not the same as filling it with the page's colour.
@@ -3205,6 +3231,35 @@ enum MermaidLayout {
                     color: theme.palette.tableBorder, lineWidth: 1, filled: false))
         }
         return decorations
+    }
+
+    /// A closed ring of arcs or spikes around the ellipse inside `frame`: a
+    /// cloud when the bumps are rounded, a starburst when they are points.
+    private static func bumpy(
+        _ frame: CGRect, bumps: Int, out: CGFloat, filled rounded: Bool
+    ) -> CGPath {
+        let path = CGMutablePath()
+        let radiusX = frame.width / 2 / (1 + out)
+        let radiusY = frame.height / 2 / (1 + out)
+        func point(_ step: CGFloat, _ reach: CGFloat) -> CGPoint {
+            let angle = step / CGFloat(bumps) * 2 * .pi
+            return CGPoint(
+                x: frame.midX + cos(angle) * radiusX * reach,
+                y: frame.midY + sin(angle) * radiusY * reach)
+        }
+        path.move(to: point(0, 1))
+        for step in 0..<bumps {
+            let next = CGFloat(step + 1)
+            if rounded {
+                let bulge = point(CGFloat(step) + 0.5, 1 + out * 2.4)
+                path.addQuadCurve(to: point(next, 1), control: bulge)
+            } else {
+                path.addLine(to: point(CGFloat(step) + 0.5, 1 + out * 2))
+                path.addLine(to: point(next, 1))
+            }
+        }
+        path.closeSubpath()
+        return path
     }
 
     private static func cgColor(_ colour: Flowchart.Colour) -> CGColor {
@@ -3294,6 +3349,26 @@ enum MermaidLayout {
                 CGPoint(x: frame.maxX, y: frame.maxY),
                 CGPoint(x: frame.minX, y: frame.maxY),
                 CGPoint(x: frame.minX + lean, y: frame.midY),
+            ])
+        case .cloud:
+            // Eleven bumps around the ellipse the words sit in.
+            return bumpy(frame, bumps: 11, out: 0.16, filled: true)
+        case .bang:
+            // The same ring of points, alternating in and out: a starburst.
+            return bumpy(frame, bumps: 14, out: 0.2, filled: false)
+        case .bar:
+            return CGPath(
+                roundedRect: frame, cornerWidth: frame.height / 2,
+                cornerHeight: frame.height / 2, transform: nil)
+        case .note:
+            // A slip of paper with its top-right corner turned back.
+            let fold = min(12 * frame.height / max(frame.height, 1), frame.width / 4)
+            return polygon([
+                CGPoint(x: frame.minX, y: frame.minY),
+                CGPoint(x: frame.maxX - fold, y: frame.minY),
+                CGPoint(x: frame.maxX, y: frame.minY + fold),
+                CGPoint(x: frame.maxX, y: frame.maxY),
+                CGPoint(x: frame.minX, y: frame.maxY),
             ])
         case .arrowUp, .arrowDown, .arrowLeft, .arrowRight:
             // A fat arrow: a shaft half the width across, and a head that takes

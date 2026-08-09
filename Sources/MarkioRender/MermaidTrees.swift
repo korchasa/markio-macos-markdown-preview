@@ -6,10 +6,14 @@ import Foundation
 /// spells them, so the two readers agree on what `((…))` means.
 struct Mindmap {
     struct Node {
+        /// What the node is called in the source, which is how a `class` line
+        /// names it. A node written as bare words is named by those words.
+        var id: String
         var label: String
         var shape: Flowchart.Shape
         var children: [Int]
         var depth: Int
+        var style = Flowchart.Style()
     }
 
     /// Flat, with children by index — the same trick the block tree uses, and
@@ -20,24 +24,51 @@ struct Mindmap {
         var map = Mindmap(nodes: [])
         // Each open ancestor, with the indent it was written at.
         var stack: [(indent: Int, index: Int)] = []
+        /// The styles `classDef` named, waiting for a `class` to use them.
+        var styles: [String: Flowchart.Style] = [:]
         for line in lines {
+            let word = line.text.prefix(while: { !$0.isWhitespace })
+            let rest = line.text.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
+            if word == "classDef" {
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
+                else { return nil }
+                for name in parts[0].split(separator: ",") {
+                    styles[name.trimmingCharacters(in: .whitespaces)] = style
+                }
+                continue
+            }
+            if word == "class" {
+                let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = styles[String(parts[1])] else { return nil }
+                for name in parts[0].split(separator: ",") {
+                    let id = name.trimmingCharacters(in: .whitespaces)
+                    guard let index = map.nodes.firstIndex(where: { $0.id == id }) else {
+                        return nil
+                    }
+                    map.nodes[index].style.merge(style)
+                }
+                continue
+            }
             // `::icon(fa fa-book)` asks for a glyph out of a font that has to be
             // fetched, and Mermaid draws nothing for it on a page that has not
             // already loaded that font — which is every page here. So the line
-            // belongs to the node above it and adds nothing to the picture. A
-            // `class` is styling this does not draw.
+            // belongs to the node above it and adds nothing to the picture.
             if line.text.hasPrefix("::icon("), line.text.hasSuffix(")") {
                 // It has to stand under a node, like anything else indented.
                 guard !stack.isEmpty else { return nil }
                 continue
             }
-            guard !line.text.hasPrefix("::"), !line.text.hasPrefix("class") else { return nil }
+            guard !line.text.hasPrefix("::") else { return nil }
             guard let read = node(line.text) else { return nil }
             while let last = stack.last, last.indent >= line.indent { stack.removeLast() }
             // Two roots would be two mindmaps.
             guard !stack.isEmpty || map.nodes.isEmpty else { return nil }
             map.nodes.append(
-                Node(label: read.label, shape: read.shape, children: [], depth: stack.count))
+                Node(
+                    id: read.id, label: read.label, shape: read.shape, children: [],
+                    depth: stack.count))
             let index = map.nodes.count - 1
             if let parent = stack.last { map.nodes[parent.index].children.append(index) }
             stack.append((line.indent, index))
@@ -46,11 +77,15 @@ struct Mindmap {
         return map
     }
 
-    /// `Root`, `root((Root))`, `id[Square]`, `id{{Hexagon}}`.
-    private static func node(_ text: Substring) -> (label: String, shape: Flowchart.Shape)? {
+    /// `Root`, `root((Root))`, `id[Square]`, `id{{Hexagon}}`, `id))Bang((` and
+    /// `id)Cloud(`. The longer brackets are tried first so `))` is never read as
+    /// two of `)`.
+    private static func node(_ text: Substring)
+        -> (id: String, label: String, shape: Flowchart.Shape)?
+    {
         let brackets: [(open: String, close: String, shape: Flowchart.Shape)] = [
-            ("((", "))", .circle), ("{{", "}}", .hexagon), ("(", ")", .rounded),
-            ("[", "]", .rectangle),
+            ("((", "))", .circle), ("{{", "}}", .hexagon), ("))", "((", .bang),
+            (")", "(", .cloud), ("(", ")", .rounded), ("[", "]", .rectangle),
         ]
         for bracket in brackets {
             guard let open = text.range(of: bracket.open), text.hasSuffix(bracket.close),
@@ -59,14 +94,14 @@ struct Mindmap {
             let inner = text[
                 open.upperBound..<text.index(text.endIndex, offsetBy: -bracket.close.count)]
             let label = inner.trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            let id = text[text.startIndex..<open.lowerBound].trimmingCharacters(in: .whitespaces)
             guard !label.isEmpty else { return nil }
-            return (label, bracket.shape)
+            return (id.isEmpty ? label : id, label, bracket.shape)
         }
-        // A cloud or a bang needs a path this does not draw.
         guard !text.contains(")"), !text.contains("("), !text.contains("]") else { return nil }
         let label = text.trimmingCharacters(in: .whitespaces)
         guard !label.isEmpty else { return nil }
-        return (label, .rounded)
+        return (label, label, .rounded)
     }
 }
 

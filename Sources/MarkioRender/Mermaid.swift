@@ -285,13 +285,20 @@ struct PieChart {
 /// A state machine, read into a flowchart.
 ///
 /// The shapes carry the difference: a start is a filled dot, an end is a ring,
-/// and every named state is a rounded box. Anything that needs a layout a
-/// flowchart has not got — a composite state, a fork, a note — is refused.
+/// a fork is a bar, a choice is a diamond, and every named state is a rounded
+/// box. A note is a slip of paper joined to its state by a dotted line, which
+/// is a node and an edge like any other.
 enum StateDiagram {
     static func parse(_ lines: [Substring]) -> Flowchart? {
         var direction = Flowchart.Direction.down
         var body: [Substring] = []
         var names: [String: String] = [:]
+        /// The states written as a bar or a diamond rather than a rounded box.
+        var shapes: [String: Flowchart.Shape] = [:]
+        /// A note being written across several lines, and the state it is tied
+        /// to. Its words are gathered until `end note` closes it.
+        var openNote: (state: String, words: [String])?
+        var notes = 0
         /// The composite states currently open, innermost last. `[*]` inside one
         /// is that machine's own beginning and end, not the whole diagram's, so
         /// the points are named after the state that holds them.
@@ -311,10 +318,48 @@ enum StateDiagram {
                 body.append("end")
                 continue
             }
+            if var note = openNote {
+                if line == "end note" {
+                    let words = note.words.joined(separator: "<br/>")
+                    guard !words.isEmpty else { return nil }
+                    body.append(Substring("__note\(notes)[\(words)]"))
+                    body.append(Substring("\(note.state) -.- __note\(notes)"))
+                    shapes["__note\(notes)"] = .note
+                    notes += 1
+                    openNote = nil
+                    continue
+                }
+                note.words.append(String(line))
+                openNote = note
+                continue
+            }
+            if word == "note" {
+                guard let note = self.note(rest) else { return nil }
+                guard let words = note.words else {
+                    openNote = (state: note.state, words: [])
+                    continue
+                }
+                body.append(Substring("__note\(notes)[\(words)]"))
+                body.append(Substring("\(note.state) -.- __note\(notes)"))
+                shapes["__note\(notes)"] = .note
+                notes += 1
+                continue
+            }
             if word == "state" {
                 // `state "Long name" as id` names a state; `state id { … }` is a
-                // machine inside a machine; `<<fork>>` is a bar this does not
-                // draw.
+                // machine inside a machine; `state id <<fork>>` is a bar.
+                if let open = rest.range(of: "<<"), let close = rest.range(of: ">>") {
+                    let name = String(rest[rest.startIndex..<open.lowerBound])
+                        .trimmingCharacters(in: .whitespaces)
+                    let kind = String(rest[open.upperBound..<close.lowerBound])
+                    guard !name.isEmpty, !name.contains(" ") else { return nil }
+                    switch kind {
+                    case "fork", "join": shapes[name] = .bar
+                    case "choice": shapes[name] = .diamond
+                    default: return nil
+                    }
+                    continue
+                }
                 if rest.hasPrefix("\"") {
                     guard let close = rest.dropFirst().firstIndex(of: "\"") else { return nil }
                     let label = String(rest[rest.index(after: rest.startIndex)..<close])
@@ -331,7 +376,12 @@ enum StateDiagram {
                 body.append(Substring("subgraph \(name)"))
                 continue
             }
-            guard !["note", "end", "class", "classDef", "click"].contains(word) else { return nil }
+            // The words a flowchart already knows are handed to it as written.
+            if ["class", "classDef", "style", "click", "linkStyle"].contains(word) {
+                body.append(line)
+                continue
+            }
+            guard word != "end" else { return nil }
             // `A --> B : go` is the same edge a flowchart writes `A -->|go| B`.
             guard let arrow = line.range(of: "-->") else {
                 // `id: Words` is what the state is called on the page.
@@ -360,7 +410,8 @@ enum StateDiagram {
             let arrowText = label.isEmpty ? "-->" : "-->|\(label)|"
             body.append(Substring("\(from) \(arrowText) \(tail)"))
         }
-        guard open.isEmpty, !body.isEmpty, var chart = Flowchart.parse(body, direction: direction)
+        guard open.isEmpty, openNote == nil, !body.isEmpty,
+            var chart = Flowchart.parse(body, direction: direction)
         else { return nil }
         for index in chart.nodes.indices {
             let id = chart.nodes[index].id
@@ -368,6 +419,11 @@ enum StateDiagram {
                 chart.nodes[index] = Flowchart.Node(id: id, label: "", shape: .point)
             } else if id.hasPrefix("__end") {
                 chart.nodes[index] = Flowchart.Node(id: id, label: "", shape: .endPoint)
+            } else if let shape = shapes[id] {
+                // A fork and a choice are read as the mark they are, so the
+                // name the author gave them is not written on the page.
+                chart.nodes[index].shape = shape
+                if shape != .note { chart.nodes[index].label = "" }
             } else {
                 chart.nodes[index].shape = .rounded
                 if let label = names[id] { chart.nodes[index].label = label }
@@ -379,6 +435,28 @@ enum StateDiagram {
             if let label = names[chart.groups[index].id] { chart.groups[index].title = label }
         }
         return chart
+    }
+
+    /// `note right of Still : waiting`, or the same without the words when the
+    /// note runs on until `end note`. Which side it is written on is Mermaid's
+    /// hint to its own layout, and this one places notes for itself.
+    private static func note(_ rest: String) -> (state: String, words: String?)? {
+        var text = rest
+        for side in ["left of ", "right of "] where text.hasPrefix(side) {
+            text = String(text.dropFirst(side.count))
+        }
+        guard text != rest else { return nil }
+        var words: String?
+        if let colon = text.firstIndex(of: ":") {
+            let said = String(text[text.index(after: colon)...])
+                .trimmingCharacters(in: .whitespaces)
+            guard !said.isEmpty else { return nil }
+            words = said
+            text = String(text[text.startIndex..<colon])
+        }
+        let state = text.trimmingCharacters(in: .whitespaces)
+        guard !state.isEmpty, !state.contains(" ") else { return nil }
+        return (state: state, words: words)
     }
 }
 
@@ -415,6 +493,14 @@ struct Flowchart {
         /// it ends. No flowchart writes these; the state reader does.
         case point
         case endPoint
+        /// A mindmap's `)…(` and `))…((`: a puffy cloud and a starburst.
+        case cloud
+        case bang
+        /// A state machine's `<<fork>>` and `<<join>>`: a heavy bar that splits
+        /// one thread into several or gathers them back.
+        case bar
+        /// A state machine's note: a slip of paper with a folded corner.
+        case note
         /// A block diagram's `blockArrowId<[…]>(down)`: a fat arrow with words
         /// in it, pointing one of four ways.
         case arrowUp
