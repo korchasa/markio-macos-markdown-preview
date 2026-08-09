@@ -28,21 +28,49 @@ to end an edge anywhere but on a box.
 
 ## What this comparison turned up
 
-Running Mermaid's own examples through the reader found three defects and one
-gap, all closed before this file was written:
+Putting the two pictures side by side found faults that looking at ours alone
+never did: a reader who has only one drawing cannot see what is missing from it.
+Three rounds of comparison went through every example here, and every defect they
+found is closed. They fell into four kinds.
 
-- `--->` lost its arrowhead. A longer line is the same line, and the head is read
-  after the length rather than with it.
-- An edge naming a subgraph quietly invented a box with the frame's name, so the
-  picture held both a frame and a box called `one`. It is refused now.
-- A C4 boundary inside a boundary put every element in the innermost frame and
-  dropped the outer one without saying so. It is refused now.
-- Mermaid's YAML preamble — `---` / `title:` / `---` — was not read at all, and it
-  accounted for most of the refusals. Its `title` is read now and set above the
-  drawing, whatever kind the drawing is. A preamble carrying anything else, `config`
-  above all, still leaves the fence as source: those keys change how Mermaid draws,
-  and a picture drawn to settings other than the ones its author wrote is not the
-  picture they asked for.
+**A picture that said something its source did not.** `--->` lost its arrowhead.
+An edge naming a subgraph invented a box with the frame's name, so the picture held
+both a frame and a box called `one`; it is refused now, and so is a C4 boundary
+inside a boundary, which used to put every element in the innermost frame and drop
+the outer one. A cycle pushed every state in it onto one rank, so a machine that
+returns to its start collapsed into a single row. A node declared inside a frame
+stayed in whichever frame had named it first. A commit marked `REVERSE` and a merge
+commit were both drawn as ordinary commits. A treemap showed neither its root nor
+any value, a Sankey bar showed no amount, a Gantt axis showed no year, and an arm of
+an `alt` written without a condition was drawn with no word on it at all.
+
+**Two things drawn in one place.** A subgraph's name was clipped by its own frame,
+a quadrant's point name could land on another point, a packet's bit numbers printed
+over each other, and two edges between the same pair of boxes were drawn as one
+line. Edges take a lane now and bow around whatever they would otherwise cross. An
+edge label as wide as the gap left no line either side of it, and a message label
+hung off both lifelines and crossed its own arrow; the room between ranks and
+between lifelines is measured from the words that have to fit in it.
+
+**A picture cut off at its own edge.** Each kind reported the width of the boxes it
+laid out, which is not the width of the picture: a line bowed around a box and a
+card title longer than its card both reached past them and were clipped by the
+bitmap. What is drawn is measured now, and slid back into view if any of it landed
+outside.
+
+**Room and wording.** Siblings stood too close together. A small diagram opened in a
+large window came back centred in a field of empty card — the width it is given is a
+limit now, not a frame. An entity's attribute was written name first where the
+source says type first, a requirement's rows carried the source's keywords instead
+of words a person would say, and a relation between two boxes standing one over the
+other was drawn leaning.
+
+Mermaid's YAML preamble — `---` / `title:` / `---` — was not read at all, and it
+accounted for most of the refusals. Its `title` is read now and set above the
+drawing, whatever kind the drawing is. A preamble carrying anything else, `config`
+above all, still leaves the fence as source: those keys change how Mermaid draws,
+and a picture drawn to settings other than the ones its author wrote is not the
+picture they asked for.
 
 ## Flowchart
 
@@ -99,7 +127,7 @@ flowchart TB
     two --> c2
 ```
 
-**Markio 2 shows this as source**, because of `one --> two` joins a frame, and an edge to a frame is not an edge to a box.
+**Markio 2 shows this as source**, because of `one --> two`, an edge that ends on a frame rather than on a box.
 
 ![Mermaid's own drawing](images/mermaid/flowchart-frame-edge.png)
 
@@ -126,7 +154,7 @@ flowchart LR
     outside ---> top2
 ```
 
-**Markio 2 shows this as source**, because of `direction TB` turns one frame's own contents, and `outside --> subgraph1` joins a frame.
+**Markio 2 shows this as source**, because of `direction TB`, which turns one frame's own contents, and `outside --> subgraph1`, which ends on a frame.
 
 ![Mermaid's own drawing](images/mermaid/flowchart-direction.png)
 
