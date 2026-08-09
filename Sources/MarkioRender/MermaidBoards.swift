@@ -86,10 +86,18 @@ struct KanbanBoard {
     /// a link, and Mermaid draws it as one.
     var ticketBaseUrl: String = ""
 
-    static func parse(_ lines: [(indent: Int, text: Substring)], ticketBaseUrl: String = "")
+    /// `config.kanban.sectionWidth` from the preamble: how wide a column stands
+    /// when the author says so rather than letting the cards decide.
+    var columnWidth: Double?
+
+    static func parse(
+        _ lines: [(indent: Int, text: Substring)], ticketBaseUrl: String = "",
+        columnWidth: Double? = nil
+    )
         -> KanbanBoard?
     {
-        var board = KanbanBoard(columns: [], ticketBaseUrl: ticketBaseUrl)
+        var board = KanbanBoard(
+            columns: [], ticketBaseUrl: ticketBaseUrl, columnWidth: columnWidth)
         // The first line's indent is what a column is written at; anything
         // deeper is a card in the column above it.
         guard let columnIndent = lines.first?.indent else { return nil }

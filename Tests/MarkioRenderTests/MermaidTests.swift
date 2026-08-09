@@ -353,12 +353,8 @@ final class MermaidTests: XCTestCase {
             "sequenceDiagram\n loop forever\n A->>B: hi",
             "sequenceDiagram\n A->>B: hi\n end",
             "sequenceDiagram\n A->>B: hi\n Note A: thinking",
-            // A band with no colour tints nothing, and a box with no name and
-            // a box with nobody in it frame nothing.
-            "sequenceDiagram\n rect\n A->>B: hi\n end",
+            // A band asking for a colour nobody has.
             "sequenceDiagram\n rect wobble\n A->>B: hi\n end",
-            "sequenceDiagram\n box\n participant A\n end\n A->>B: hi",
-            "sequenceDiagram\n box Team\n end\n A->>B: hi",
             // A box around participants with a stranger standing between them.
             "sequenceDiagram\n participant A\n participant B\n participant C\n"
                 + "box Team\n participant A\n participant C\n end\n A->>B: hi\n B->>C: on",
@@ -402,6 +398,27 @@ final class MermaidTests: XCTestCase {
                 source: "sequenceDiagram\n participant A\n participant B\n A->>B: hi",
                 theme: Theme(isDark: false), width: 700))
         XCTAssertGreaterThan(boxed.height, plain.height)
+    }
+
+    /// Mermaid draws a band and a box whether or not their author gave them a
+    /// colour, a name or anybody to hold, so these draw rather than refuse.
+    func testABandNeedsNoColourAndABoxNeedsNoName() throws {
+        let washed = try XCTUnwrap(
+            sequence("sequenceDiagram\n rect\n A->>B: hi\n end"))
+        XCTAssertEqual(washed.messages.count, 1)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "sequenceDiagram\n rect\n A->>B: hi\n end",
+                theme: Theme(isDark: false), width: 700))
+
+        let unnamed = try XCTUnwrap(
+            sequence("sequenceDiagram\n box\n participant A\n end\n A->>B: hi"))
+        XCTAssertEqual(unnamed.groups.count, 1)
+        XCTAssertEqual(unnamed.groups[0].label, "")
+
+        let empty = try XCTUnwrap(
+            sequence("sequenceDiagram\n box Team\n end\n A->>B: hi"))
+        XCTAssertEqual(empty.groups[0].members, [])
     }
 
     func testBlocksNestAndKeepTheirArms() throws {
@@ -1655,13 +1672,29 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(block.sections.map(\.title), ["miss", ""])
     }
 
+    /// Two axes make a line rather than a shape, and zero rings leave a bare
+    /// web — Mermaid draws both, so the drawing takes what it is given.
+    func testARadarDrawsTwoAxesAndAWebWithNoRings() throws {
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "radar-beta\n  axis a, b\n  curve one{1, 2}",
+                theme: Theme(isDark: false), width: 700))
+        let bare = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  ticks 0",
+                theme: Theme(isDark: false), width: 700))
+        let ringed = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}",
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertEqual(bare.width, ringed.width)
+    }
+
     func testWhatRadarBlocksAndZenUmlRefuse() {
         for source in [
-            // Two axes make no shape, and a chart with no curve at all has
-            // nothing on it.
-            "radar-beta\n  axis a, b\n  curve one{1, 2}",
+            // A chart with no curve at all has nothing on it, and a web can
+            // only be drawn round or many-sided.
             "radar-beta\n  axis a, b, c",
-            "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  ticks 0",
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
             "radar-beta",
             // A block left open, one closed twice, and one named twice.
@@ -1867,22 +1900,47 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(board.columns[0].cards[0].details, ["kim"])
     }
 
+    /// A preamble may carry a width, a title nobody filled in, or a key meant
+    /// for another kind of diagram; Mermaid draws all three.
+    func testAPreambleWidensAColumnAndLeavesSpareKeysAlone() throws {
+        guard
+            case .kanban(let wide)? = MermaidDiagram.parse(
+                "---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\n  a[A]")
+        else { return XCTFail("a width is a width") }
+        XCTAssertEqual(wide.columnWidth, 200)
+
+        let board = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "---\nconfig:\n  kanban:\n    sectionWidth: 320\n---\nkanban\n  a[A]",
+                theme: Theme(isDark: false), width: 900))
+        let snug = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "kanban\n  a[A]", theme: Theme(isDark: false), width: 900))
+        XCTAssertGreaterThan(board.width, snug.width)
+
+        // A board's key over a pie, a gantt's over a pie, and an empty title.
+        for source in [
+            "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'x'\n---\npie\n  \"A\" : 1",
+            "---\ndisplayMode: compact\n---\npie\n  \"A\" : 1",
+            "---\ntitle:\n---\npie\n  \"A\" : 1",
+        ] {
+            guard case .pie? = MermaidDiagram.parse(source) else {
+                return XCTFail("a pie with a spare key is still a pie: \(source)")
+            }
+        }
+    }
+
     func testWhatAPreambleRefuses() {
         for source in [
-            // `config` changes how Mermaid draws, and drawing it another way
-            // would be answering a question the author did not ask.
+            // A setting whose value names something nobody can draw.
             "---\nconfig:\n  theme: nightfall\n---\npie\n  \"A\" : 1",
-            "---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\n  a[A]",
-            // A board's setting over something that is not a board.
-            "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'x'\n---\npie\n  \"A\" : 1",
             "---\ndisplayMode: roomy\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
-            "---\ndisplayMode: compact\n---\npie\n  \"A\" : 1",
+            "---\nconfig:\n  kanban:\n    sectionWidth: nine\n---\nkanban\n  a[A]",
             // A name in the preamble and a name in the diagram: two names, and
             // no way to know which one Mermaid would show.
             "---\ntitle: One\n---\npie\n  title Two\n  \"A\" : 1",
-            // Opened and never closed, and a title with nothing after it.
+            // Opened and never closed, and named twice.
             "---\ntitle: One\npie\n  \"A\" : 1",
-            "---\ntitle:\n---\npie\n  \"A\" : 1",
             "---\ntitle: One\ntitle: Two\n---\npie\n  \"A\" : 1",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)

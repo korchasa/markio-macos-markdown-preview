@@ -39,6 +39,8 @@ enum MermaidDiagram {
     struct Settings {
         /// `config.kanban.ticketBaseUrl`: what a card's ticket id points at.
         var ticketBaseUrl = ""
+        /// How wide a kanban column stands, when the preamble says so.
+        var kanbanColumnWidth: Double?
         /// `displayMode: compact`, which a gantt may say in its preamble
         /// instead of in its body.
         var ganttCompact = false
@@ -107,6 +109,8 @@ enum MermaidDiagram {
             while let last = path.last, last.indent >= indent { path.removeLast() }
             let here = path.map(\.key) + [key]
             if value.isEmpty {
+                // A title with nothing after it is no title at all.
+                if here == ["title"] { continue }
                 // A key with nothing after it opens what is written under it.
                 path.append((indent, key))
                 guard
@@ -121,6 +125,9 @@ enum MermaidDiagram {
                 title = value
             case ["config", "kanban", "ticketBaseUrl"]:
                 settings.ticketBaseUrl = value
+            case ["config", "kanban", "sectionWidth"]:
+                guard let width = Double(value), width >= 40, width <= 2000 else { return nil }
+                settings.kanbanColumnWidth = width
             case ["displayMode"], ["config", "gantt", "displayMode"]:
                 guard value == "compact" else { return nil }
                 settings.ganttCompact = true
@@ -205,10 +212,8 @@ enum MermaidDiagram {
             indents.append(raw.prefix(while: { $0 == " " || $0 == "\t" }).count)
         }
         guard let header = lines.first else { return nil }
-        // A kanban setting over a diagram that is not a board says the author
-        // meant something this has not understood.
-        guard settings.ticketBaseUrl.isEmpty || header == "kanban" else { return nil }
-        guard !settings.ganttCompact || header == "gantt" else { return nil }
+        // A key meant for another kind of diagram is written for a chart that is
+        // not here, which is a preamble Mermaid simply leaves unused.
         let rest = Array(lines.dropFirst())
         if header == "mindmap" || header == "kanban" || header == "treemap-beta"
             || header == "treemap"
@@ -217,8 +222,11 @@ enum MermaidDiagram {
             switch header {
             case "mindmap": return Mindmap.parse(body).map(MermaidDiagram.mindmap)
             case "kanban":
-                return KanbanBoard.parse(body, ticketBaseUrl: settings.ticketBaseUrl)
-                    .map(MermaidDiagram.kanban)
+                return KanbanBoard.parse(
+                    body, ticketBaseUrl: settings.ticketBaseUrl,
+                    columnWidth: settings.kanbanColumnWidth
+                )
+                .map(MermaidDiagram.kanban)
             default: return Treemap.parse(body).map(MermaidDiagram.treemap)
             }
         }
@@ -1436,18 +1444,19 @@ struct SequenceDiagram {
                 continue
             }
             if word == "box" {
-                // `box Aqua Team`, `box rgb(0,0,255) Team`, or just `box Team`.
+                // `box Aqua Team`, `box rgb(0,0,255) Team`, `box Team`, or a
+                // bare `box` — a band with no name is still a band.
                 guard openGroup == nil, stack.isEmpty else { return nil }
                 let (fill, label) = tint(rest)
-                guard !label.isEmpty else { return nil }
                 diagram.groups.append(Group(label: label, fill: fill))
                 openGroup = diagram.groups.count - 1
                 continue
             }
             if word == "rect" {
-                // A `rect` needs its colour: an untinted band tints nothing.
+                // A `rect` with no colour of its own is still a band; the
+                // drawing gives it the faintest tint the theme has.
                 let (fill, label) = tint(rest)
-                guard let fill, label.isEmpty else { return nil }
+                guard label.isEmpty else { return nil }
                 stack.append(
                     Block(kind: "rect", sections: [Section(title: "", items: [])], fill: fill))
                 continue
@@ -1467,9 +1476,7 @@ struct SequenceDiagram {
             }
             if word == "end" {
                 guard rest.isEmpty else { return nil }
-                if stack.isEmpty, let group = openGroup {
-                    // A box with nobody in it frames nothing.
-                    guard !diagram.groups[group].members.isEmpty else { return nil }
+                if stack.isEmpty, openGroup != nil {
                     openGroup = nil
                     continue
                 }
@@ -1501,7 +1508,8 @@ struct SequenceDiagram {
         // stranger standing between them would say they were in it too.
         for group in diagram.groups {
             let members = group.members.sorted()
-            guard members.last! - members.first! == members.count - 1 else { return nil }
+            guard let first = members.first, let last = members.last else { continue }
+            guard last - first == members.count - 1 else { return nil }
         }
         return diagram
     }

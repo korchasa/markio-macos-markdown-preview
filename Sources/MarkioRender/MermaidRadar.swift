@@ -53,7 +53,8 @@ struct RadarChart {
                 guard let value = Double(rest) else { return nil }
                 if word == "max" { chart.high = value } else { chart.low = value }
             case "ticks":
-                guard let value = Int(rest), value > 0, value <= 20 else { return nil }
+                // Zero rings is a bare web, which is what Mermaid draws for it.
+                guard let value = Int(rest), value >= 0, value <= 20 else { return nil }
                 chart.ticks = value
             case "graticule":
                 guard rest == "polygon" || rest == "circle" else { return nil }
@@ -65,13 +66,14 @@ struct RadarChart {
                 return nil
             }
         }
-        // Three axes is the fewest that make a shape.
+        // Two axes make a line rather than a shape, which is what Mermaid
+        // draws for one, so the drawing takes whatever it is given.
         // A curve short of a value has no shape to close, so it is dropped and
         // the rest of the chart is drawn — which is what Mermaid itself does.
         // A chart that named no curve at all is a chart with nothing on it.
         guard !chart.curves.isEmpty else { return nil }
         chart.curves.removeAll { $0.values.count != chart.axes.count }
-        guard chart.axes.count >= 3 else { return nil }
+        guard chart.axes.count >= 2 else { return nil }
         let largest = chart.curves.flatMap(\.values).max() ?? 0
         let outer = chart.high ?? max(largest, chart.low + 1)
         guard outer > chart.low else { return nil }

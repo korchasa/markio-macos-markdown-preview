@@ -2076,7 +2076,7 @@ enum MermaidLayout {
         // the same width, because a board whose columns are different widths
         // reads as a board with a column that matters more.
         let columnWidth = max(
-            150 * metrics.scale,
+            board.columnWidth.map { CGFloat($0) * metrics.scale } ?? 150 * metrics.scale,
             columns.map { column in
                 max(
                     column.headSize.width + pad * 2,
@@ -4066,13 +4066,21 @@ enum MermaidLayout {
                     reach = max(reach, drawn.rect.maxX - right, left - drawn.rect.minX)
                     y += drawn.height + metrics.messageGap * 0.4
                 case .block(let block):
+                    // A `rect` is a wash of colour and never a labelled frame,
+                    // so one written without a colour takes the faintest tint
+                    // the theme has rather than a word saying "rect".
+                    let wash: CGColor? =
+                        block.fill.map { cgColor($0) }
+                        ?? (block.kind == "rect"
+                            ? (theme.palette.tableHeaderBackground.copy(alpha: 0.55)
+                                ?? theme.palette.tableHeaderBackground) : nil)
                     let inset = CGFloat(depth) * 9 * metrics.scale
                     let frameTop = y - metrics.messageGap * 0.55
                     var dividers: [(CGFloat, String)] = []
                     y += 6 * metrics.scale
                     for (index, section) in block.sections.enumerated() {
                         if index == 0 {
-                            if block.fill == nil {
+                            if wash == nil {
                                 body += tag(
                                     block.kind, title: section.title,
                                     at: CGPoint(x: left - 10 + inset, y: frameTop), theme: theme,
@@ -4095,12 +4103,12 @@ enum MermaidLayout {
                     let rect = CGRect(
                         x: left - 10 + inset, y: frameTop,
                         width: right - left + 20 - inset * 2, height: frameBottom - frameTop)
-                    if let fill = block.fill {
+                    if let wash {
                         // A `rect` is a wash of colour behind its messages and
                         // nothing else: no outline, and no word on it.
                         tints.append(
                             .path(
-                                CGPath(rect: rect, transform: nil), color: cgColor(fill),
+                                CGPath(rect: rect, transform: nil), color: wash,
                                 lineWidth: 0, filled: true))
                         y += 6 * metrics.scale
                         continue
@@ -4411,7 +4419,7 @@ enum MermaidLayout {
         }
 
         // The rings, then the spokes, then the curves on top of both.
-        for tick in 1...chart.ticks {
+        for tick in stride(from: 1, through: chart.ticks, by: 1) {
             let fraction = CGFloat(tick) / CGFloat(chart.ticks)
             let ring = CGMutablePath()
             if chart.polygon {
