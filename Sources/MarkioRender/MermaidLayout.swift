@@ -2550,26 +2550,50 @@ enum MermaidLayout {
         let lane = 46 * metrics.scale
         let radius = 7 * metrics.scale
         let columns = (graph.commits.map(\.column).max() ?? 0) + 1
-        let content = gutter + CGFloat(columns) * step
-        let height = metrics.padding * 2 + CGFloat(graph.branches.count) * lane
+        // Turned on its side the lanes run down the page: what was a column of
+        // commits becomes a row of them, and the branch names sit above their
+        // lanes rather than beside them.
+        let down = graph.vertical
+        let nameHeight =
+            (graph.branches.map {
+                measure(text($0, font: branchFont, color: theme.palette.text)).height
+            }.max() ?? 0) + 10 * metrics.scale
+        let content =
+            down
+            ? CGFloat(graph.branches.count) * lane : gutter + CGFloat(columns) * step
+        let height =
+            down
+            ? metrics.padding * 2 + nameHeight + CGFloat(columns) * step
+            : metrics.padding * 2 + CGFloat(graph.branches.count) * lane
 
         let left = max(metrics.padding, (width - content) / 2)
+        /// How far along its lane a commit stands, and how far across the lanes.
+        func along(_ column: Int) -> CGFloat {
+            (down ? metrics.padding + nameHeight : left + gutter) + step * (CGFloat(column) + 0.5)
+        }
+        func across(_ branch: Int) -> CGFloat {
+            (down ? left : metrics.padding) + lane * (CGFloat(branch) + 0.5)
+        }
         func centre(of commit: GitGraph.Commit) -> CGPoint {
-            CGPoint(
-                x: left + gutter + step * (CGFloat(commit.column) + 0.5),
-                y: metrics.padding + lane * (CGFloat(commit.branch) + 0.5)
-            )
+            down
+                ? CGPoint(x: across(commit.branch), y: along(commit.column))
+                : CGPoint(x: along(commit.column), y: across(commit.branch))
         }
 
         var decorations: [BlockBox.Decoration] = []
         for (index, name) in graph.branches.enumerated() {
-            let y = metrics.padding + lane * (CGFloat(index) + 0.5)
+            let side = across(index)
             let colour = wheel[index % wheel.count]
             let own = graph.commits.filter { $0.branch == index }
             guard let first = own.first, let last = own.last else { continue }
             let rail = CGMutablePath()
-            rail.move(to: CGPoint(x: centre(of: first).x, y: y))
-            rail.addLine(to: CGPoint(x: centre(of: last).x, y: y))
+            if down {
+                rail.move(to: CGPoint(x: side, y: centre(of: first).y))
+                rail.addLine(to: CGPoint(x: side, y: centre(of: last).y))
+            } else {
+                rail.move(to: CGPoint(x: centre(of: first).x, y: side))
+                rail.addLine(to: CGPoint(x: centre(of: last).x, y: side))
+            }
             decorations.append(
                 .path(rail, color: colour, lineWidth: 2.5 * metrics.scale, filled: false))
             let line = text(name, font: branchFont, color: colour)
@@ -2577,9 +2601,13 @@ enum MermaidLayout {
             decorations.append(
                 .glyphs(
                     line,
-                    origin: CGPoint(
-                        x: left + gutter - 10 * metrics.scale - size.width,
-                        y: y + size.height / 2 - descent(line))))
+                    origin: down
+                        ? CGPoint(
+                            x: side - size.width / 2,
+                            y: metrics.padding + size.height - descent(line))
+                        : CGPoint(
+                            x: left + gutter - 10 * metrics.scale - size.width,
+                            y: side + size.height / 2 - descent(line))))
         }
         // A branch is drawn from where it left its parent and a merge back to
         // where it rejoined, so a lane is never a line floating on its own.
@@ -2593,17 +2621,23 @@ enum MermaidLayout {
                     : nil)
             guard let source else { continue }
             let from = centre(of: graph.commits[source])
+            // The bend leaves along the lane and arrives across it, whichever
+            // way round the lanes were drawn.
+            let firstControl =
+                down
+                ? CGPoint(x: from.x, y: (from.y + here.y) / 2)
+                : CGPoint(x: (from.x + here.x) / 2, y: from.y)
+            let secondControl =
+                down
+                ? CGPoint(x: here.x, y: (from.y + here.y) / 2)
+                : CGPoint(x: (from.x + here.x) / 2, y: here.y)
             let path = CGMutablePath()
             path.move(to: from)
-            path.addCurve(
-                to: here,
-                control1: CGPoint(x: (from.x + here.x) / 2, y: from.y),
-                control2: CGPoint(x: (from.x + here.x) / 2, y: here.y))
+            path.addCurve(to: here, control1: firstControl, control2: secondControl)
             // A cherry-pick copies rather than joins, so its line is dotted:
             // the two dots are the same work, not one line running on.
             var drawn: CGPath = path
             if commit.picks != nil {
-                let midX = (from.x + here.x) / 2
                 let points = (0...24).map { step -> CGPoint in
                     let time = CGFloat(step) / 24
                     let rest = 1 - time
@@ -2612,8 +2646,8 @@ enum MermaidLayout {
                             + 3 * rest * time * time * c + time * time * time * d
                     }
                     return CGPoint(
-                        x: at(from.x, midX, midX, here.x),
-                        y: at(from.y, from.y, here.y, here.y))
+                        x: at(from.x, firstControl.x, secondControl.x, here.x),
+                        y: at(from.y, firstControl.y, secondControl.y, here.y))
                 }
                 drawn = dashed(along: points, dash: 3, gap: 3)
             }

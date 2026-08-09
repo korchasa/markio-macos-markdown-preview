@@ -348,8 +348,6 @@ final class MermaidTests: XCTestCase {
 
     func testSequenceConstructsItCannotDraw() {
         for source in [
-            "sequenceDiagram\n Note right of A: thinking",
-            "sequenceDiagram\n participant A",
             "sequenceDiagram\n A B C",
             // A block left open, one closed twice, and a note with no placement.
             "sequenceDiagram\n loop forever\n A->>B: hi",
@@ -1130,7 +1128,6 @@ final class MermaidTests: XCTestCase {
             // A point outside the square, and one with no coordinates at all.
             "quadrantChart\n  A: [1.4, 0.2]",
             "quadrantChart\n  A: [0.2]",
-            "quadrantChart\n  x-axis Low --> High",
             // Series that do not line up with the names under them.
             "xychart-beta\n  x-axis [a, b]\n  bar [1, 2, 3]",
             "xychart-beta\n  bar [1, 2]\n  line [1, 2, 3]",
@@ -1141,8 +1138,8 @@ final class MermaidTests: XCTestCase {
             "gitGraph\n  commit id: \"A\"\n  cherry-pick id: \"A\"",
             "gitGraph\n  commit\n  merge nothing",
             "gitGraph\n  commit\n  checkout nothing",
-            // Turning the lanes on their side is a layout this has not got.
-            "gitGraph TB:\n  commit",
+            // A direction nobody knows.
+            "gitGraph XY:\n  commit",
             "gitGraph",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -1256,6 +1253,24 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// `gitGraph TB:` turns the lanes down the page: the same graph, drawn the
+    /// other way round.
+    func testAGitGraphTurnsItsLanesDownThePage() throws {
+        let source = "gitGraph TB:\n  commit\n  branch feature\n  commit\n  checkout main\n  commit"
+        guard case .git(let graph)? = MermaidDiagram.parse(source) else {
+            return XCTFail("a turned git graph is still a git graph")
+        }
+        XCTAssertTrue(graph.vertical)
+        let turned = try XCTUnwrap(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+        let across = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: source.replacingOccurrences(of: "gitGraph TB:", with: "gitGraph"),
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertGreaterThan(turned.height, across.height)
+        XCTAssertLessThan(turned.width, across.width)
     }
 
     /// A cherry-pick is the same work said twice, on a dotted line.
@@ -1813,7 +1828,8 @@ final class MermaidTests: XCTestCase {
             "---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\n  a[A]",
             // A board's setting over something that is not a board.
             "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'x'\n---\npie\n  \"A\" : 1",
-            "---\ndisplayMode: compact\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
+            "---\ndisplayMode: roomy\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
+            "---\ndisplayMode: compact\n---\npie\n  \"A\" : 1",
             // A name in the preamble and a name in the diagram: two names, and
             // no way to know which one Mermaid would show.
             "---\ntitle: One\n---\npie\n  title Two\n  \"A\" : 1",

@@ -260,21 +260,24 @@ both.
 ### Diagrams
 
 `MermaidDiagram.parse` reads a fence into one of the diagrams below and returns
-nil for everything else, including the constructs inside those it does read that
-the layout cannot draw — a tinted band, a click
-handler, a mindmap icon, a colour it does not know. The rule is the same one the
-formula
-typesetter follows: a diagram is drawn whole or shown as source, because half a
-graph asserts something its author did not write.
+nil for everything else: a diagram kind it does not know, a construct Mermaid
+itself refuses, and a source whose own parts disagree — a block left open, a name
+given twice, a reference to something nobody wrote. The rule is the same one the
+formula typesetter follows: a diagram is drawn whole or shown as source, because
+half a graph asserts something its author did not write. Where Mermaid draws
+something for a construct this cannot fully honour — a question mark for an icon
+out of a pack nobody registered, nothing at all for a radar curve short of a
+value — this draws the same thing, because matching what the author would see
+elsewhere is what the rule is for.
 
-Mermaid's YAML preamble is read before the diagram is, and only for `title`. The
-title travels as `MermaidDiagram.titled`, a case wrapping any other, so the
-layout draws the diagram exactly as it would have without a name and then moves
-it down to make room — one place for a title rather than one per kind. The other
-preamble keys, `config` chief among them, set the theme, a ticket's link, a
-gantt's display mode: they change how Mermaid draws rather than what it draws,
-and drawing to settings other than the author's is exactly the half-truth the
-rule above forbids, so the fence stays source.
+Mermaid's YAML preamble is read before the diagram is, for the keys that say
+what to draw. The title travels as `MermaidDiagram.titled`, a case wrapping any
+other, so the layout draws the diagram exactly as it would have without a name
+and then moves it down to make room — one place for a title rather than one per
+kind. `config.kanban.ticketBaseUrl` and `displayMode: compact` reach the reader
+that wants them. A key that sets the theme changes how Mermaid draws rather than
+what it draws, and drawing in colours other than the author's is exactly the
+half-truth the rule above forbids, so a themed fence stays source.
 
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
@@ -356,7 +359,9 @@ branch keeps one colour to its last leaf, and a connector near the root is drawn
 thicker than one near a twig. `::icon(fa fa-book)` belongs to the node above it
 and adds nothing to the picture: it asks for a glyph out of a font that has to
 be fetched, and Mermaid itself draws nothing for it on a page that has not
-already loaded that font, which is every page here.
+already loaded that font, which is every page here. A cloud and a bang are a
+ring of arcs and a ring of spikes around the ellipse the words sit in, so the
+two shapes only a mindmap has need no new machinery to place.
 
 A timeline is columns. A section is a band over the run of periods it owns, so
 its span says which columns belong to it without a line joining them; under the
@@ -376,8 +381,11 @@ thing this drawing has no way to place.
 
 A git graph is one lane per branch, a column per commit, and a curve wherever a
 branch left its parent or merged back — so a lane is never a line floating on
-its own. `gitGraph TB:` turns the lanes on their side, which is a layout this
-has not got, so only the plain form is read. What a commit is decides how its
+its own. `gitGraph TB:` turns the lanes down the page rather than across it:
+the same graph, with the two axes swapped and the branch names moved above their
+lanes. A `cherry-pick` is drawn as a dotted line back to the commit it copied,
+because a copy is the same work said twice rather than one line running on.
+What a commit is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
 nobody here draws is refused rather than read as an ordinary commit — that is
@@ -390,20 +398,24 @@ own column. The top and bottom rules are held a dot's radius inside the plot, or
 a five would ride up into the band above it and a one would sit on the names.
 
 A Gantt chart counts days from its first task and nothing here knows about
-calendars beyond turning `YYYY-MM-DD` into a day number and back, which is why
+calendars beyond turning a written date into a day number and back, which is why
 `after`/`until` references, durations in days, weeks and hours, and bars all
-work in the same units. A chart that excludes weekends is refused rather than
-drawn on days its author did not ask for, and so is one written in another date
-format. A milestone has no length, so it is drawn as a diamond on its day rather
+work in the same units. `dateFormat` is read token by token — `YYYY`, `MM`, `DD`
+and whatever stands between them — so a chart written any way Mermaid allows
+lands on the right days. `excludes` and `includes` turn a length into a count of
+working days: the bar then reaches further along the calendar than its `3d` says,
+and the days off are shaded behind it so the difference is visible rather than
+mysterious. A milestone has no length, so it is drawn as a diamond on its day rather
 than a bar nobody would see. The axis carries whole dates, year included: a
 chart that runs over a new year would otherwise label two different days the
 same way. How wide a date is decides both how wide the plot has to be and how
 many ticks can be labelled, so the number of ticks follows from the room rather
 than being fixed at five.
 
-A packet diagram is a row per word of bits: the fields are checked for
-contiguity as they are read, so a picture with a hole in it is refused rather
-than drawn with a gap nobody can measure. A field that spans a word boundary is
+A packet diagram is a row per word of bits. A gap between two fields is a run of
+bits the author left unspoken, and it is drawn as the empty stretch it is; two
+fields over one bit is a packet nobody could read, and that is refused. A field
+that spans a word boundary is
 drawn as one box per row. A bit is wide enough that the longest field name fits
 inside its own box, so a header whose fields are named at all is drawn wider
 than the bits alone would need. The bit numbers over the boxes are placed after
@@ -438,7 +450,8 @@ A Sankey diagram ranks its nodes the way a flowchart does and then gives each on
 a bar as tall as the larger of what reaches it and what leaves it. The ribbons
 are drawn before the bars, each leaving and arriving in the order the flows were
 written, so a bar is never hidden under what leaves it. A flow that returns to
-where it came from would make the ranks meaningless, so a cycle is refused. Each
+where it came from would make the ranks meaningless, so a cycle is refused —
+as it is by Mermaid itself, which cannot lay one out either. Each
 bar is labelled with its name and its total, because a diagram whose whole
 subject is how much goes where should not make its reader estimate the amounts
 from the height of a ribbon.
@@ -480,17 +493,23 @@ An architecture diagram takes its grid from its edges. In that language
 the database — so the parser walks the edges from the first service outwards and
 gives every service a cell. Edges whose sides are opposite put two services side
 by side; any other pair puts the second over one and along one, which is why such
-an edge is drawn with a bend. A source whose edges disagree — two services sent
-to the same cell, one sent to two, or a stranger left standing inside a group's
-block — describes a picture that cannot be drawn and is refused. The five icons
-Mermaid ships are drawn as filled silhouettes with their detail cut back out in
-the page's own colour; an icon from a downloadable pack would have to be fetched,
-and this app fetches nothing.
+an edge is drawn with a bend. When two services are sent to one cell the second
+walks on in the same direction until a cell is free, and a service already placed
+keeps where it stands — the first edge that named it is the one that settled it.
+A stranger left standing inside a group's block is still refused, because a frame
+drawn around somebody who is not in the group says something the source does not.
+A group written inside a group is a frame inside a frame, each with a strip of
+its own for its name. The five icons Mermaid ships are drawn as filled
+silhouettes with their detail cut back out in the page's own colour; an icon from
+a downloadable pack would have to be fetched, and this app fetches nothing, so it
+is drawn as the question mark Mermaid itself draws when the pack was never
+registered.
 
 A radar chart is a spoke per axis and a closed shape per curve, with the rings
 drawn either as circles or as polygons through the spokes, whichever the source
-asked for. A curve short of a value would have to have one invented for it, so
-it is refused; with no `max` written the outer ring is the largest value there
+asked for. A curve short of a value has no shape to close, so it is dropped and
+the rest of the chart is drawn — which is what Mermaid does with one; with no
+`max` written the outer ring is the largest value there
 is, which is what fills the circle.
 
 A block diagram fills a grid of a stated width, cell by cell in reading order,
@@ -516,8 +535,10 @@ The work is the stack of callers: `B.method()` is a call from wherever the reade
 has got to, the braces after it put `B` on top until they close, and `return`
 goes back to whoever is one step down. The braces also raise the bar on the
 callee's lifeline, which is what the sequence layout already draws for
-`activate`. A call with nobody calling it is refused rather than given an
-invented sender.
+`activate`. A call with nobody calling it comes from the nameless stick figure
+Mermaid draws in that case, standing to the left of everyone — which is also how
+a sequence diagram's `actor` is drawn, since both mean somebody rather than
+something.
 
 A pie chart is wedges from twelve o'clock with a legend beside them, and its
 colours are written down rather than taken from the theme: a pie says which
@@ -528,7 +549,17 @@ is the only thing about it a flowchart cannot already draw. `state Big { … }` 
 written out as a `subgraph`, so a machine inside a machine is a frame inside a
 frame. `[*]` inside one is that machine's own beginning and end rather than the
 whole diagram's, so the points are named after the state that holds them — two
-composite states each get their own dot and their own ring.
+composite states each get their own dot and their own ring. A `<<fork>>` and a
+`<<join>>` are the same solid bar and a `<<choice>>` is a diamond, all three
+drawn without the name the author gave them, because it is the mark that is
+read. A note is written out as a node of its own on a dotted, headless link, so
+the placing a note needs is the placing an edge already had.
+
+A class diagram's `namespace` is laid out as a picture of its own and then placed
+as one box, the same way a subgraph inside a flowchart is: it is the only way a
+frame can be sure to hold its own classes and nobody else's. A cross-namespace
+line is drawn between the boxes themselves, since every box has an absolute place
+once its namespace has one.
 
 A sequence diagram is columns with dashed lifelines, walked in document order.
 A column is as wide as the longest message written across it — divided by how
@@ -544,7 +575,12 @@ block's frame cannot be drawn until its contents have been placed, which is why
 the whole body is laid out before anything below the participant boxes appears.
 An arm of a block carries the word that opened it and its condition; an arm
 written without a condition still gets the word — `else` in an `alt`, `and` in a
-`par` — because a divider with nothing beside it reads as an accident.
+`par` — because a divider with nothing beside it reads as an accident. A `rect`
+is a block like any other whose frame is a wash of colour with no outline and no
+word on it, painted before the lifelines so the messages stay on top; a `box` is
+a titled band above the participants declared inside it, and both take their
+colour through the same CSS reader every other diagram uses, so `rgba()` fades
+them over the page rather than hiding it.
 
 A diagram in the reading column is as wide as the column, which is why clicking
 one opens `DiagramWindow`: the same source laid out again at the width of the

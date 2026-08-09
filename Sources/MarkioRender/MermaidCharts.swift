@@ -82,8 +82,9 @@ struct GanttChart {
     /// `displayMode compact` packs tasks that do not overlap onto one row.
     var compact = false
 
-    static func parse(_ lines: [Substring]) -> GanttChart? {
+    static func parse(_ lines: [Substring], compact: Bool = false) -> GanttChart? {
         var chart = GanttChart(title: "", sections: [], tasks: [], origin: nil)
+        chart.compact = compact
         var section: Int?
         /// How a date is written in this chart, and how a day is read from it.
         var format = "YYYY-MM-DD"

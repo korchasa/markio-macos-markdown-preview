@@ -36,6 +36,9 @@ enum MermaidDiagram {
     struct Settings {
         /// `config.kanban.ticketBaseUrl`: what a card's ticket id points at.
         var ticketBaseUrl = ""
+        /// `displayMode: compact`, which a gantt may say in its preamble
+        /// instead of in its body.
+        var ganttCompact = false
     }
 
     static func parse(_ source: String) -> MermaidDiagram? {
@@ -93,7 +96,10 @@ enum MermaidDiagram {
             if value.isEmpty {
                 // A key with nothing after it opens what is written under it.
                 path.append((indent, key))
-                guard here == ["config"] || here == ["config", "kanban"] else { return nil }
+                guard
+                    here == ["config"] || here == ["config", "kanban"]
+                        || here == ["config", "gantt"]
+                else { return nil }
                 continue
             }
             switch here {
@@ -102,6 +108,9 @@ enum MermaidDiagram {
                 title = value
             case ["config", "kanban", "ticketBaseUrl"]:
                 settings.ticketBaseUrl = value
+            case ["displayMode"], ["config", "gantt", "displayMode"]:
+                guard value == "compact" else { return nil }
+                settings.ganttCompact = true
             default:
                 return nil
             }
@@ -149,6 +158,7 @@ enum MermaidDiagram {
         // A kanban setting over a diagram that is not a board says the author
         // meant something this has not understood.
         guard settings.ticketBaseUrl.isEmpty || header == "kanban" else { return nil }
+        guard !settings.ganttCompact || header == "gantt" else { return nil }
         let rest = Array(lines.dropFirst())
         if header == "mindmap" || header == "kanban" || header == "treemap-beta"
             || header == "treemap"
@@ -172,7 +182,8 @@ enum MermaidDiagram {
             return UserJourney.parse(rest).map(MermaidDiagram.journey)
         }
         if header == "gantt" {
-            return GanttChart.parse(rest).map(MermaidDiagram.gantt)
+            return GanttChart.parse(rest, compact: settings.ganttCompact)
+                .map(MermaidDiagram.gantt)
         }
         if header == "quadrantChart" {
             return QuadrantChart.parse(rest).map(MermaidDiagram.quadrant)
@@ -180,10 +191,14 @@ enum MermaidDiagram {
         if header == "xychart-beta" || header == "xychart" {
             return XYChart.parse(rest).map(MermaidDiagram.xy)
         }
-        // `gitGraph TB:` turns the lanes on their side, which is a layout this
-        // has not got, so only the plain form is read.
-        if header == "gitGraph" || header == "gitGraph:" {
-            return GitGraph.parse(rest).map(MermaidDiagram.git)
+        // `gitGraph TB:` turns the lanes on their side; the graph is the same
+        // either way, and only the drawing knows the difference.
+        if header.hasPrefix("gitGraph") {
+            let turn = header.dropFirst("gitGraph".count)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+            guard ["", "LR", "TB", "BT"].contains(turn) else { return nil }
+            return GitGraph.parse(rest, vertical: turn == "TB" || turn == "BT")
+                .map(MermaidDiagram.git)
         }
         if header == "packet-beta" || header == "packet" {
             return PacketDiagram.parse(rest).map(MermaidDiagram.packet)
@@ -1427,7 +1442,11 @@ struct SequenceDiagram {
             guard let message = diagram.message(line) else { return nil }
             diagram.append(.message(message), to: &stack)
         }
-        guard stack.isEmpty, openGroup == nil, !diagram.messages.isEmpty else { return nil }
+        // A diagram with participants and nothing said between them is still a
+        // diagram: the lifelines are the picture, and Mermaid draws them.
+        guard stack.isEmpty, openGroup == nil,
+            !diagram.messages.isEmpty || !diagram.participants.isEmpty
+        else { return nil }
         // A box frames neighbours: one drawn around participants with a
         // stranger standing between them would say they were in it too.
         for group in diagram.groups {

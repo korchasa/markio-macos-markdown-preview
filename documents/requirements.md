@@ -70,40 +70,39 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **PARSE-12** A ```mermaid fence is read as a diagram when it is a flowchart
   (`flowchart`/`graph`, any of the four directions, with its shapes, subgraphs —
   nested, turned by a `direction` line of their own, and named by edges —
-  `classDef`/`class`/`style` colouring and labelled links) or a sequence diagram
-  (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars and
-  `autonumber`), a `pie` chart, a `stateDiagram-v2` with the machines inside its
-  states, a `classDiagram` with the notes beside its classes, an
-  `erDiagram`, a `mindmap`, a `timeline`, a `journey`, a `gantt` chart written in
-  the default date format, a `quadrantChart`, an `xychart-beta`, a `gitGraph`
-  whose lanes run across the page, a `packet-beta`, a `kanban` board, a
+  `classDef`/`class`/`style`/`linkStyle` colouring in any colour CSS can name,
+  invisible links, `click` lines and labelled links) or a sequence diagram
+  (with `loop`, `alt`/`else`, `opt`, `par`, notes, activation bars,
+  `autonumber`, a `rect` tinting a run of messages and a `box` framing a team),
+  a `pie` chart, a `stateDiagram-v2` with the machines inside its states, its
+  forks, joins, choices and notes, a `classDiagram` with the notes beside its
+  classes, its namespaces and its painting, an `erDiagram`, a `mindmap` with its
+  clouds and bangs, a `timeline`, a `journey`, a `gantt` chart in any date format
+  it declares, around the days nobody works, a `quadrantChart`, an
+  `xychart-beta`, a `gitGraph` whose lanes run either way, with its cherry-picks,
+  a `packet-beta` that may leave gaps between its fields, a `kanban` board, a
   `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
-  (`C4Context` and its four siblings, with the `Update…` lines that repaint
-  it), an `architecture-beta` whose services
-  use the icons Mermaid ships, a `radar-beta`, a `block-beta` with the blocks
-  inside its blocks and its fat arrows, or a `zenuml`
-  written as calls, replies and the blocks around them. Every other diagram kind, and every construct
-  inside the ones it reads that the layout cannot draw — a
-  namespace, a tinted band, a click handler,
-  an excluded weekday, a cherry-pick, a commit of a kind it has no mark for, a
-  gap between packet fields, a flow that
-  returns to where it came from,
-  an icon from a downloaded
-  pack, a group inside a group, architecture edges that send two services to the
-  same place, a radar curve short of a value, or a
-  ZenUML call with nobody calling it — is not read, and the fence stays a
-  fenced block.
+  (`C4Context` and its four siblings, with the `Update…` lines that repaint it),
+  an `architecture-beta` with groups inside groups, a `radar-beta`, a
+  `block-beta` with the blocks inside its blocks and its fat arrows, or a
+  `zenuml` written as calls, replies and the blocks around them. What is not
+  read is what nobody could draw honestly: a diagram kind this does not know, a
+  construct Mermaid itself refuses, and a source whose own parts disagree — a
+  block left open or closed twice, a name given twice, a reference to something
+  nobody wrote, a value outside its range, a keyword nobody knows, or a flow
+  that returns to where it came from. The fence then stays a fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 - **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
-  is read for two keys. `title` names the picture and is set above it whatever
-  kind it is. `config.kanban.ticketBaseUrl` says where a board's tickets live,
-  and every ticket id on the board is then drawn as the link it has become.
-  A preamble carrying anything else — a theme, a gantt's display mode, any other
-  `config` — changes how Mermaid draws rather than what it draws, and the fence
-  stays a fenced block; so does a diagram named twice, once in the preamble and
-  once in a `title` line of its own, and a board's setting written over a
-  diagram that is not a board.
+  is read for the keys that say what to draw. `title` names the picture and is
+  set above it whatever kind it is. `config.kanban.ticketBaseUrl` says where a
+  board's tickets live, and every ticket id on the board is then drawn as the
+  link it has become. `displayMode: compact`, alone or under `config.gantt`,
+  packs a gantt's tasks onto shared rows. A preamble carrying anything else — a
+  theme, any other `config` — changes how Mermaid draws rather than what it
+  draws, and the fence stays a fenced block; so does a diagram named twice, once
+  in the preamble and once in a `title` line of its own, and a setting written
+  over a diagram it does not belong to.
 
 ## VIEW — What the reader sees
 

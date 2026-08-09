@@ -52,7 +52,12 @@ struct QuadrantChart {
             else { return nil }
             chart.points.append(Point(label: label, x: numbers[0], y: numbers[1]))
         }
-        guard !chart.points.isEmpty else { return nil }
+        // A chart with no points is still a chart: the axes and the four names
+        // are the picture, and Mermaid draws it. An empty fence is not.
+        guard
+            !chart.points.isEmpty || !chart.xAxis.0.isEmpty || !chart.yAxis.0.isEmpty
+                || chart.quadrants.contains(where: { !$0.isEmpty })
+        else { return nil }
         return chart
     }
 
@@ -194,9 +199,11 @@ struct GitGraph {
 
     var branches: [String]
     var commits: [Commit]
+    /// `gitGraph TB:`: the lanes run down the page rather than across it.
+    var vertical = false
 
-    static func parse(_ lines: [Substring]) -> GitGraph? {
-        var graph = GitGraph(branches: ["main"], commits: [])
+    static func parse(_ lines: [Substring], vertical: Bool = false) -> GitGraph? {
+        var graph = GitGraph(branches: ["main"], commits: [], vertical: vertical)
         var current = 0
         var column = 0
         /// The last commit on each branch, which is what a merge line points at.
