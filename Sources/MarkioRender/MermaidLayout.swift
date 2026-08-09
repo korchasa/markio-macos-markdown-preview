@@ -3946,6 +3946,54 @@ enum MermaidLayout {
         return path
     }
 
+    /// What is drawn where a link meets what it joins: a filled head, a ring or
+    /// a cross. The mark stands at `point`, facing the way the line runs.
+    private static func linkEnd(
+        _ mark: Flowchart.Head, at point: CGPoint, from base: CGPoint, along direction: CGPoint,
+        color: CGColor, width: CGFloat, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let side = CGPoint(x: -direction.y, y: direction.x)
+        switch mark {
+        case .none:
+            return []
+        case .arrow:
+            let path = CGMutablePath()
+            path.move(to: point)
+            path.addLine(
+                to: CGPoint(
+                    x: base.x + side.x * metrics.arrowWidth / 2,
+                    y: base.y + side.y * metrics.arrowWidth / 2))
+            path.addLine(
+                to: CGPoint(
+                    x: base.x - side.x * metrics.arrowWidth / 2,
+                    y: base.y - side.y * metrics.arrowWidth / 2))
+            path.closeSubpath()
+            return [.path(path, color: color, lineWidth: 0, filled: true)]
+        case .circle:
+            let radius = metrics.arrowWidth / 2
+            let centre = CGPoint(
+                x: point.x - direction.x * radius, y: point.y - direction.y * radius)
+            let path = CGPath(
+                ellipseIn: CGRect(
+                    x: centre.x - radius, y: centre.y - radius, width: radius * 2,
+                    height: radius * 2), transform: nil)
+            return [.path(path, color: color, lineWidth: width, filled: false)]
+        case .cross:
+            let reach = metrics.arrowWidth / 2
+            let centre = CGPoint(
+                x: point.x - direction.x * reach, y: point.y - direction.y * reach)
+            let path = CGMutablePath()
+            for arm in [
+                (CGPoint(x: direction.x + side.x, y: direction.y + side.y)),
+                (CGPoint(x: direction.x - side.x, y: direction.y - side.y)),
+            ] {
+                path.move(to: CGPoint(x: centre.x - arm.x * reach, y: centre.y - arm.y * reach))
+                path.addLine(to: CGPoint(x: centre.x + arm.x * reach, y: centre.y + arm.y * reach))
+            }
+            return [.path(path, color: color, lineWidth: width, filled: false)]
+        }
+    }
+
     /// A sheet of paper: square on three sides and waved along its foot.
     private static func sheet(_ frame: CGRect) -> CGPath {
         let wave = min(frame.height * 0.16, 12)
@@ -4168,12 +4216,25 @@ enum MermaidLayout {
             edge.style.stroke.map(cgColor) ?? theme.palette.secondaryText, by: edge.style)
         let width: CGFloat = (edge.stroke == .thick ? 2.5 : 1.3) * metrics.scale
         let shaft = CGMutablePath()
-        let head = edge.arrow ? metrics.arrowLength : 0
+        // The line stops short of whatever stands at its ends, so a mark is
+        // drawn in clear space rather than over the shaft.
+        func room(for mark: Flowchart.Head) -> CGFloat {
+            switch mark {
+            case .none: return 0
+            case .arrow: return metrics.arrowLength
+            case .circle, .cross: return metrics.arrowWidth
+            }
+        }
         let tip = end
-        let body = shortened(path, by: head)
+        let foot = start
+        var body = shortened(path, by: room(for: edge.head))
+        if edge.tail != .none {
+            body = shortened(body.reversed(), by: room(for: edge.tail)).reversed()
+        }
         let last = body.count >= 2 ? body[body.count - 2] : start
         let direction = normalized(CGPoint(x: tip.x - last.x, y: tip.y - last.y))
-        let shaftEnd = body.last ?? start
+        let first = body.count >= 2 ? body[1] : end
+        let backwards = normalized(CGPoint(x: foot.x - first.x, y: foot.y - first.y))
         if edge.stroke == .dotted {
             shaft.addPath(dashed(along: body, dash: 4, gap: 4))
         } else {
@@ -4181,23 +4242,12 @@ enum MermaidLayout {
             for point in body.dropFirst() { shaft.addLine(to: point) }
         }
         decorations.append(.path(shaft, color: color, lineWidth: width, filled: false))
-        if edge.arrow {
-            let side = CGPoint(x: -direction.y, y: direction.x)
-            let arrow = CGMutablePath()
-            arrow.move(to: tip)
-            arrow.addLine(
-                to: CGPoint(
-                    x: shaftEnd.x + side.x * metrics.arrowWidth / 2,
-                    y: shaftEnd.y + side.y * metrics.arrowWidth / 2
-                ))
-            arrow.addLine(
-                to: CGPoint(
-                    x: shaftEnd.x - side.x * metrics.arrowWidth / 2,
-                    y: shaftEnd.y - side.y * metrics.arrowWidth / 2
-                ))
-            arrow.closeSubpath()
-            decorations.append(.path(arrow, color: color, lineWidth: 0, filled: true))
-        }
+        decorations += linkEnd(
+            edge.head, at: tip, from: body.last ?? start, along: direction, color: color,
+            width: width, metrics: metrics)
+        decorations += linkEnd(
+            edge.tail, at: foot, from: body.first ?? end, along: backwards, color: color,
+            width: width, metrics: metrics)
         guard !edge.label.isEmpty else { return (decorations, []) }
         let line = text(
             edge.label,
@@ -4213,7 +4263,7 @@ enum MermaidLayout {
         let length = self.length(of: path)
         // The arrowhead counts as part of the end: words that stop where the
         // head begins read as a label on the head rather than on the line.
-        let clearance = size.width / 2 + 8 * metrics.scale + head
+        let clearance = size.width / 2 + 8 * metrics.scale + room(for: edge.head)
         let base = min(length / 2, metrics.rankGap / 2 + 6) + CGFloat(order) * (size.width + 10)
         // On a line too short to hold the words clear of both ends, the middle
         // is the least bad place: better over the line than over a box.

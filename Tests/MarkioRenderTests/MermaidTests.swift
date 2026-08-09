@@ -37,6 +37,65 @@ final class MermaidTests: XCTestCase {
         XCTAssertTrue(chart.edges[0].arrow)
     }
 
+    func testALinkCarriesTheMarksItsAuthorWrote() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart LR
+                    A --o B
+                    B --x C
+                    C o--o D
+                    D <--> E
+                    E x--x F
+                    F -- yes --o G
+                    G --- H
+                """
+            )
+        )
+        XCTAssertEqual(
+            chart.edges.map(\.head), [.circle, .cross, .circle, .arrow, .cross, .circle, .none])
+        XCTAssertEqual(
+            chart.edges.map(\.tail), [.none, .none, .circle, .arrow, .cross, .none, .none])
+        // The words inside a link are still its label, marks or no marks.
+        XCTAssertEqual(chart.edges[5].label, "yes")
+        XCTAssertEqual(chart.nodes.count, 8)
+    }
+
+    func testAndJoinsEveryNodeOnOneSideToEveryNodeOnTheOther() throws {
+        let chart = try XCTUnwrap(flowchart("flowchart TB\n    A & B--> C & D"))
+        XCTAssertEqual(
+            chart.edges.map { [$0.from, $0.to] },
+            [
+                [.node(0), .node(2)], [.node(0), .node(3)],
+                [.node(1), .node(2)], [.node(1), .node(3)],
+            ])
+        // A chain of lists carries on from the list it just joined.
+        let chain = try XCTUnwrap(flowchart("graph LR\n  a --> b & c--> d"))
+        XCTAssertEqual(chain.nodes.map(\.id), ["a", "b", "c", "d"])
+        XCTAssertEqual(chain.edges.count, 4)
+    }
+
+    func testALinkCanBeNamedAndSpokenOfLater() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart LR
+                    A e1@--> B
+                    A e2@==> C
+                    e1@{ animate: true }
+                    e2@{ curve: linear }
+                """
+            )
+        )
+        XCTAssertEqual(chart.edges.map(\.name), ["e1", "e2"])
+        // Nothing the block says makes a node: two lines, two boxes.
+        XCTAssertEqual(chart.nodes.map(\.id), ["A", "B", "C"])
+        // A value may hold commas of its own.
+        let dashed = try XCTUnwrap(
+            flowchart("flowchart LR\n  A --> B\n  classDef animate stroke-dasharray: 9,5"))
+        XCTAssertEqual(dashed.nodes.count, 2)
+    }
+
     func testANodeCanBeGivenItsShapeAndLabelByName() throws {
         let chart = try XCTUnwrap(
             flowchart(

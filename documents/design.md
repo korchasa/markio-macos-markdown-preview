@@ -376,6 +376,16 @@ them. A word that names a frame makes no box: a stand-in node parsed before the
 frame was known is folded into the frame it names once the whole source has been
 read.
 
+A link is read in three parts — the mark it opens with, the line itself, and
+the mark it closes with — because every combination of the three is a link
+Mermaid draws and there are far too many to spell out one by one. That is what
+makes `<-->`, `o--o`, `x--x` and the mixtures fall out of the same reader as
+`-->`, and it leaves one ambiguity worth naming: `--` and `==` on their own are
+not links but the opening of one with its words inside, so a line that stops
+there with nothing lengthening it and no mark at its end is read again as
+`-- text -->`. Each end of a link is a list rather than one node, since `&`
+joins several into one end, and the edges are the whole cross of the two lists.
+
 A node's shape can be written as brackets around its words or asked for by name
 — `A@{ shape: cyl, label: "Store" }`. The two roads meet at `Flowchart.Shape`,
 so the metadata block adds no drawing of its own: it is read into the same case

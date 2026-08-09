@@ -859,26 +859,55 @@ struct Flowchart {
         }
     }
 
+    /// What is drawn where a link meets what it joins. A link may carry a mark
+    /// at either end: `-->` points, `--o` ends in a ring, `--x` in a cross, and
+    /// `<-->`, `o--o` and `x--x` say the same thing at both ends.
+    enum Head {
+        case none
+        case arrow
+        case circle
+        case cross
+    }
+
     struct Edge {
         var from: End
         var to: End
         var label: String
         var stroke: Stroke
-        /// `---` joins without an arrowhead; `-->` points.
-        var arrow: Bool
+        /// The mark at the end the line runs to, and the one at the end it
+        /// comes from: `---` carries neither.
+        var head: Head
+        var tail: Head
+        /// What `A e1@--> B` called this link, so a later line can speak of it.
+        var name = ""
         /// A colour for the line and one for its words, when something has said
         /// what they should be. `fill` means nothing on a line.
         var style = Style()
 
-        init(from: End, to: End, label: String, stroke: Stroke, arrow: Bool) {
+        /// `---` joins without a mark; `-->` points.
+        var arrow: Bool { head != .none }
+
+        init(from: End, to: End, label: String, stroke: Stroke, head: Head, tail: Head = .none) {
             self.from = from
             self.to = to
             self.label = label
             self.stroke = stroke
-            self.arrow = arrow
+            self.head = head
+            self.tail = tail
+        }
+
+        init(from: End, to: End, label: String, stroke: Stroke, arrow: Bool) {
+            self.init(
+                from: from, to: to, label: label, stroke: stroke, head: arrow ? .arrow : .none)
         }
 
         /// The common case, where both ends are boxes.
+        init(from: Int, to: Int, label: String, stroke: Stroke, head: Head, tail: Head = .none) {
+            self.init(
+                from: .node(from), to: .node(to), label: label, stroke: stroke, head: head,
+                tail: tail)
+        }
+
         init(from: Int, to: Int, label: String, stroke: Stroke, arrow: Bool) {
             self.init(from: .node(from), to: .node(to), label: label, stroke: stroke, arrow: arrow)
         }
@@ -1000,9 +1029,10 @@ struct Flowchart {
             return .node(moved[index] ?? index)
         }
         edges = edges.map {
-            Edge(
-                from: end($0.from), to: end($0.to), label: $0.label, stroke: $0.stroke,
-                arrow: $0.arrow)
+            var moved = $0
+            moved.from = end($0.from)
+            moved.to = end($0.to)
+            return moved
         }
         // An edge to a frame that is also an edge from it says nothing.
         edges.removeAll { $0.from == $0.to }
@@ -1049,8 +1079,32 @@ struct Flowchart {
         case "linkStyle":
             return applyLinkStyle(rest)
         default:
+            // `e1@{ animate: true }` speaks of a link named earlier. A node is
+            // named the same way, so which one is meant is settled by looking:
+            // a name no link carries is a node's.
+            if let at = line.firstIndex(of: "@"), line[line.index(after: at)...].hasPrefix("{"),
+                line.hasSuffix("}"),
+                let link = edges.firstIndex(where: { $0.name == String(line[..<at]) })
+            {
+                let body = line[line.index(at, offsetBy: 2)..<line.index(before: line.endIndex)]
+                return describe(link: link, by: String(body))
+            }
             return parseStatement(line)
         }
+    }
+
+    /// What `e1@{ … }` says about a link. Nothing it can say changes the line
+    /// this draws — an animation has no place in a still picture, and a curve
+    /// is chosen here by what the line has to get around — so the keys are read
+    /// to be sure they are keys and then passed over.
+    private mutating func describe(link: Int, by body: String) -> Bool {
+        for pair in body.split(whereSeparator: { $0 == "," || $0 == "\n" }) {
+            let parts = pair.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2,
+                !parts[0].trimmingCharacters(in: .whitespaces).isEmpty
+            else { return false }
+        }
+        return true
     }
 
     /// What the frame is called: `one` in both `subgraph one[First step]` and a
@@ -1163,7 +1217,10 @@ struct Flowchart {
         var style = Style()
         for declaration in declarations(in: text) {
             let pair = declaration.split(separator: ":", maxSplits: 1)
-            guard pair.count == 2 else { return nil }
+            // A value may hold commas of its own — `stroke-dasharray: 9,5` — so
+            // a piece with no property in front of it is the tail of the one
+            // before it and has already been passed over with it.
+            guard pair.count == 2 else { continue }
             let key = pair[0].trimmingCharacters(in: .whitespaces)
             var value = pair[1].trimmingCharacters(in: .whitespaces)
             if value.hasSuffix(";") { value = String(value.dropLast()) }
@@ -1191,10 +1248,14 @@ struct Flowchart {
         return style
     }
 
-    /// One line: a node, or a chain of nodes joined by edges.
+    /// One line: a node, or a chain of nodes joined by links.
+    ///
+    /// A step of the chain is a list rather than a single node, because `&`
+    /// joins nodes into one end: `A & B --> C & D` is four edges, every node on
+    /// the left joined to every node on the right.
     private mutating func parseStatement(_ line: Substring) -> Bool {
         var reader = Reader(Array(line))
-        guard var left = reader.readNode(into: &self) else { return false }
+        guard var left = readSide(&reader) else { return false }
         while true {
             reader.skipSpaces()
             if reader.atEnd { return true }
@@ -1204,13 +1265,36 @@ struct Flowchart {
                 reader.skipSpaces()
                 return reader.atEnd
             }
+            let name = reader.readLinkName()
             guard let link = reader.readLink() else { return false }
-            guard let right = reader.readNode(into: &self) else { return false }
-            edges.append(
-                Edge(
-                    from: left, to: right, label: link.label, stroke: link.stroke,
-                    arrow: link.arrow))
+            guard let right = readSide(&reader) else { return false }
+            for from in left {
+                for to in right {
+                    var edge = Edge(
+                        from: from, to: to, label: link.label, stroke: link.stroke,
+                        head: link.head, tail: link.tail)
+                    edge.name = name ?? ""
+                    edges.append(edge)
+                }
+            }
             left = right
+        }
+    }
+
+    /// One end of a link: a node, or several joined by `&`.
+    private mutating func readSide(_ reader: inout Reader) -> [Int]? {
+        var side: [Int] = []
+        while true {
+            guard let node = reader.readNode(into: &self) else { return nil }
+            side.append(node)
+            let mark = reader.index
+            reader.skipSpaces()
+            guard reader.peek() == "&" else {
+                reader.index = mark
+                return side
+            }
+            reader.advance()
+            reader.skipSpaces()
         }
     }
 
@@ -1368,30 +1452,49 @@ struct Flowchart {
             return nil
         }
 
-        /// `-->`, `---`, `==>`, `-.->`, either labelled after the arrow with
-        /// `|text|` or inside it as `-- text -->`.
-        mutating func readLink() -> (label: String, stroke: Stroke, arrow: Bool)? {
-            let spellings: [(text: [Character], stroke: Stroke, arrow: Bool)] = [
-                (["-", ".", "-", ">"], .dotted, true),
-                (["-", ".", "-"], .dotted, false),
-                (["=", "=", ">"], .thick, true),
-                (["=", "=", "="], .thick, false),
-                (["-", "-", ">"], .solid, true),
-                (["-", "-", "-"], .solid, false),
-                (["~", "~", "~"], .invisible, false),
-            ]
-            guard let spelling = spellings.first(where: { starts(with: $0.text) }) else {
-                return readLabelledLink()
+        /// `-->`, `---`, `==>`, `-.->`, `--o`, `--x` and the two-ended `<-->`,
+        /// `o--o`, `x--x`, either labelled after the link with `|text|` or
+        /// inside it as `-- text -->`.
+        ///
+        /// A link is read in three parts — the mark it starts with, the line
+        /// itself, and the mark it ends with — because every combination of the
+        /// three is a link Mermaid draws, and there are too many to spell out.
+        mutating func readLink()
+            -> (label: String, stroke: Stroke, head: Flowchart.Head, tail: Flowchart.Head)?
+        {
+            var tail = Flowchart.Head.none
+            // A mark only opens a link when a line follows it; otherwise the
+            // `o` is the first letter of whatever is written next.
+            if let char = peek(), let next = peek(1), next == "-" || next == "=",
+                let mark = mark(char, opening: true)
+            {
+                tail = mark
+                advance()
             }
+            let strokes: [(text: [Character], stroke: Stroke)] = [
+                (["-", ".", "-"], .dotted),
+                (["=", "="], .thick),
+                (["-", "-"], .solid),
+                (["~", "~", "~"], .invisible),
+            ]
+            guard let spelling = strokes.first(where: { starts(with: $0.text) }) else {
+                return readLabelledLink(tail: tail)
+            }
+            let opened = index
             advance(spelling.text.count)
             // A trailing `-` or `=` only makes the line longer: `---->` is `-->`.
             while let char = peek(), char == "-" || char == "=" || char == "~" { advance() }
-            // `--->` opens as the plain `---` and only then shows its head, so
-            // the head is read after the line's length rather than with it.
-            var arrow = spelling.arrow
-            if peek() == ">" {
+            var head = Flowchart.Head.none
+            if let char = peek(), let mark = mark(char, opening: false) {
+                head = mark
                 advance()
-                arrow = true
+            }
+            // `--` and `==` on their own are not links but the opening of one
+            // with its words inside: `-- text -->`. A line that stops there,
+            // with nothing lengthening it and no mark at its end, is that.
+            if head == .none, index - opened == 2, spelling.text.count == 2 {
+                index = opened
+                return readLabelledLink(tail: tail)
             }
             var label = ""
             if peek() == "|" {
@@ -1399,36 +1502,62 @@ struct Flowchart {
                 guard let text = readLabel(until: ["|"]) else { return nil }
                 label = text
             }
-            return (label, spelling.stroke, arrow)
+            return (label, spelling.stroke, head, tail)
+        }
+
+        /// `A e1@--> B`: the words in front of a link name it, so that a later
+        /// line can say something about that one line.
+        mutating func readLinkName() -> String? {
+            let mark = index
+            var name = ""
+            while let char = peek(), char.isLetter || char.isNumber || char == "_" {
+                name.append(char)
+                advance()
+            }
+            guard !name.isEmpty, peek() == "@", let next = peek(1),
+                next == "-" || next == "=" || next == "~" || next == "<" || next == "o"
+                    || next == "x"
+            else {
+                index = mark
+                return nil
+            }
+            advance()
+            return name
+        }
+
+        /// `<` and `>` point; `o` and `x` mean the same at either end.
+        private func mark(_ char: Character, opening: Bool) -> Flowchart.Head? {
+            switch char {
+            case "<" where opening, ">" where !opening: return .arrow
+            case "o": return .circle
+            case "x": return .cross
+            default: return nil
+            }
         }
 
         /// `-- text -->` and its dotted and thick cousins: the words are written
-        /// inside the arrow rather than after it.
-        private mutating func readLabelledLink() -> (label: String, stroke: Stroke, arrow: Bool)? {
-            let forms:
-                [(open: [Character], closes: [(text: [Character], stroke: Stroke, arrow: Bool)])] =
-                    [
-                        (
-                            ["-", "-"],
-                            [(["-", "-", ">"], .solid, true), (["-", "-", "-"], .solid, false)]
-                        ),
-                        (
-                            ["-", "."],
-                            [([".", "-", ">"], .dotted, true), ([".", "-"], .dotted, false)]
-                        ),
-                        (
-                            ["=", "="],
-                            [(["=", "=", ">"], .thick, true), (["=", "=", "="], .thick, false)]
-                        ),
-                    ]
+        /// inside the link rather than after it.
+        private mutating func readLabelledLink(tail: Flowchart.Head)
+            -> (label: String, stroke: Stroke, head: Flowchart.Head, tail: Flowchart.Head)?
+        {
+            let forms: [(open: [Character], close: [Character], stroke: Stroke)] = [
+                (["-", "-"], ["-", "-"], .solid),
+                (["-", "."], [".", "-"], .dotted),
+                (["=", "="], ["=", "="], .thick),
+            ]
             guard let form = forms.first(where: { starts(with: $0.open) }) else { return nil }
             advance(form.open.count)
             var label = ""
             while index < chars.count {
-                if let close = form.closes.first(where: { starts(with: $0.text) }) {
-                    advance(close.text.count)
+                if starts(with: form.close) {
+                    advance(form.close.count)
                     while let char = peek(), char == "-" || char == "=" { advance() }
-                    return (unquoted(label), close.stroke, close.arrow)
+                    var head = Flowchart.Head.none
+                    if let char = peek(), let mark = mark(char, opening: false) {
+                        head = mark
+                        advance()
+                    }
+                    return (unquoted(label), form.stroke, head, tail)
                 }
                 label.append(chars[index])
                 advance()
