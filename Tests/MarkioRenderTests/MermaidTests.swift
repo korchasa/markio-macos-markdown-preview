@@ -1542,6 +1542,24 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.services[1].icon, .server)
     }
 
+    /// A service that belongs to nobody may be placed between two that belong
+    /// to a group. Mermaid keeps it outside the frame, and so does this: it is
+    /// walked clear of the block rather than the diagram being refused.
+    func testAStrangerIsWalkedOutOfAGroupsBlock() throws {
+        let source =
+            "architecture-beta\n  group g(cloud)[G]\n  service a(server)[A] in g\n"
+            + "  service b(server)[B] in g\n  service c(server)[C]\n"
+            + "  a:R -- L:c\n  c:R -- L:b"
+        guard case .architecture(let diagram)? = MermaidDiagram.parse(source) else {
+            return XCTFail("a stranger steps aside rather than stopping the picture")
+        }
+        let inside = diagram.services.filter { $0.group != nil }.map(\.column)
+        let stranger = try XCTUnwrap(diagram.services.first { $0.group == nil }).column
+        XCTAssertGreaterThan(stranger, try XCTUnwrap(inside.max()))
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+    }
+
     func testWhatC4AndArchitectureRefuse() {
         for source in [
             // An element with no name, a boundary left open, and a restyling of
@@ -1556,10 +1574,6 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  Nonsense(a, \"A\")",
             // A group written inside one nobody declared.
             "architecture-beta\n  group two(cloud)[Two] in one\n  service a(server)[A] in two",
-            // A stranger standing inside a group's block would look like a member.
-            "architecture-beta\n  group g(cloud)[G]\n  service a(server)[A] in g\n"
-                + "  service b(server)[B] in g\n  service c(server)[C]\n"
-                + "  a:R -- L:c\n  c:R -- L:b",
             "architecture-beta\n  service a(server)[A]\n  a:X -- L:a",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -1751,6 +1765,16 @@ final class MermaidTests: XCTestCase {
                 source: "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}",
                 theme: Theme(isDark: false), width: 700))
         XCTAssertEqual(bare.width, ringed.width)
+
+        // Axes and no curve is a bare web, which is what its axes say it is.
+        guard case .radar(let empty)? = MermaidDiagram.parse("radar-beta\n  axis a, b, c") else {
+            return XCTFail("a web with no curve on it is still a web")
+        }
+        XCTAssertEqual(empty.axes.count, 3)
+        XCTAssertEqual(empty.curves.count, 0)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "radar-beta\n  axis a, b, c", theme: Theme(isDark: false), width: 700))
     }
 
     /// A block arrow may name a box that no row wrote out, and Mermaid draws
@@ -1766,9 +1790,7 @@ final class MermaidTests: XCTestCase {
 
     func testWhatRadarBlocksAndZenUmlRefuse() {
         for source in [
-            // A chart with no curve at all has nothing on it, and a web can
-            // only be drawn round or many-sided.
-            "radar-beta\n  axis a, b, c",
+            // A web can only be drawn round or many-sided.
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
             // A block left open, one closed twice, and one named twice.
             "block-beta\n  columns 2\n  block:group\n    a b",

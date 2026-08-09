@@ -66,13 +66,13 @@ struct RadarChart {
                 return nil
             }
         }
-        // Two axes make a line rather than a shape, which is what Mermaid
-        // draws for one, so the drawing takes whatever it is given.
         // A curve short of a value has no shape to close, so it is dropped and
         // the rest of the chart is drawn — which is what Mermaid itself does.
-        // A chart that named no curve at all is a chart with nothing on it.
-        guard !chart.curves.isEmpty else { return nil }
+        // A chart left with no curve at all is a bare web, and a bare web is
+        // what its axes say it is.
         chart.curves.removeAll { $0.values.count != chart.axes.count }
+        // Two axes make a line rather than a shape, which is what Mermaid draws
+        // for them, so the drawing takes whatever it is given.
         guard chart.axes.count >= 2 else { return nil }
         let largest = chart.curves.flatMap(\.values).max() ?? 0
         let outer = chart.high ?? max(largest, chart.low + 1)

@@ -421,20 +421,39 @@ struct ArchitectureDiagram {
             services[index].row = cell.row - topmost
         }
         // A frame is drawn around the block its members occupy, so a stranger
-        // standing inside that block would look like a member. A group inside a
-        // group counts as a member of the one that holds it.
-        for group in groups.indices {
-            let members = self.members(of: group)
-            guard let columns = extent(members, \.column), let rows = extent(members, \.row) else {
-                continue
+        // standing inside that block would look like a member. Mermaid keeps
+        // such a stranger outside the frame, and so does this: it is walked to
+        // the right of the block until it stands clear. Moving one can push it
+        // into another group, so the sweep repeats until nothing moves. A group
+        // inside a group counts as a member of the one that holds it.
+        for _ in 0..<(services.count + 1) * max(groups.count, 1) {
+            var occupied = Set<Cell>()
+            for service in services {
+                occupied.insert(Cell(column: service.column, row: service.row))
             }
-            for other in services.indices where !members.contains(other) {
-                if columns.contains(services[other].column), rows.contains(services[other].row) {
-                    return false
+            var moved = false
+            for group in groups.indices {
+                let members = self.members(of: group)
+                guard let columns = extent(members, \.column),
+                    let rows = extent(members, \.row)
+                else { continue }
+                for other in services.indices where !members.contains(other) {
+                    guard columns.contains(services[other].column),
+                        rows.contains(services[other].row)
+                    else { continue }
+                    occupied.remove(Cell(column: services[other].column, row: services[other].row))
+                    var column = columns.upperBound + 1
+                    while occupied.contains(Cell(column: column, row: services[other].row)) {
+                        column += 1
+                    }
+                    services[other].column = column
+                    occupied.insert(Cell(column: column, row: services[other].row))
+                    moved = true
                 }
             }
+            if !moved { return true }
         }
-        return true
+        return false
     }
 
     /// Every service inside a group, including the ones inside the groups
