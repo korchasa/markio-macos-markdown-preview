@@ -43,7 +43,7 @@ enum ZenUML {
         /// The openers, with the block kind each becomes.
         let openers: [(word: String, kind: String)] = [
             ("if", "alt"), ("while", "loop"), ("for", "loop"), ("forEach", "loop"),
-            ("opt", "opt"), ("par", "par"),
+            ("opt", "opt"), ("par", "par"), ("try", "try"),
         ]
 
         for raw in lines {
@@ -52,17 +52,20 @@ enum ZenUML {
             // closing brace is dealt with before anything else on it.
             if line.hasPrefix("}") {
                 line = line.dropFirst().trimmingCharacters(in: .whitespaces)[...]
-                if line.hasPrefix("else") {
+                let arms = ["else", "catch", "finally"]
+                if let arm = arms.first(where: { line.hasPrefix($0) }) {
                     guard case .control(var block)? = stack.last else { return nil }
                     guard line.hasSuffix("{") else { return nil }
                     // `else if (x) {` names its arm `x`; a plain `else {` has
-                    // nothing of its own to say.
-                    var words = String(line.dropFirst(4).dropLast())
+                    // nothing of its own to say, and `catch`/`finally` are
+                    // named by the word itself.
+                    var words = String(line.dropFirst(arm.count).dropLast())
                         .trimmingCharacters(in: .whitespaces)
                     if words.hasPrefix("if") {
                         words = String(words.dropFirst(2)).trimmingCharacters(in: .whitespaces)
                     }
-                    let title = condition(words)
+                    var title = condition(words)
+                    if arm != "else" { title = title.isEmpty ? arm : "\(arm) \(title)" }
                     block.sections.append(SequenceDiagram.Section(title: title, items: []))
                     stack[stack.count - 1] = .control(block)
                     continue
@@ -137,6 +140,13 @@ enum ZenUML {
             if body.hasSuffix("{") {
                 opens = true
                 body = body.dropLast().trimmingCharacters(in: .whitespaces)[...]
+            }
+            if callers.isEmpty, !body.contains("->") {
+                // A call nobody made comes from the nameless figure Mermaid
+                // draws in that case, standing to the left of everyone.
+                diagram.participants.insert(
+                    SequenceDiagram.Participant(id: "__starter", label: "", isActor: true), at: 0)
+                callers = [0]
             }
             guard var message = self.call(body, from: callers.last, index: index)?.message else {
                 return nil

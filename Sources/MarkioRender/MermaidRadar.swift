@@ -65,11 +65,13 @@ struct RadarChart {
                 return nil
             }
         }
-        // Three axes is the fewest that make a shape; a curve that is short of
-        // values would have to have one invented for it.
-        guard chart.axes.count >= 3, !chart.curves.isEmpty,
-            chart.curves.allSatisfy({ $0.values.count == chart.axes.count })
-        else { return nil }
+        // Three axes is the fewest that make a shape.
+        // A curve short of a value has no shape to close, so it is dropped and
+        // the rest of the chart is drawn — which is what Mermaid itself does.
+        // A chart that named no curve at all is a chart with nothing on it.
+        guard !chart.curves.isEmpty else { return nil }
+        chart.curves.removeAll { $0.values.count != chart.axes.count }
+        guard chart.axes.count >= 3 else { return nil }
         let largest = chart.curves.flatMap(\.values).max() ?? 0
         let outer = chart.high ?? max(largest, chart.low + 1)
         guard outer > chart.low else { return nil }

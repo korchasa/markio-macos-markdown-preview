@@ -3885,17 +3885,29 @@ enum MermaidLayout {
                 .path(lifeline, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
             let frame = CGRect(
                 x: centre - boxWidth / 2, y: top, width: boxWidth, height: boxHeight)
-            let path = CGPath(roundedRect: frame, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            decorations.append(
-                .path(path, color: theme.palette.tableHeaderBackground, lineWidth: 0, filled: true))
-            decorations.append(
-                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            if diagram.participants[index].isActor {
+                // A stick figure, which is how Mermaid draws somebody rather
+                // than something.
+                decorations += figure(in: frame, theme: theme, metrics: metrics)
+            } else {
+                let path = CGPath(
+                    roundedRect: frame, cornerWidth: 4, cornerHeight: 4, transform: nil)
+                decorations.append(
+                    .path(
+                        path, color: theme.palette.tableHeaderBackground, lineWidth: 0,
+                        filled: true))
+                decorations.append(
+                    .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            }
+            guard !diagram.participants[index].label.isEmpty else { continue }
             decorations.append(
                 .glyphs(
                     labels[index],
                     origin: CGPoint(
                         x: centre - sizes[index].width / 2,
-                        y: frame.midY + sizes[index].height / 2 - descent(labels[index])
+                        y: diagram.participants[index].isActor
+                            ? frame.maxY + sizes[index].height - descent(labels[index])
+                            : frame.midY + sizes[index].height / 2 - descent(labels[index])
                     )
                 )
             )
@@ -3909,6 +3921,34 @@ enum MermaidLayout {
             size: CGSize(width: width, height: height),
             contentWidth: content + body.reach * 2
         )
+    }
+
+    /// A stick figure standing in the room a participant box would take.
+    private static func figure(
+        in frame: CGRect, theme: Theme, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let ink = theme.palette.secondaryText
+        let head = min(frame.height * 0.34, frame.width * 0.3)
+        let centre = frame.midX
+        let top = frame.minY + 2 * metrics.scale
+        let body = CGMutablePath()
+        let neck = top + head
+        body.move(to: CGPoint(x: centre, y: neck))
+        body.addLine(to: CGPoint(x: centre, y: frame.maxY - head * 0.8))
+        body.move(to: CGPoint(x: centre - head * 0.8, y: neck + head * 0.5))
+        body.addLine(to: CGPoint(x: centre + head * 0.8, y: neck + head * 0.5))
+        body.move(to: CGPoint(x: centre, y: frame.maxY - head * 0.8))
+        body.addLine(to: CGPoint(x: centre - head * 0.7, y: frame.maxY))
+        body.move(to: CGPoint(x: centre, y: frame.maxY - head * 0.8))
+        body.addLine(to: CGPoint(x: centre + head * 0.7, y: frame.maxY))
+        return [
+            .path(
+                CGPath(
+                    ellipseIn: CGRect(
+                        x: centre - head / 2, y: top, width: head, height: head), transform: nil),
+                color: ink, lineWidth: 1.4 * metrics.scale, filled: false),
+            .path(body, color: ink, lineWidth: 1.4 * metrics.scale, filled: false),
+        ]
     }
 
     /// Everything below the participant boxes, in document order.

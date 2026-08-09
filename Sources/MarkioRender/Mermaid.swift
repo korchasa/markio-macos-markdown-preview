@@ -1261,6 +1261,9 @@ struct SequenceDiagram {
     struct Participant {
         var id: String
         var label: String
+        /// `actor A`, and ZenUML's nameless caller: drawn as a stick figure
+        /// rather than a box, the way Mermaid draws one.
+        var isActor = false
     }
 
     /// What the point of an arrow looks like: a filled head, a cross for a
@@ -1363,6 +1366,7 @@ struct SequenceDiagram {
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
             if word == "participant" || word == "actor" {
                 guard let index = diagram.declare(line.dropFirst(word.count)) else { return nil }
+                if word == "actor" { diagram.participants[index].isActor = true }
                 if let group = openGroup { diagram.groups[group].members.append(index) }
                 continue
             }

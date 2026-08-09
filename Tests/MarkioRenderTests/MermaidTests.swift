@@ -1642,9 +1642,8 @@ final class MermaidTests: XCTestCase {
 
     func testWhatRadarBlocksAndZenUmlRefuse() {
         for source in [
-            // A curve short of a value would have to have one invented for it,
-            // and two axes make no shape.
-            "radar-beta\n  axis a, b, c\n  curve one{1, 2}",
+            // Two axes make no shape, and a chart with no curve at all has
+            // nothing on it.
             "radar-beta\n  axis a, b\n  curve one{1, 2}",
             "radar-beta\n  axis a, b, c",
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  ticks 0",
@@ -1657,16 +1656,59 @@ final class MermaidTests: XCTestCase {
             "block-beta\n  columns 2\n  a:0 b",
             "block-beta\n  columns 2\n  a b\n  a --> nothing",
             "block-beta",
-            // A call with nobody calling it, and a reply with nobody waiting.
-            "zenuml\n  Window.open()",
+            // A reply with nobody waiting, a call left open and one closed
+            // twice.
             "zenuml\n  @Starter(A)\n  return done",
             "zenuml\n  @Starter(A)\n  B.open() {",
             "zenuml\n  @Starter(A)\n  B.open()\n  }",
-            "zenuml\n  @Starter(A)\n  try {\n    B.open()\n  }",
             "zenuml",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A curve short of a value is dropped and the axes are still drawn, which
+    /// is what Mermaid itself does with one.
+    func testARadarDropsACurveThatCannotClose() throws {
+        guard
+            case .radar(let chart)? = MermaidDiagram.parse(
+                """
+                radar-beta
+                  axis a, b, c
+                  curve short{1, 2}
+                  curve whole{1, 2, 3}
+                """)
+        else { return XCTFail("a radar with a short curve is still a radar") }
+        XCTAssertEqual(chart.curves.map(\.label), ["whole"])
+        XCTAssertEqual(chart.axes.count, 3)
+    }
+
+    /// A call nobody made comes from the nameless figure Mermaid draws, and a
+    /// `try` block is a frame with arms like any other.
+    func testAZenUmlCallNeedsNoCallerAndMayTry() throws {
+        guard
+            case .sequence(let diagram)? = MermaidDiagram.parse(
+                """
+                zenuml
+                  Window.open() {
+                    try {
+                      Store.read()
+                    } catch (e) {
+                      Log.write()
+                    } finally {
+                      Store.close()
+                    }
+                  }
+                """)
+        else { return XCTFail("a ZenUML call with no caller is still a diagram") }
+        XCTAssertEqual(diagram.participants[0].label, "")
+        XCTAssertTrue(diagram.participants[0].isActor)
+        XCTAssertEqual(diagram.participants.map(\.id).dropFirst(), ["Window", "Store", "Log"])
+        guard case .block(let block) = diagram.items.dropFirst().first else {
+            return XCTFail("the try is a block")
+        }
+        XCTAssertEqual(block.kind, "try")
+        XCTAssertEqual(block.sections.map(\.title), ["", "catch e", "finally"])
     }
 
     /// `block:ID … end` is a grid inside a cell of the grid, and an edge may
