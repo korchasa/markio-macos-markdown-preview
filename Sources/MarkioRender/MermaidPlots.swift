@@ -82,10 +82,14 @@ struct XYChart {
     struct Series {
         var isBar: Bool
         var values: [Double]
+        /// What each point is called, where its author named it: `[540 "PaLM"]`.
+        /// Empty where nothing was written, and as long as `values`.
+        var labels: [String] = []
     }
 
     var title: String
     var categories: [String]
+    var xTitle: String = ""
     var yTitle: String
     /// The range the y axis covers, taken from the data when it is not written.
     var yRange: (low: Double, high: Double)?
@@ -103,8 +107,11 @@ struct XYChart {
                 chart.title = title
                 continue
             case "x-axis":
-                guard let names = list(rest), !names.isEmpty else { return nil }
-                chart.categories = names
+                // The axis may be given a name before its categories.
+                let (name, body) = titled(rest)
+                chart.xTitle = name
+                guard let names = list(body), !names.isEmpty else { return nil }
+                chart.categories = names.map(\.text)
                 continue
             case "y-axis":
                 guard let read = yAxis(rest) else { return nil }
@@ -112,10 +119,15 @@ struct XYChart {
                 chart.yRange = read.range
                 continue
             case "bar", "line":
-                guard let names = list(rest) else { return nil }
-                let values = names.compactMap(Double.init)
-                guard values.count == names.count, !values.isEmpty else { return nil }
-                chart.series.append(Series(isBar: word == "bar", values: values))
+                // A series may be named, though Mermaid draws no legend to
+                // show the name in, so it is read and then left alone.
+                let (_, body) = titled(rest)
+                guard let points = list(body) else { return nil }
+                let values = points.compactMap { Double($0.text) }
+                guard values.count == points.count, !values.isEmpty else { return nil }
+                chart.series.append(
+                    Series(
+                        isBar: word == "bar", values: values, labels: points.map(\.label)))
                 continue
             default:
                 // A horizontal chart needs axes drawn the other way round.
@@ -134,12 +146,34 @@ struct XYChart {
         return chart
     }
 
-    /// `[jan, feb, mar]` or `[5000, 6000]`.
-    private static func list(_ text: String) -> [String]? {
+    /// `[jan, feb, mar]`, `[5000, 6000]`, or `[540 "PaLM", 65 "LLaMA-65B"]`,
+    /// where each point may be given words of its own.
+    private static func list(_ text: String) -> [(text: String, label: String)]? {
         guard text.hasPrefix("["), text.hasSuffix("]") else { return nil }
         return text.dropFirst().dropLast().split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\" ")) }
-            .filter { !$0.isEmpty }
+            .map { item -> (text: String, label: String) in
+                let written = item.trimmingCharacters(in: .whitespaces)
+                guard !written.hasPrefix("\""), let quote = written.firstIndex(of: "\"")
+                else {
+                    return (written.trimmingCharacters(in: CharacterSet(charactersIn: "\" ")), "")
+                }
+                return (
+                    written[written.startIndex..<quote].trimmingCharacters(in: .whitespaces),
+                    written[quote...].trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+                )
+            }
+            .filter { !$0.text.isEmpty }
+    }
+
+    /// A quoted name in front of whatever else the line carries.
+    private static func titled(_ text: String) -> (name: String, rest: String) {
+        guard text.hasPrefix("\""), let close = text.dropFirst().firstIndex(of: "\"") else {
+            return ("", text)
+        }
+        return (
+            String(text[text.index(after: text.startIndex)..<close]),
+            String(text[text.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+        )
     }
 
     /// `"Revenue" 4000 --> 11000`, or a title alone, or a range alone.

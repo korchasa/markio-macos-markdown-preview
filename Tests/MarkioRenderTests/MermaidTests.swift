@@ -988,6 +988,36 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.boxes.compactMap(\.style.strokeWidth).count, 2)
     }
 
+    func testARequirementDiagramReadsBothWaysRoundAndPaintsItself() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                requirementDiagram
+                    direction LR
+                    requirement test_req:::important {
+                        id: 1
+                        text: "class styling example"
+                        risk: low
+                        verifymethod: test
+                    }
+                    element test_entity {
+                        type: simulation
+                    }
+                    test_entity - satisfies -> test_req
+                    test_req <- copies - test_entity
+                    classDef important fill:#f96
+                    style test_entity fill:#f9f
+                """
+            )
+        )
+        XCTAssertEqual(diagram.direction, .right)
+        XCTAssertEqual(diagram.boxes.map(\.name), ["test_req", "test_entity"])
+        // Written either way round, the claim runs from the thing to the need.
+        XCTAssertEqual(diagram.links.map { [$0.from, $0.to] }, [[1, 0], [1, 0]])
+        XCTAssertNotNil(diagram.boxes[0].style.fill)
+        XCTAssertNotNil(diagram.boxes[1].style.fill)
+    }
+
     /// A `note` is a slip of paper, tied to one box or standing on its own.
     func testAClassDiagramReadsItsNotes() throws {
         let diagram = try XCTUnwrap(
@@ -1143,6 +1173,49 @@ final class MermaidTests: XCTestCase {
         else { return XCTFail("expected a mindmap") }
         XCTAssertEqual(map.nodes.map(\.shape), [.rectangle, .rounded, .hexagon, .rounded])
         XCTAssertEqual(map.nodes.map(\.label), ["Square", "Rounded", "Hexagon", "Plain"])
+    }
+
+    func testAnXYChartNamesItsAxisItsSeriesAndItsPoints() throws {
+        guard
+            case .xy(let chart)? = MermaidDiagram.parse(
+                """
+                xychart
+                    x-axis "Date" ["Apr 2022", "Feb 2023"]
+                    y-axis "Parameters (B)" 0 --> 600
+                    line "avg" [540 "PaLM", 65]
+                    bar [10, 20]
+                """
+            )
+        else { return XCTFail("expected an xy chart") }
+        XCTAssertEqual(chart.xTitle, "Date")
+        XCTAssertEqual(chart.categories, ["Apr 2022", "Feb 2023"])
+        XCTAssertEqual(chart.series.count, 2)
+        XCTAssertEqual(chart.series[0].values, [540, 65])
+        // A point may be named; one that is not carries no words.
+        XCTAssertEqual(chart.series[0].labels, ["PaLM", ""])
+        XCTAssertEqual(chart.series[1].values, [10, 20])
+    }
+
+    func testAGanttTaskMayPointAtOneWrittenBelowIt() throws {
+        guard
+            case .gantt(let chart)? = MermaidDiagram.parse(
+                """
+                gantt
+                    dateFormat YYYY-MM-DD
+                    weekend friday
+                    section S
+                    Add to mermaid       :until isadded
+                    Functionality added  :milestone, isadded, 2014-01-25, 0d
+                """
+            )
+        else { return XCTFail("expected a gantt chart") }
+        XCTAssertEqual(chart.tasks.count, 2)
+        // The first task runs up to the milestone written under it.
+        XCTAssertEqual(chart.tasks[0].start + chart.tasks[0].length, chart.tasks[1].start)
+        // A chart that says how to draw and draws nothing is still a chart.
+        guard case .gantt(let empty)? = MermaidDiagram.parse("gantt\n  tickInterval 1week")
+        else { return XCTFail("expected an empty gantt chart") }
+        XCTAssertTrue(empty.tasks.isEmpty)
     }
 
     func testATimelineGroupsItsPeriodsIntoSections() throws {

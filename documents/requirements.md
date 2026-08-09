@@ -86,9 +86,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   words, and which is painted by `style`, `classDef` and `:::`, a `mindmap` with its
   clouds and bangs, a `timeline`, a `journey`, a `gantt` chart in any date format
   it declares, around the days nobody works, a `quadrantChart`, an
-  `xychart-beta`, a `gitGraph` whose lanes run either way, with its cherry-picks,
+  `xychart-beta` whose axes, series and single points may all be named, a `gitGraph` whose lanes run either way, with its cherry-picks,
   a `packet-beta` that may leave gaps between its fields, a `kanban` board, a
-  `requirementDiagram`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
+  a `requirementDiagram` written either way round and painted by `style`,
+  `classDef` and `:::`, a `sankey-beta`, a `treemap-beta`, a C4 diagram
   (`C4Context` and its four siblings, with the `Update…` lines that repaint it),
   an `architecture-beta` with groups inside groups, a `radar-beta`, a
   `block-beta` with the blocks inside its blocks and its fat arrows, or a

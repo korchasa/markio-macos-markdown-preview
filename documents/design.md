@@ -376,6 +376,15 @@ them. A word that names a frame makes no box: a stand-in node parsed before the
 frame was known is folded into the frame it names once the whole source has been
 read.
 
+A gantt chart is read twice. A task may point at one written below it —
+`until isadded` — and one pass cannot know where that one stands, so the first
+reading exists only to find out where every named task begins and ends and is
+allowed to be wrong about lengths, and the second reading, given those places,
+is the one whose answer is kept. An x–y chart names three things and draws two
+of them: the axis's own name stands under its categories and a named point
+carries its words just above it, while a named series is read and left alone,
+because Mermaid draws no legend to put the name in.
+
 A link is read in three parts — the mark it opens with, the line itself, and
 the mark it closes with — because every combination of the three is a link
 Mermaid draws and there are far too many to spell out one by one. That is what

@@ -84,7 +84,22 @@ struct GanttChart {
     /// `displayMode compact` packs tasks that do not overlap onto one row.
     var compact = false
 
+    /// A task may point at one written below it — `until isadded` — so the
+    /// lines are read twice: once to find out where every named task stands,
+    /// and once for real, with those places already known.
     static func parse(_ lines: [Substring], compact: Bool = false) -> GanttChart? {
+        var found: [String: Double] = [:]
+        var opened: [String: Double] = [:]
+        // The first reading must not stop at a task that points at one it has
+        // not reached yet, or it would never reach it.
+        _ = read(lines, compact: compact, searching: true, ends: &found, starts: &opened)
+        return read(lines, compact: compact, searching: false, ends: &found, starts: &opened)
+    }
+
+    private static func read(
+        _ lines: [Substring], compact: Bool, searching: Bool, ends: inout [String: Double],
+        starts: inout [String: Double]
+    ) -> GanttChart? {
         var chart = GanttChart(title: "", sections: [], tasks: [], origin: nil)
         chart.compact = compact
         var section: Int?
@@ -99,9 +114,6 @@ struct GanttChart {
         var lastWorkday = 6
         /// `inclusiveEndDates` makes `2026-01-05` mean the end of that day.
         var inclusive = false
-        // Where each named task ends, so `after id` can be resolved as it is read.
-        var ends: [String: Double] = [:]
-        var starts: [String: Double] = [:]
         var previousEnd: Double = 0
         /// Whether any real date was written down. Without one the numbers are
         /// days from the first task and the axis must say so.
@@ -149,6 +161,13 @@ struct GanttChart {
                 guard let index = weekdays[rest.lowercased()] else { return nil }
                 lastWorkday = index
                 continue
+            case "weekend":
+                // Which day the weekend starts on: `weekend friday` makes
+                // Friday and Saturday the days off rather than Saturday and
+                // Sunday. It is read the same way `weekday` is.
+                guard let index = weekdays[rest.lowercased()] else { return nil }
+                lastWorkday = index == 1 ? 7 : index - 1
+                continue
             case "excludes", "includes":
                 guard !rest.isEmpty else { return nil }
                 for written in rest.split(separator: ",").map({
@@ -183,7 +202,9 @@ struct GanttChart {
             default:
                 break
             }
-            guard let colon = line.lastIndex(of: ":") else { return nil }
+            // The name is what stands before the first colon, not the last: a
+            // task told in hours carries colons of its own — `17:49`.
+            guard let colon = line.firstIndex(of: ":") else { return nil }
             let name = line[line.startIndex..<colon].trimmingCharacters(in: .whitespaces)
             var fields = line[line.index(after: colon)...]
                 .split(separator: ",", omittingEmptySubsequences: false)
@@ -198,10 +219,10 @@ struct GanttChart {
                 case "done": task.done = true
                 case "active": task.active = true
                 case "crit": task.critical = true
-                case "milestone": task.milestone = true
+                case "milestone", "vert": task.milestone = true
                 default: break
                 }
-                guard ["done", "active", "crit", "milestone"].contains(first) else { break }
+                guard ["done", "active", "crit", "milestone", "vert"].contains(first) else { break }
                 fields.removeFirst()
             }
             // What is left is `[id,] [start,] end`, longest first.
@@ -250,7 +271,11 @@ struct GanttChart {
             } else {
                 return nil
             }
-            guard task.length >= 0 else { return nil }
+            if searching {
+                task.length = max(task.length, 0)
+            } else {
+                guard task.length >= 0 else { return nil }
+            }
             if task.milestone { task.length = 0 }
             previousEnd = task.start + task.length
             if let identifier {
@@ -260,7 +285,9 @@ struct GanttChart {
             }
             chart.tasks.append(task)
         }
-        guard !chart.tasks.isEmpty else { return nil }
+        // A chart that says how it should be drawn and then draws nothing is a
+        // chart with nothing in it, which is what Mermaid shows.
+        guard !chart.tasks.isEmpty else { return chart }
         // Everything was counted from the first real date; shift it all so the
         // chart starts at zero and the axis knows which day that was.
         let earliest = chart.tasks.map(\.start).min() ?? 0

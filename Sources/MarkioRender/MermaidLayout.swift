@@ -2525,6 +2525,24 @@ enum MermaidLayout {
                 decorations.append(
                     .path(path, color: colour, lineWidth: 2 * metrics.scale, filled: false))
             }
+            // A point its author named carries the words just above it.
+            for (position, name) in series.labels.enumerated()
+            where !name.isEmpty && position < series.values.count {
+                let line = text(name, font: font, color: theme.palette.secondaryText)
+                let size = measure(line)
+                let top = plot.maxY - level(series.values[position])
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: min(
+                                max(
+                                    plot.minX,
+                                    plot.minX + step * (CGFloat(position) + 0.5) - size.width / 2),
+                                plot.maxX - size.width),
+                            y: max(plot.minY + size.height, top - 6 * metrics.scale)
+                                - descent(line))))
+            }
         }
         for (index, name) in chart.categories.enumerated() {
             let line = text(name, font: font, color: theme.palette.secondaryText)
@@ -2535,6 +2553,17 @@ enum MermaidLayout {
                     origin: CGPoint(
                         x: plot.minX + step * (CGFloat(index) + 0.5) - size.width / 2,
                         y: plot.maxY + 6 * metrics.scale + size.height - descent(line))))
+        }
+        // The axis's own name stands under the names of its categories.
+        if !chart.xTitle.isEmpty {
+            let line = text(chart.xTitle, font: font, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: plot.midX - size.width / 2,
+                        y: plot.maxY + 10 * metrics.scale + size.height * 2 - descent(line))))
         }
         return Drawing(
             decorations: decorations,

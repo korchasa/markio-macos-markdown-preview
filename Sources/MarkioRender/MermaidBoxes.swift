@@ -339,6 +339,10 @@ enum RequirementDiagram {
     static func parse(_ lines: [Substring]) -> BoxDiagram? {
         var diagram = BoxDiagram(boxes: [], links: [], direction: .down)
         var open: Int?
+        var styles: [String: Flowchart.Style] = [:]
+        /// Which class each box asked for, kept until every `classDef` has been
+        /// read: a class may be named before it is written.
+        var painted: [(box: Int, name: String)] = []
         for line in lines {
             if let box = open {
                 if line == "}" {
@@ -361,17 +365,67 @@ enum RequirementDiagram {
                 continue
             }
             let words = line.split(separator: " ", omittingEmptySubsequences: true)
-            if let kind = words.first, kinds.contains(String(kind)) {
+            let first = String(words.first ?? "")
+            switch first {
+            case "direction":
+                guard words.count == 2,
+                    let read = Flowchart.direction(header: Substring("flowchart \(words[1])"))
+                else { return nil }
+                diagram.direction = read
+                continue
+            case "classDef", "style", "class":
+                let rest = line.dropFirst(first.count).trimmingCharacters(in: .whitespaces)
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2 else { return nil }
+                if first == "class" {
+                    // `class test_entity important`: a box asks for a class by
+                    // name, and one nobody wrote paints nothing.
+                    for name in parts[0].split(separator: ",") {
+                        let box = name.trimmingCharacters(in: .whitespaces)
+                        guard let index = diagram.boxes.firstIndex(where: { $0.name == box })
+                        else { continue }
+                        painted.append((index, String(parts[1])))
+                    }
+                    continue
+                }
+                guard let style = Flowchart.style(from: String(parts[1])) else { return nil }
+                if first == "classDef" {
+                    for name in parts[0].split(separator: ",") {
+                        styles[name.trimmingCharacters(in: .whitespaces)] = style
+                    }
+                    continue
+                }
+                for name in parts[0].split(separator: ",") {
+                    let box = name.trimmingCharacters(in: .whitespaces)
+                    guard let index = diagram.boxes.firstIndex(where: { $0.name == box })
+                    else { continue }
+                    diagram.boxes[index].style.merge(style)
+                }
+                continue
+            default:
+                break
+            }
+            if kinds.contains(first) {
                 guard words.count == 3, words[2] == "{" else { return nil }
-                let index = diagram.index(of: String(words[1]))
-                diagram.boxes[index].stereotype = String(kind)
+                // `requirement test_req:::important {`
+                var name = String(words[1])
+                if let mark = name.range(of: ":::") {
+                    let asked = String(name[mark.upperBound...])
+                    guard !asked.isEmpty else { return nil }
+                    name = String(name[name.startIndex..<mark.lowerBound])
+                    painted.append((diagram.index(of: name), asked))
+                }
+                let index = diagram.index(of: name)
+                diagram.boxes[index].stereotype = first
                 diagram.boxes[index].compartments = [[]]
                 open = index
                 continue
             }
-            // `test_entity - satisfies -> test_req`
-            guard words.count == 5, words[1] == "-", relations.contains(String(words[2])),
-                words[3] == "->" || words[3] == "<-"
+            // `test_entity - satisfies -> test_req`, and the same claim written
+            // the other way round as `test_req <- satisfies - test_entity`.
+            guard words.count == 5, relations.contains(String(words[2])),
+                (words[1] == "-" && words[3] == "->") || (words[1] == "<-" && words[3] == "-")
             else { return nil }
             let forwards = words[3] == "->"
             diagram.links.append(
@@ -388,6 +442,10 @@ enum RequirementDiagram {
             )
         }
         guard open == nil, !diagram.boxes.isEmpty else { return nil }
+        for (box, name) in painted {
+            guard let style = styles[name] else { continue }
+            diagram.boxes[box].style.merge(style)
+        }
         return diagram
     }
 
