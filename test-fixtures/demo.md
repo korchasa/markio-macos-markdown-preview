@@ -287,6 +287,9 @@ zenuml
 ```
 
 ```mermaid
+---
+title: What a window is made of
+---
 architecture-beta
     group app(cloud)[Viewer]
     service parser(server)[Parser] in app

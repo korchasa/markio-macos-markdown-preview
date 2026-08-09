@@ -48,8 +48,8 @@ Markio 2 reads. It never writes a file it opens.
   boards, requirement diagrams, Sankey diagrams, treemaps, C4 diagrams,
   architecture diagrams, radar charts, block diagrams and ZenUML, drawn with
   paths and
-  glyphs. No web view, no diagram library. What the subset does not cover stays
-  a fenced block
+  glyphs, each showing the title its YAML preamble gave it. No web view, no
+  diagram library. What the subset does not cover stays a fenced block
 
 ## Reading it
 

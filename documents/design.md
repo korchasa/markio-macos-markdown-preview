@@ -267,6 +267,15 @@ formula
 typesetter follows: a diagram is drawn whole or shown as source, because half a
 graph asserts something its author did not write.
 
+Mermaid's YAML preamble is read before the diagram is, and only for `title`. The
+title travels as `MermaidDiagram.titled`, a case wrapping any other, so the
+layout draws the diagram exactly as it would have without a name and then moves
+it down to make room — one place for a title rather than one per kind. The other
+preamble keys, `config` chief among them, set the theme, a ticket's link, a
+gantt's display mode: they change how Mermaid draws rather than what it draws,
+and drawing to settings other than the author's is exactly the half-truth the
+rule above forbids, so the fence stays source.
+
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
 — then each rank is measured, centred against the widest, and laid along the

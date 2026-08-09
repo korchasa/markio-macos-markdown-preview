@@ -7,7 +7,7 @@ every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2
 on the right, drawing the same source with CoreText and `CGPath`: no web view, no
 diagram library.
 
-Of the 36 examples, Markio 2 draws 24 and shows 12 as source. A fence it
+Of the 36 examples, Markio 2 draws 28 and shows 8 as source. A fence it
 cannot draw whole stays a fenced code block rather than becoming a picture that
 asserts something its author did not write, so every “shown as source” line below
 says which construct stopped it.
@@ -19,21 +19,17 @@ drawable and the drawn one below was written here instead.
 
 ## What is missing
 
-5 of the 12 refusals are one thing: Mermaid's YAML front matter, the
-`---` / `title:` / `---` preamble. Markio 2 does not read it at all, and it carries
-a title the drawing would then have to show. That is the one gap here worth
-closing.
-
-The rest are constructs Markio 2 deliberately does not draw — a frame inside a
-frame, a machine inside a machine, a note beside a class, an icon fetched from a
-font, a restyling applied to a picture already drawn — and one it cannot place: an
+The 8 refusals are constructs Markio 2 deliberately does not draw — a frame
+inside a frame, a machine inside a machine, a note beside a class, an icon fetched
+from a font, a restyling applied to a picture already drawn, a preamble that
+configures Mermaid rather than naming the diagram — and one it cannot place: an
 edge that names a subgraph ends on that frame in Mermaid, and Markio 2 has no way
 to end an edge anywhere but on a box.
 
 ## What this comparison turned up
 
-Running Mermaid's own examples through the reader found three defects, all fixed
-before this file was written:
+Running Mermaid's own examples through the reader found three defects and one
+gap, all closed before this file was written:
 
 - `--->` lost its arrowhead. A longer line is the same line, and the head is read
   after the length rather than with it.
@@ -41,6 +37,12 @@ before this file was written:
   picture held both a frame and a box called `one`. It is refused now.
 - A C4 boundary inside a boundary put every element in the innermost frame and
   dropped the outer one without saying so. It is refused now.
+- Mermaid's YAML preamble — `---` / `title:` / `---` — was not read at all, and it
+  accounted for most of the refusals. Its `title` is read now and set above the
+  drawing, whatever kind the drawing is. A preamble carrying anything else, `config`
+  above all, still leaves the fence as source: those keys change how Mermaid draws,
+  and a picture drawn to settings other than the ones its author wrote is not the
+  picture they asked for.
 
 ## Flowchart
 
@@ -198,7 +200,7 @@ classDiagram
     }
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter, and the two `note` lines.
+**Markio 2 shows this as source**, because of the two `note` lines.
 
 ![Mermaid's own drawing](images/mermaid/class-notes.png)
 
@@ -284,9 +286,7 @@ erDiagram
     CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter.
-
-![Mermaid's own drawing](images/mermaid/er-title.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/er-title.png)
 
 ## User journey
 
@@ -421,9 +421,7 @@ gitGraph
    commit
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter.
-
-![Mermaid's own drawing](images/mermaid/git-title.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/git-title.png)
 
 ## Mindmap
 
@@ -611,9 +609,7 @@ packet
 192-255: "Data (variable length)"
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter.
-
-![Mermaid's own drawing](images/mermaid/packet-title.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/packet-title.png)
 
 ## Kanban board
 
@@ -657,7 +653,7 @@ kanban
     id3[Weird flickering in Firefox]
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter.
+**Markio 2 shows this as source**, because of the `config:` block in its preamble, which turns every ticket id into a link.
 
 ![Mermaid's own drawing](images/mermaid/kanban-config.png)
 
@@ -768,9 +764,7 @@ radar-beta
   min 0
 ```
 
-**Markio 2 shows this as source**, because of the YAML front matter.
-
-![Mermaid's own drawing](images/mermaid/radar-title.png)
+![Mermaid on the left, Markio 2 on the right](images/mermaid/radar-title.png)
 
 ## Treemap
 

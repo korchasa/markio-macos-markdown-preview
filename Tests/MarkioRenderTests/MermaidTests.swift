@@ -1168,6 +1168,54 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testAPreambleNamesTheDiagram() throws {
+        let source = """
+            ---
+            title: "Order example"
+            ---
+            erDiagram
+                CUSTOMER ||--o{ ORDER : places
+            """
+        guard case .titled(let title, let inner) = MermaidDiagram.parse(source) else {
+            return XCTFail("the preamble's title did not reach the diagram")
+        }
+        // The quotes belong to YAML, not to the name.
+        XCTAssertEqual(title, "Order example")
+        guard case .boxes = inner else {
+            return XCTFail("the diagram under the title is still an entity diagram")
+        }
+        // A name is drawn above the picture, so the block grows by a line.
+        let named = DocumentLayout(
+            document: Document(text: "```mermaid\n\(source)\n```"),
+            theme: Theme(isDark: false), columnWidth: 520)
+        let bare = DocumentLayout(
+            document: Document(
+                text: "```mermaid\nerDiagram\n    CUSTOMER ||--o{ ORDER : places\n```"),
+            theme: Theme(isDark: false), columnWidth: 520)
+        let withTitle = try XCTUnwrap(named.box(at: 0))
+        let without = try XCTUnwrap(bare.box(at: 0))
+        XCTAssertGreaterThan(withTitle.height, without.height)
+        XCTAssertEqual(withTitle.decorations.count, without.decorations.count + 1)
+    }
+
+    func testWhatAPreambleRefuses() {
+        for source in [
+            // `config` changes how Mermaid draws, and drawing it another way
+            // would be answering a question the author did not ask.
+            "---\nconfig:\n  theme: forest\n---\npie\n  \"A\" : 1",
+            "---\ndisplayMode: compact\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
+            // A name in the preamble and a name in the diagram: two names, and
+            // no way to know which one Mermaid would show.
+            "---\ntitle: One\n---\npie\n  title Two\n  \"A\" : 1",
+            // Opened and never closed, and a title with nothing after it.
+            "---\ntitle: One\npie\n  \"A\" : 1",
+            "---\ntitle:\n---\npie\n  \"A\" : 1",
+            "---\ntitle: One\ntitle: Two\n---\npie\n  \"A\" : 1",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
     func testALabelIsBrokenWhereTheAuthorBrokeIt() throws {
         let chart = try XCTUnwrap(flowchart("flowchart TD\n  A[First<br/>Second] --> B[Plain]"))
         XCTAssertEqual(chart.nodes[0].label, "First<br/>Second")

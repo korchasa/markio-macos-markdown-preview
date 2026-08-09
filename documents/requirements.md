@@ -90,6 +90,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
+- **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
+  is read for one key, `title`, which names the picture and is set above it
+  whatever kind it is. A preamble carrying anything else, `config` above all,
+  changes how Mermaid draws rather than what it draws, and the fence stays a
+  fenced block; so does a diagram named twice, once in the preamble and once in
+  a `title` line of its own.
 
 ## VIEW — What the reader sees
 

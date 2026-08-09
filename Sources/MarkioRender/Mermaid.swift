@@ -29,8 +29,79 @@ enum MermaidDiagram {
     case architecture(ArchitectureDiagram)
     case radar(RadarChart)
     case blocks(BlockDiagram)
+    /// A diagram with the name its YAML preamble gave it, set above it.
+    indirect case titled(String, MermaidDiagram)
 
     static func parse(_ source: String) -> MermaidDiagram? {
+        guard let front = frontMatter(source) else { return nil }
+        guard let diagram = parse(body: front.body) else { return nil }
+        guard !front.title.isEmpty else { return diagram }
+        // A title in the preamble and a `title` line in the diagram are two
+        // names for one picture, and which of them Mermaid shows is not
+        // something to guess at.
+        guard !declaresTitle(front.body) else { return nil }
+        return .titled(front.title, diagram)
+    }
+
+    /// Mermaid's YAML preamble: `---`, some keys, `---`, and then the diagram.
+    ///
+    /// The one key read here is `title`, because it names the picture and the
+    /// drawing can show it. `config` and its neighbours change how Mermaid draws
+    /// — the theme, a ticket's link, a gantt's display mode — and a picture drawn
+    /// to settings other than the ones its author wrote is not the picture they
+    /// asked for, so the fence stays source instead.
+    ///
+    /// A source with no preamble is returned untouched; nil means there was one
+    /// and it said something this does not understand.
+    private static func frontMatter(_ source: String) -> (title: String, body: String)? {
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+        var index = 0
+        while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).isEmpty {
+            index += 1
+        }
+        guard index < lines.count, lines[index].trimmingCharacters(in: .whitespaces) == "---" else {
+            return ("", source)
+        }
+        var title = ""
+        index += 1
+        while index < lines.count {
+            let line = lines[index].trimmingCharacters(in: .whitespaces)
+            index += 1
+            if line == "---" {
+                return (title, lines[index...].joined(separator: "\n"))
+            }
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            guard title.isEmpty, line.hasPrefix("title:") else { return nil }
+            title = scalar(line.dropFirst("title:".count))
+            guard !title.isEmpty else { return nil }
+        }
+        // Opened and never closed, which is neither a preamble nor a diagram.
+        return nil
+    }
+
+    /// A YAML scalar as written on one line: the value, and its quotes taken off
+    /// if it has any.
+    private static func scalar(_ text: Substring) -> String {
+        let value = text.trimmingCharacters(in: .whitespaces)
+        for quote in ["\"", "'"]
+        where value.count >= 2 && value.hasPrefix(quote)
+            && value.hasSuffix(quote)
+        {
+            return String(value.dropFirst().dropLast())
+        }
+        return value
+    }
+
+    /// Whether the diagram itself names a title, in the `title …` line that a
+    /// pie chart, a gantt or a radar accepts.
+    private static func declaresTitle(_ body: String) -> Bool {
+        body.split(separator: "\n").contains { line in
+            let text = line.trimmingCharacters(in: .whitespaces)
+            return text == "title" || text.hasPrefix("title ") || text.hasPrefix("title:")
+        }
+    }
+
+    private static func parse(body source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
         /// How far each line was indented. A mindmap is the one diagram whose
         /// meaning lives in the leading spaces, so they are measured here rather

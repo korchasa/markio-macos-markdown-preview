@@ -89,6 +89,51 @@ enum MermaidLayout {
             return radar(chart, theme: theme, width: width, metrics: metrics)
         case .blocks(let diagram):
             return blocks(diagram, theme: theme, width: width, metrics: metrics)
+        case .titled(let title, let inner):
+            return titled(title, inner, theme: theme, width: width, metrics: metrics)
+        }
+    }
+
+    /// The name a diagram's YAML preamble gave it, set above the diagram.
+    ///
+    /// The picture underneath is drawn exactly as it would have been without a
+    /// name, and then moved down to make room, so every kind gets a title
+    /// without any kind having to know about one.
+    private static func titled(
+        _ title: String, _ inner: MermaidDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let line = text(
+            title, font: scaled(theme.bodyBold, by: metrics.scale * 1.1),
+            color: theme.palette.text)
+        let size = measure(line)
+        let room = size.height + 12 * metrics.scale
+        var drawing = draw(inner, theme: theme, width: width, metrics: metrics)
+        let origin = CGPoint(x: max(metrics.padding, (width - size.width) / 2), y: metrics.padding)
+        drawing.decorations =
+            [.glyphs(line, origin: origin)] + drawing.decorations.map { moved($0, down: room) }
+        drawing.size.height += room
+        drawing.contentWidth = max(drawing.contentWidth, size.width)
+        return drawing
+    }
+
+    private static func moved(_ decoration: BlockBox.Decoration, down: CGFloat)
+        -> BlockBox.Decoration
+    {
+        switch decoration {
+        case .fill(let rect, let color, let cornerRadius):
+            return .fill(
+                rect: rect.offsetBy(dx: 0, dy: down), color: color, cornerRadius: cornerRadius)
+        case .stroke(let rect, let color, let width):
+            return .stroke(rect: rect.offsetBy(dx: 0, dy: down), color: color, width: width)
+        case .path(let path, let color, let lineWidth, let filled):
+            var shift = CGAffineTransform(translationX: 0, y: down)
+            return .path(
+                path.copy(using: &shift) ?? path, color: color, lineWidth: lineWidth,
+                filled: filled)
+        case .image(let image, let rect):
+            return .image(image, rect: rect.offsetBy(dx: 0, dy: down))
+        case .glyphs(let line, let origin):
+            return .glyphs(line, origin: CGPoint(x: origin.x, y: origin.y + down))
         }
     }
 
