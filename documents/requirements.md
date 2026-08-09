@@ -82,8 +82,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   inside the ones it reads that the layout cannot draw — a nested subgraph, a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
   an excluded weekday, a cherry-pick, a gap between packet fields, a flow that
-  returns to where it came from, a C4 restyling, an icon from a downloaded pack,
-  a group inside a group, architecture edges that send two services to the
+  returns to where it came from, an edge that names a subgraph instead of a box,
+  a C4 restyling, a C4 boundary inside a boundary, an icon from a downloaded
+  pack, a group inside a group, architecture edges that send two services to the
   same place, a radar curve short of a value, a block inside a block, or a
   ZenUML call with nobody calling it — is not read, and the fence stays a
   fenced block.

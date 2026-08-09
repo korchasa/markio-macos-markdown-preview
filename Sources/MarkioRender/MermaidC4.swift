@@ -70,6 +70,11 @@ enum C4Diagram {
 
             if boundaries.contains(keyword) {
                 guard arguments.count >= 2, line.hasSuffix("{") else { return nil }
+                // A boundary inside a boundary needs a frame inside a frame. The
+                // elements would all land in the innermost one and the outer
+                // frame would quietly vanish, which is worse than a fence of
+                // source — so it is the same answer a nested subgraph gets.
+                guard open.isEmpty else { return nil }
                 chart.groups.append(Flowchart.Group(title: arguments[1], members: []))
                 open.append(chart.groups.count - 1)
                 continue

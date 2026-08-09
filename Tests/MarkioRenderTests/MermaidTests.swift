@@ -83,6 +83,29 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    /// A longer line is the same line, and it keeps its head: `--->` points.
+    func testALongerArrowStillPoints() throws {
+        let chart = try XCTUnwrap(
+            flowchart("flowchart LR\n A ---> B\n B ----> C\n C ---- D\n D ===> E"))
+        XCTAssertEqual(chart.edges.map(\.arrow), [true, true, false, true])
+        XCTAssertEqual(chart.edges.map(\.stroke), [.solid, .solid, .solid, .thick])
+    }
+
+    /// An edge to a `subgraph` joins its frame, and a frame is not a box.
+    func testAnEdgeThatNamesAFrameIsRefused() {
+        XCTAssertNil(
+            MermaidDiagram.parse(
+                "flowchart LR\n subgraph one\n a --> b\n end\n outside --> one"))
+        // A frame with a title of its own is still named by its identifier.
+        XCTAssertNil(
+            MermaidDiagram.parse(
+                "flowchart LR\n subgraph one[First]\n a --> b\n end\n outside --> one"))
+        // A title in quotes names no frame, so a node may share the words.
+        XCTAssertNotNil(
+            MermaidDiagram.parse(
+                "flowchart LR\n subgraph \"First step\"\n a --> b\n end\n c --> a"))
+    }
+
     func testTheOtherTwoDirections() throws {
         XCTAssertEqual(try XCTUnwrap(flowchart("graph BT\n A --> B")).direction, .up)
         XCTAssertEqual(try XCTUnwrap(flowchart("graph RL\n A --> B")).direction, .left)
@@ -962,6 +985,10 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  System_Boundary(b, \"B\") {\n  System(a, \"A\")",
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"red\")",
             "C4Context\n  Nonsense(a, \"A\")",
+            // A boundary inside a boundary: the elements would all land in the
+            // innermost frame and the outer one would quietly vanish.
+            "C4Context\n  Enterprise_Boundary(b0, \"Bank\") {\n"
+                + "    System_Boundary(b1, \"Core\") {\n      System(a, \"A\")\n    }\n  }",
             "C4Context",
             // An icon from a pack has to be fetched, and this fetches nothing.
             "architecture-beta\n  service a(logos:aws)[A]\n  service b(server)[B]\n  a:R -- L:b",

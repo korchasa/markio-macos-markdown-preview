@@ -330,6 +330,9 @@ struct Flowchart {
     struct Group {
         var title: String
         var members: [Int]
+        /// What the frame is called in the source. An edge may name it, and an
+        /// edge to a frame is not an edge to a box, so it has to be noticed.
+        var id: String = ""
     }
 
     var direction: Direction
@@ -373,6 +376,11 @@ struct Flowchart {
         // An unclosed `subgraph` means the author's picture has a frame this
         // one does not.
         guard chart.openGroup == nil, !chart.nodes.isEmpty else { return nil }
+        // `outside --> subgraph1` joins a frame, not a box. Drawing it as a box
+        // would put a node on the page that the author never wrote, so a graph
+        // whose edges name a frame is shown as source instead.
+        let frames = Set(chart.groups.map(\.id).filter { !$0.isEmpty })
+        guard !chart.nodes.contains(where: { frames.contains($0.id) }) else { return nil }
         chart.groups.removeAll { $0.members.isEmpty }
         return chart
     }
@@ -386,7 +394,8 @@ struct Flowchart {
             // A subgraph inside a subgraph needs frames inside frames, and a
             // frame drawn in the wrong place is worse than a fence of source.
             guard openGroup == nil else { return false }
-            groups.append(Group(title: title(ofSubgraph: rest), members: []))
+            groups.append(
+                Group(title: title(ofSubgraph: rest), members: [], id: id(ofSubgraph: rest)))
             openGroup = groups.count - 1
             return true
         case "end":
@@ -408,6 +417,14 @@ struct Flowchart {
         default:
             return parseStatement(line)
         }
+    }
+
+    /// What the frame is called: `one` in both `subgraph one[First step]` and a
+    /// bare `subgraph one`. A quoted title alone names nothing.
+    private func id(ofSubgraph text: String) -> String {
+        let name = String(text.prefix(while: { $0 != "[" })).trimmingCharacters(in: .whitespaces)
+        guard !name.hasPrefix("\""), !name.contains(" ") else { return "" }
+        return name
     }
 
     /// `subgraph one[First step]`, `subgraph one` or a bare title.
@@ -658,13 +675,20 @@ struct Flowchart {
             advance(spelling.text.count)
             // A trailing `-` or `=` only makes the line longer: `---->` is `-->`.
             while let char = peek(), char == "-" || char == "=" { advance() }
+            // `--->` opens as the plain `---` and only then shows its head, so
+            // the head is read after the line's length rather than with it.
+            var arrow = spelling.arrow
+            if peek() == ">" {
+                advance()
+                arrow = true
+            }
             var label = ""
             if peek() == "|" {
                 advance()
                 guard let text = readLabel(until: ["|"]) else { return nil }
                 label = text
             }
-            return (label, spelling.stroke, spelling.arrow)
+            return (label, spelling.stroke, arrow)
         }
 
         /// `-- text -->` and its dotted and thick cousins: the words are written
