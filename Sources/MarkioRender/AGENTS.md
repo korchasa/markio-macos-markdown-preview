@@ -86,6 +86,12 @@ here is `@MainActor` except the parts that deliberately are not.
   a colour name it does not know — so the fence falls back to a code block.
   Adding a keyword to the accepted list without drawing it is how a graph starts
   asserting something its author did not write.
+- **Some diagrams state their own placement, and it can contradict itself.** An
+  architecture diagram's edges say where each service stands, so the parser works
+  the grid out and refuses a source that sends two services to one cell, one
+  service to two, or leaves a stranger standing inside a group's block. That is a
+  different refusal from "this construct is not drawn": the source disagrees with
+  itself, and any picture of it would be invented.
 - **A subgraph owns a strip of the cross axis.** Its frame is the bounding box
   of its members, and that box is only honest because no node outside the group
   is ever placed in the strip. Any change to flowchart placement has to keep
