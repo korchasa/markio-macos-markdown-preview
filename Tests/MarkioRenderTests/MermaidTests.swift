@@ -717,7 +717,23 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(graph.commits[0].label, "start")
         XCTAssertEqual(graph.commits[3].merges, 2)
         XCTAssertEqual(graph.commits[4].tag, "v1.0")
-        XCTAssertTrue(graph.commits[4].highlighted)
+        XCTAssertEqual(graph.commits[4].kind, .highlighted)
+    }
+
+    func testACommitSaysWhichKindItIs() throws {
+        guard
+            case .git(let graph)? = MermaidDiagram.parse(
+                """
+                gitGraph
+                   commit
+                   commit id: "undo" type: REVERSE
+                   commit id: "plain" type: NORMAL
+                """
+            )
+        else { return XCTFail("expected a git graph") }
+        XCTAssertEqual(graph.commits.map(\.kind), [.normal, .reverse, .normal])
+        // A kind nobody draws is refused rather than read as an ordinary commit.
+        XCTAssertNil(MermaidDiagram.parse("gitGraph\n   commit type: CHERRY_PICK"))
     }
 
     func testWhatThePlotsRefuse() {

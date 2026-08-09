@@ -33,6 +33,45 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(code.box(at: 0)).codeRegion?.isDiagram, false)
     }
 
+    func testNothingInAPictureIsCutOffByItsOwnEdge() throws {
+        // A machine that returns to its start bows one edge around the boxes, and
+        // a card title longer than its card widens the column. Both used to reach
+        // past the width the drawing claimed and be clipped by the bitmap, so the
+        // check is that the picture grew rather than that it looks a certain way.
+        // The same five states either way, so the only difference between the
+        // two pictures is the one edge that has to bow around three boxes.
+        let straightOnly = """
+            stateDiagram-v2
+                [*] --> Still
+                Still --> Moving
+                Moving --> Crash
+                Crash --> [*]
+            """
+        let straight = try XCTUnwrap(
+            DocumentRenderer.diagram(source: straightOnly, theme: Theme(isDark: false), width: 700))
+        let bowed = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: straightOnly + "\n    Still --> [*]", theme: Theme(isDark: false),
+                width: 700))
+        XCTAssertGreaterThan(bowed.width, straight.width)
+
+        let board = """
+            kanban
+            todo[Todo]
+              id3[A card title far longer than any column would be by default]
+            """
+        let wide = try XCTUnwrap(
+            DocumentRenderer.diagram(source: board, theme: Theme(isDark: false), width: 900))
+        let short = """
+            kanban
+            todo[Todo]
+              id3[Short]
+            """
+        let narrow = try XCTUnwrap(
+            DocumentRenderer.diagram(source: short, theme: Theme(isDark: false), width: 900))
+        XCTAssertGreaterThan(wide.width, narrow.width)
+    }
+
     func testADiagramFillsTheRoomItNeedsAndNoMore() throws {
         // A picture wider than the room it is given is drawn to the room. Two
         // device pixels per point, which is what a Retina paste needs.

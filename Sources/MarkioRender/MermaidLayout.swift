@@ -40,13 +40,15 @@ enum MermaidLayout {
     }
 
     static func draw(_ diagram: MermaidDiagram, theme: Theme, width: CGFloat) -> Drawing {
-        let first = draw(diagram, theme: theme, width: width, metrics: Metrics())
+        let first = settled(
+            draw(diagram, theme: theme, width: width, metrics: Metrics()), width: width)
         let room = width - Metrics().padding * 2
         guard first.contentWidth > room, first.contentWidth > 0 else { return first }
         // Never below two thirds: past that the labels stop being readable, and
         // a diagram that runs a little wide is better than one nobody can read.
         let scale = max(0.66, room / first.contentWidth)
-        return draw(diagram, theme: theme, width: width, metrics: Metrics(scale: scale))
+        return settled(
+            draw(diagram, theme: theme, width: width, metrics: Metrics(scale: scale)), width: width)
     }
 
     private static func draw(
@@ -116,25 +118,76 @@ enum MermaidLayout {
         return drawing
     }
 
-    private static func moved(_ decoration: BlockBox.Decoration, down: CGFloat)
-        -> BlockBox.Decoration
-    {
+    private static func moved(
+        _ decoration: BlockBox.Decoration, right: CGFloat = 0, down: CGFloat = 0
+    ) -> BlockBox.Decoration {
         switch decoration {
         case .fill(let rect, let color, let cornerRadius):
             return .fill(
-                rect: rect.offsetBy(dx: 0, dy: down), color: color, cornerRadius: cornerRadius)
+                rect: rect.offsetBy(dx: right, dy: down), color: color, cornerRadius: cornerRadius)
         case .stroke(let rect, let color, let width):
-            return .stroke(rect: rect.offsetBy(dx: 0, dy: down), color: color, width: width)
+            return .stroke(rect: rect.offsetBy(dx: right, dy: down), color: color, width: width)
         case .path(let path, let color, let lineWidth, let filled):
-            var shift = CGAffineTransform(translationX: 0, y: down)
+            var shift = CGAffineTransform(translationX: right, y: down)
             return .path(
                 path.copy(using: &shift) ?? path, color: color, lineWidth: lineWidth,
                 filled: filled)
         case .image(let image, let rect):
-            return .image(image, rect: rect.offsetBy(dx: 0, dy: down))
+            return .image(image, rect: rect.offsetBy(dx: right, dy: down))
         case .glyphs(let line, let origin):
-            return .glyphs(line, origin: CGPoint(x: origin.x, y: origin.y + down))
+            return .glyphs(line, origin: CGPoint(x: origin.x + right, y: origin.y + down))
         }
+    }
+
+    /// The rectangle one drawn thing covers.
+    ///
+    /// A glyph run is placed by its baseline, so its box is read back from the
+    /// line's own measurement rather than from the origin alone.
+    private static func bounds(of decoration: BlockBox.Decoration) -> CGRect {
+        switch decoration {
+        case .fill(let rect, _, _): return rect
+        case .stroke(let rect, _, let width): return rect.insetBy(dx: -width / 2, dy: -width / 2)
+        case .image(_, let rect): return rect
+        case .path(let path, _, let lineWidth, let filled):
+            let box = path.boundingBoxOfPath
+            guard !box.isNull, !box.isInfinite else { return .null }
+            return filled ? box : box.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2)
+        case .glyphs(let line, let origin):
+            let size = measure(line)
+            return CGRect(
+                x: origin.x, y: origin.y + descent(line) - size.height,
+                width: size.width, height: size.height)
+        }
+    }
+
+    private static func bounds(of decorations: [BlockBox.Decoration]) -> CGRect? {
+        let boxes = decorations.map(bounds(of:)).filter { !$0.isNull && !$0.isInfinite }
+        guard let first = boxes.first else { return nil }
+        return boxes.dropFirst().reduce(first) { $0.union($1) }
+    }
+
+    /// The picture measured by what was drawn rather than by what was planned,
+    /// and slid back into view if any of it landed outside.
+    ///
+    /// Each kind reports the width of the boxes it laid out, which is not the
+    /// same as the width of the picture: a line bowed around a box reaches past
+    /// them, and so does a word that outgrew the card it was written in. Both
+    /// used to be cut off by the edge of the bitmap — a picture the reader could
+    /// see was incomplete. Measuring the decorations catches every such case at
+    /// once, including the kinds nobody has thought about yet.
+    private static func settled(_ drawing: Drawing, width: CGFloat) -> Drawing {
+        var drawing = drawing
+        guard let box = bounds(of: drawing.decorations) else { return drawing }
+        let padding = Metrics().padding
+        drawing.contentWidth = max(drawing.contentWidth, box.width)
+        let wanted = max(padding, (width - box.width) / 2)
+        let right = box.minX < wanted ? wanted - box.minX : 0
+        let down = box.minY < padding ? padding - box.minY : 0
+        if right > 0.5 || down > 0.5 {
+            drawing.decorations = drawing.decorations.map { moved($0, right: right, down: down) }
+        }
+        drawing.size.height = max(drawing.size.height, box.maxY + down + padding)
+        return drawing
     }
 
     // MARK: - Boxes with rows
@@ -320,8 +373,7 @@ enum MermaidLayout {
         metrics: Metrics
     ) -> [BlockBox.Decoration] {
         let colour = theme.palette.secondaryText
-        let start = exit(of: from, towards: to.center)
-        let end = exit(of: to, towards: from.center)
+        let (start, end) = joined(from, to)
         let direction = normalized(CGPoint(x: end.x - start.x, y: end.y - start.y))
         let backwards = CGPoint(x: -direction.x, y: -direction.y)
         let headRoom = 11 * metrics.scale
@@ -1109,10 +1161,21 @@ enum MermaidLayout {
             ) + 16 * metrics.scale
         let rowHeight = (names.map { measure($0).height }.max() ?? 12) + pad * 2
         let span = chart.tasks.map { $0.start + $0.length }.max() ?? 1
+        // The axis carries whole dates, so how wide one is decides both how wide
+        // the plot has to be and how many ticks can be labelled without the
+        // dates running into each other.
+        let sample =
+            chart.origin.map { GanttChart.date($0 + Int(span.rounded())) }
+            ?? "day \(Int(span.rounded()))"
+        let dateWidth =
+            measure(text(sample, font: smallFont, color: theme.palette.text)).width
+            + 14 * metrics.scale
         // A day gets at least a hair of width, and the plot never gets so wide
         // that the caller's shrinking cannot bring it back.
         let plotWidth = max(
-            240 * metrics.scale, min(430 * metrics.scale, span * 14 * metrics.scale))
+            240 * metrics.scale, dateWidth * 3,
+            min(430 * metrics.scale, span * 14 * metrics.scale))
+        let ticks = max(2, min(4, Int(plotWidth / dateWidth)))
         let perDay = span > 0 ? plotWidth / span : plotWidth
         let content = gutter + plotWidth
 
@@ -1125,7 +1188,7 @@ enum MermaidLayout {
         }
         let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
         let axisHeight =
-            measure(text("00-00", font: smallFont, color: theme.palette.text)).height
+            measure(text(sample, font: smallFont, color: theme.palette.text)).height
             + 10 * metrics.scale
         // A section takes a row of its own before the tasks under it.
         var rows = chart.tasks.count
@@ -1151,13 +1214,13 @@ enum MermaidLayout {
             )
         }
 
-        // Five ticks across the span, each with the day it stands for. Without a
-        // date in the source the axis counts days from the first task instead.
+        // Ticks across the span, each with the day it stands for. Without a date
+        // in the source the axis counts days from the first task instead.
         let axisTop = metrics.padding + titleRoom
         let bodyTop = axisTop + axisHeight
         let bodyBottom = bodyTop + CGFloat(rows) * rowHeight
-        for step in 0...4 {
-            let day = span * Double(step) / 4
+        for step in 0...ticks {
+            let day = span * Double(step) / Double(ticks)
             let x = plotLeft + CGFloat(day) * perDay
             let rule = CGMutablePath()
             rule.move(to: CGPoint(x: x, y: bodyTop))
@@ -1684,7 +1747,9 @@ enum MermaidLayout {
         let headFont = scaled(theme.bodyBold, by: metrics.scale)
         let pad = 8 * metrics.scale
         let gap = 12 * metrics.scale
-        let columnWidth = 150 * metrics.scale
+        /// A card's words start past its priority stripe, so the room they need
+        /// is the stripe as well as the padding on both sides.
+        let inset = pad * 2 + 4 * metrics.scale
 
         struct Card {
             var label: CTLine
@@ -1730,6 +1795,19 @@ enum MermaidLayout {
         }
         let headHeight = (columns.map(\.headSize.height).max() ?? 0) + pad * 2
         let bodyHeight = columns.map(\.height).max() ?? 0
+        // A card's words are not wrapped — a title is one line, the way its
+        // author wrote it — so the column is made wide enough to hold the
+        // longest of them. Every column takes the same width, because a board
+        // whose columns are different widths reads as a board with a column
+        // that matters more.
+        let columnWidth = max(
+            150 * metrics.scale,
+            columns.map { column in
+                max(
+                    column.headSize.width + pad * 2,
+                    column.cards.map { inset + max($0.labelSize.width, $0.detailsSize.width) }.max()
+                        ?? 0)
+            }.max() ?? 0)
         let content = CGFloat(columns.count) * columnWidth + CGFloat(columns.count - 1) * gap
         let height = metrics.padding * 2 + headHeight + 8 * metrics.scale + bodyHeight
 
@@ -2205,17 +2283,47 @@ enum MermaidLayout {
             let colour = wheel[commit.branch % wheel.count]
             let dot = CGRect(
                 x: here.x - radius, y: here.y - radius, width: radius * 2, height: radius * 2)
-            decorations.append(
-                .path(
-                    CGPath(ellipseIn: dot, transform: nil), color: colour, lineWidth: 0,
-                    filled: true))
-            if commit.highlighted {
+            // A merge is drawn hollow: it is the one commit that belongs to two
+            // lines at once, and a reader following a lane has to be able to see
+            // where the other one arrived.
+            if commit.merges != nil {
+                decorations.append(
+                    .path(
+                        CGPath(ellipseIn: dot, transform: nil), color: theme.palette.background,
+                        lineWidth: 0, filled: true))
+                decorations.append(
+                    .path(
+                        CGPath(ellipseIn: dot, transform: nil), color: colour,
+                        lineWidth: 2.5 * metrics.scale, filled: false))
+            } else {
+                decorations.append(
+                    .path(
+                        CGPath(ellipseIn: dot, transform: nil), color: colour, lineWidth: 0,
+                        filled: true))
+            }
+            switch commit.kind {
+            case .normal:
+                break
+            case .highlighted:
                 decorations.append(
                     .path(
                         CGPath(
                             ellipseIn: dot.insetBy(dx: -3 * metrics.scale, dy: -3 * metrics.scale),
                             transform: nil),
                         color: colour, lineWidth: 1.5 * metrics.scale, filled: false))
+            case .reverse:
+                // A commit that undoes another one is crossed out, which is the
+                // one mark a reader already knows the meaning of.
+                let arm = radius * 0.62
+                let cross = CGMutablePath()
+                cross.move(to: CGPoint(x: here.x - arm, y: here.y - arm))
+                cross.addLine(to: CGPoint(x: here.x + arm, y: here.y + arm))
+                cross.move(to: CGPoint(x: here.x + arm, y: here.y - arm))
+                cross.addLine(to: CGPoint(x: here.x - arm, y: here.y + arm))
+                decorations.append(
+                    .path(
+                        cross, color: theme.palette.background, lineWidth: 2 * metrics.scale,
+                        filled: false))
             }
             // A name goes above the dot and a tag below, so the two never land
             // on each other.
@@ -2331,9 +2439,13 @@ enum MermaidLayout {
             chart.edges.filter { !$0.label.isEmpty }
             .map { measure(text($0.label, font: labelFont, color: theme.palette.text)) }
             .map { down ? $0.height : $0.width }.max() ?? 0
+        // The gap holds the words *and* the line: an arrowhead at one end, and a
+        // visible run of line on both sides of the label. A gap sized to the
+        // words alone leaves a labelled edge looking like a chip with a stub
+        // either side of it.
         let rankGap = max(
             metrics.rankGap * (chart.groups.isEmpty ? 1 : 1.6),
-            labelRoom + 20 * metrics.scale
+            labelRoom + metrics.arrowLength + 40 * metrics.scale
         )
         // Rank runs down the page for `TD` and across it for `LR`; laying the
         // graph out in rank and cross axes and swapping at the end is what keeps
@@ -2977,8 +3089,7 @@ enum MermaidLayout {
         _ edge: Flowchart.Edge, from: Placed, to: Placed, theme: Theme, metrics: Metrics,
         order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect]
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
-        var start = exit(of: from.frame, towards: to.frame.center)
-        var end = exit(of: to.frame, towards: from.frame.center)
+        var (start, end) = joined(from.frame, to.frame)
         // An edge that skips a rank would otherwise run straight through
         // whatever stands between, which reads as an edge to that box; and two
         // nodes joined both ways would put one line exactly on top of the other.
@@ -3039,7 +3150,9 @@ enum MermaidLayout {
         // nothing else to sit on. Either way the words keep clear of both boxes,
         // so a label never ends up touching the box it points at.
         let length = self.length(of: path)
-        let clearance = size.width / 2 + 8 * metrics.scale
+        // The arrowhead counts as part of the end: words that stop where the
+        // head begins read as a label on the head rather than on the line.
+        let clearance = size.width / 2 + 8 * metrics.scale + head
         let base = min(length / 2, metrics.rankGap / 2 + 6) + CGFloat(order) * (size.width + 10)
         // On a line too short to hold the words clear of both ends, the middle
         // is the least bad place: better over the line than over a box.
@@ -3079,6 +3192,19 @@ enum MermaidLayout {
 
     // MARK: - Sequence diagram
 
+    /// Every message in a diagram, however deep in blocks it was written.
+    private static func messages(_ items: [SequenceDiagram.Item])
+        -> [SequenceDiagram.Message]
+    {
+        items.flatMap { item -> [SequenceDiagram.Message] in
+            switch item {
+            case .message(let message): return [message]
+            case .block(let block): return block.sections.flatMap { messages($0.items) }
+            case .note, .activate, .deactivate: return []
+            }
+        }
+    }
+
     private static func sequence(
         _ diagram: SequenceDiagram, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
@@ -3094,7 +3220,17 @@ enum MermaidLayout {
         let boxWidth =
             (sizes.map { $0.width }.max() ?? 40) + metrics.nodePaddingX * 2
         let boxHeight = (sizes.map { $0.height }.max() ?? 16) + metrics.nodePaddingY * 2
-        let step = boxWidth + metrics.columnGap
+        // A message's words are written over its arrow, so a column has to be
+        // wide enough to hold them. A message that reaches across several
+        // columns has all of them to spread over, which is why the room it asks
+        // for is divided by how many it crosses.
+        let messageRoom =
+            messages(diagram.items).filter { $0.from != $0.to }
+            .map {
+                (measure(text($0.text, font: small, color: theme.palette.text)).width
+                    + 26 * metrics.scale) / CGFloat(max(1, abs($0.to - $0.from)))
+            }.max() ?? 0
+        let step = max(boxWidth + metrics.columnGap, messageRoom)
         let content = step * CGFloat(max(0, diagram.participants.count - 1)) + boxWidth
         var titleLine: CTLine?
         var titleRoom: CGFloat = 0
@@ -3393,10 +3529,14 @@ enum MermaidLayout {
             head(
                 message.head, at: tip, direction: CGPoint(x: direction, y: 0), color: color,
                 metrics: metrics))
+        // The words stand clear of the line by their own descenders: a baseline
+        // a fixed few points up puts the tail of a `y` through the arrow.
         decorations.append(
             .glyphs(
                 line,
-                origin: CGPoint(x: (start + end) / 2 - size.width / 2, y: y - 5)
+                origin: CGPoint(
+                    x: (start + end) / 2 - size.width / 2,
+                    y: y - descent(line) - 4 * metrics.scale)
             )
         )
         return decorations
@@ -3470,6 +3610,35 @@ enum MermaidLayout {
         let scaleY = delta.y == 0 ? CGFloat.infinity : frame.height / 2 / abs(delta.y)
         let scale = min(scaleX, scaleY)
         return CGPoint(x: centre.x + delta.x * scale, y: centre.y + delta.y * scale)
+    }
+
+    /// Where a straight line between two boxes starts and ends.
+    ///
+    /// Aiming each end at the other box's centre slants the line whenever the
+    /// two boxes are not the same size, so a column of pairs comes out with one
+    /// line leaning and the rest upright — which reads as a mistake, because it
+    /// is one. Boxes that stand over each other are joined down the middle of
+    /// what they share; anything else is aimed at the centre as before.
+    private static func joined(_ from: CGRect, _ to: CGRect) -> (CGPoint, CGPoint) {
+        let sharedX = min(from.maxX, to.maxX) - max(from.minX, to.minX)
+        let sharedY = min(from.maxY, to.maxY) - max(from.minY, to.minY)
+        if sharedX > 0, sharedY <= 0 {
+            let x = (max(from.minX, to.minX) + min(from.maxX, to.maxX)) / 2
+            let below = to.midY > from.midY
+            return (
+                CGPoint(x: x, y: below ? from.maxY : from.minY),
+                CGPoint(x: x, y: below ? to.minY : to.maxY)
+            )
+        }
+        if sharedY > 0, sharedX <= 0 {
+            let y = (max(from.minY, to.minY) + min(from.maxY, to.maxY)) / 2
+            let right = to.midX > from.midX
+            return (
+                CGPoint(x: right ? from.maxX : from.minX, y: y),
+                CGPoint(x: right ? to.minX : to.maxX, y: y)
+            )
+        }
+        return (exit(of: from, towards: to.center), exit(of: to, towards: from.center))
     }
 
     /// A dashed line as a path of short segments: `Decoration` has no dash

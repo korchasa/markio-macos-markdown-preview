@@ -167,6 +167,17 @@ struct XYChart {
 
 /// A git graph: commits along a line, one lane per branch.
 struct GitGraph {
+    /// What a commit is, which is what its dot is drawn as.
+    ///
+    /// A reverse is a commit that undoes another one and a highlight is one its
+    /// author wants noticed; drawing either as an ordinary commit would say
+    /// something the source does not.
+    enum Kind {
+        case normal
+        case reverse
+        case highlighted
+    }
+
     struct Commit {
         var label: String
         var tag: String
@@ -175,7 +186,7 @@ struct GitGraph {
         var column: Int
         /// The commit this one merged in, when it is a merge.
         var merges: Int?
-        var highlighted: Bool
+        var kind: Kind
     }
 
     var branches: [String]
@@ -196,7 +207,7 @@ struct GitGraph {
                 graph.commits.append(
                     Commit(
                         label: options.id, tag: options.tag, branch: current, column: column,
-                        merges: nil, highlighted: options.highlighted))
+                        merges: nil, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
             case "branch":
@@ -218,7 +229,7 @@ struct GitGraph {
                 graph.commits.append(
                     Commit(
                         label: options.id, tag: options.tag, branch: current, column: column,
-                        merges: tip, highlighted: false))
+                        merges: tip, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
             default:
@@ -232,11 +243,11 @@ struct GitGraph {
 
     /// `id: "Alpha" tag: "v1.0" type: HIGHLIGHT`
     private static func options(_ text: String)
-        -> (id: String, tag: String, highlighted: Bool)?
+        -> (id: String, tag: String, kind: Kind)?
     {
         var id = ""
         var tag = ""
-        var highlighted = false
+        var kind = Kind.normal
         var rest = Substring(text)
         while !rest.isEmpty {
             rest = Substring(rest.trimmingCharacters(in: .whitespaces))
@@ -257,10 +268,18 @@ struct GitGraph {
             switch key {
             case "id": id = value
             case "tag": tag = value
-            case "type": highlighted = value == "HIGHLIGHT"
+            case "type":
+                // A type nobody here draws is refused rather than quietly read
+                // as an ordinary commit.
+                switch value {
+                case "NORMAL": kind = .normal
+                case "REVERSE": kind = .reverse
+                case "HIGHLIGHT": kind = .highlighted
+                default: return nil
+                }
             default: return nil
             }
         }
-        return (id, tag, highlighted)
+        return (id, tag, kind)
     }
 }

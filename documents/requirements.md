@@ -81,7 +81,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   written as calls, replies and the blocks around them. Every other diagram kind, and every construct
   inside the ones it reads that the layout cannot draw — a nested subgraph, a
   composite state, a namespace, a tinted band, a click handler, a mindmap icon,
-  an excluded weekday, a cherry-pick, a gap between packet fields, a flow that
+  an excluded weekday, a cherry-pick, a commit of a kind it has no mark for, a
+  gap between packet fields, a flow that
   returns to where it came from, an edge that names a subgraph instead of a box,
   a C4 restyling, a C4 boundary inside a boundary, an icon from a downloaded
   pack, a group inside a group, architecture edges that send two services to the
@@ -186,7 +187,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   the reading column, in the current theme's
   colours except where the diagram names its own, and with a colour per branch
   or section where the diagram's own meaning is carried by colour. A picture too
-  wide for the column is drawn smaller rather than cut off. The block keeps the
+  wide for the column is drawn smaller rather than cut off, and nothing in a
+  picture is ever cut off by its own edge: a line that bows around a box and a
+  word longer than the shape holding it both count towards how much room the
+  drawing takes. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
 - **VIEW-27** Clicking a drawn diagram shows it large over the window, laid out
   again at that width rather than magnified. Clicking it again, clicking the

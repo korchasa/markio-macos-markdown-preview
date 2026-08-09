@@ -295,10 +295,16 @@ bowed: it is given a lane — the pairs are counted, and the *n*th edge between
 the same two boxes is offset by its place in that count — and then pushed
 sideways until it clears the box frames it would otherwise cross. The curve is
 flattened into a path, which is what lets a dashed edge keep an even rhythm
-around the bend and an arrowhead sit square on the line's real direction. Their
-words are written last, over the nodes, because an edge that skips a rank passes
-over whatever stands between, and the line is broken around each word so the two
-never overlap.
+around the bend and an arrowhead sit square on the line's real direction. An
+edge with no bow to make and two boxes standing one over the other is drawn
+straight down the middle of what they share, rather than from centre to centre:
+aiming at the centres leans the line whenever the two boxes are not the same
+width, and one leaning line in a column of upright ones reads as a mistake.
+Their words are written last, over the nodes, because an edge that skips a rank
+passes over whatever stands between, and the line is broken around each word so
+the two never overlap. The gap between ranks is sized from those words plus an
+arrowhead plus a visible run of line on either side — a gap sized to the words
+alone leaves a labelled edge looking like a chip with a stub beside it.
 
 A subgraph is given a strip of the cross axis to itself — the same strip on
 every rank — and that is what makes its frame enclose its own members and
@@ -345,7 +351,12 @@ thing this drawing has no way to place.
 A git graph is one lane per branch, a column per commit, and a curve wherever a
 branch left its parent or merged back — so a lane is never a line floating on
 its own. `gitGraph TB:` turns the lanes on their side, which is a layout this
-has not got, so only the plain form is read.
+has not got, so only the plain form is read. What a commit is decides how its
+dot is drawn: a merge is hollow because it is the one commit belonging to two
+lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
+nobody here draws is refused rather than read as an ordinary commit — that is
+the same rule as everywhere else, applied to a word that would otherwise vanish
+without a trace in the picture.
 
 A journey is a line that rises and falls over the steps it is scored on, with
 the sections banded above it and each step's name and actors written under its
@@ -358,7 +369,11 @@ calendars beyond turning `YYYY-MM-DD` into a day number and back, which is why
 work in the same units. A chart that excludes weekends is refused rather than
 drawn on days its author did not ask for, and so is one written in another date
 format. A milestone has no length, so it is drawn as a diamond on its day rather
-than a bar nobody would see.
+than a bar nobody would see. The axis carries whole dates, year included: a
+chart that runs over a new year would otherwise label two different days the
+same way. How wide a date is decides both how wide the plot has to be and how
+many ticks can be labelled, so the number of ticks follows from the room rather
+than being fixed at five.
 
 A packet diagram is a row per word of bits: the fields are checked for
 contiguity as they are read, so a picture with a hole in it is refused rather
@@ -375,7 +390,10 @@ A kanban board is a column per list and a card per item, and the indentation is
 what separates the two — the first line's indent is the column level, and
 anything deeper is a card. A line shallower than the first would leave it unclear
 what is a column and what is a card, so it is refused. A card's priority tints
-its left edge.
+its left edge. A card's words are not wrapped — a title is one line, the way its
+author wrote it — so the columns are made wide enough to hold the longest of
+them, and every column takes the same width: a board whose columns differ in
+width reads as a board with a column that matters more.
 
 A requirement diagram is read into the same `BoxDiagram` a class diagram uses: a
 requirement is a titled box with its id, its text and its verification method in
@@ -454,6 +472,12 @@ into a `Flowchart` whose start and end are a filled dot and a ring, because that
 is the only thing about it a flowchart cannot already draw.
 
 A sequence diagram is columns with dashed lifelines, walked in document order.
+A column is as wide as the longest message written across it — divided by how
+many columns that message spans, since a message reaching further has more of
+them to spread over — because the words go over the arrow, and a column sized to
+the participant boxes alone leaves them hanging off both lifelines. The words
+stand clear of the arrow by their own descenders rather than by a fixed few
+points, which is what stops the tail of a `y` from crossing the line.
 The walk hands back three lists — block frames, activation bars and the
 messages and notes themselves — because they are painted in that order: a frame
 is behind its contents, and a bar is behind the arrows that start and end it. A
@@ -474,6 +498,16 @@ In both, the width asked for is a limit and not a frame: a picture is centred in
 the room it is given, so a small diagram in a wide window would come back
 sitting in a field of empty card. A drawing narrower than the room is laid out a
 second time at its own size, and what leaves is the picture and nothing else.
+
+That only works if a drawing knows how wide it really is, and for a while none
+of them did. Each kind reported the width of the boxes it had laid out, which is
+not the same thing: a line bowed around a box reaches past them, and so does a
+word that outgrew the card it was written in. Both used to be cut off by the
+edge of the bitmap. So every drawing is now measured by what is in it — the
+union of every decoration's own rectangle, glyph runs read back from the lines
+that carry them — and if any of it landed outside, the whole picture is slid
+back into view. Measuring the output rather than the plan is what makes this
+cover the kinds nobody has thought about yet, including the ones added later.
 
 Everything it produces is `BlockBox.Decoration` — filled and stroked paths, and
 the glyph runs added for formulas — so the diagram draws in the window and in

@@ -225,11 +225,16 @@ struct GanttChart {
     }
 
     /// The other way round, for the axis.
+    ///
+    /// The year is written out. A chart that runs over a new year would
+    /// otherwise label two different days the same way, and a reader has no way
+    /// of telling which is which from a picture that omits it.
     static func date(_ day: Int) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
         let date = Date(timeIntervalSince1970: Double(day) * 86400)
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%02d-%02d", parts.month ?? 1, parts.day ?? 1)
+        return String(
+            format: "%04d-%02d-%02d", parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
     }
 }
