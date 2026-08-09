@@ -458,7 +458,13 @@ enum StateDiagram {
             // `A --> B : go` is the same edge a flowchart writes `A -->|go| B`.
             guard let arrow = line.range(of: "-->") else {
                 // `id: Words` is what the state is called on the page.
-                guard let colon = line.firstIndex(of: ":") else { return nil }
+                guard let colon = line.firstIndex(of: ":") else {
+                    // A name on a line of its own is a state that goes nowhere,
+                    // which is still a state and still worth drawing.
+                    guard !line.contains(" ") else { return nil }
+                    body.append(line)
+                    continue
+                }
                 let name = String(line[line.startIndex..<colon]).trimmingCharacters(
                     in: .whitespaces)
                 let label = String(line[line.index(after: colon)...])

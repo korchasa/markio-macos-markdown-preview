@@ -124,13 +124,13 @@ struct XYChart {
         }
         guard !chart.series.isEmpty else { return nil }
         let longest = chart.series.map(\.values.count).max() ?? 0
-        // Every series has to line up with the categories, or a bar would stand
-        // over a name that is not its own.
-        guard chart.series.allSatisfy({ $0.values.count == longest }) else { return nil }
         if chart.categories.isEmpty {
             chart.categories = (1...longest).map(String.init)
         }
-        guard chart.categories.count == longest else { return nil }
+        // A series may run past the names its author wrote, and Mermaid leaves
+        // those places on the axis standing without a name rather than throwing
+        // the chart away. A shorter series simply stops where its numbers do.
+        while chart.categories.count < longest { chart.categories.append("") }
         return chart
     }
 

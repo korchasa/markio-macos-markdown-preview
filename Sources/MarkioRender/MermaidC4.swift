@@ -486,15 +486,10 @@ struct ArchitectureDiagram {
         if let open = body.firstIndex(of: "("), let close = body.firstIndex(of: ")"), open < close {
             let name = String(body[body.index(after: open)..<close])
             // An icon from a pack has to be fetched, and this app fetches
-            // nothing. Mermaid on a page that never registered the pack draws a
-            // question mark, and so does this; a name that is neither one of
-            // the five nor `pack:name` is a spelling nobody meant.
-            if let known = Icon(rawValue: name) {
-                icon = known
-            } else {
-                guard name.contains(":") else { return nil }
-                icon = .unknown
-            }
+            // nothing. Mermaid draws a question mark for any name it cannot
+            // resolve, whether the name is misspelt or comes from a pack the
+            // page never registered, and so does this.
+            icon = Icon(rawValue: name) ?? .unknown
         }
         var label = identifier
         if let open = body.firstIndex(of: "["), body.hasSuffix("]") {

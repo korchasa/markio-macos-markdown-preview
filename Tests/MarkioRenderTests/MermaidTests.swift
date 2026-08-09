@@ -612,6 +612,24 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(crash.style.fill, Flowchart.Colour(red: 1, green: 0, blue: 0))
     }
 
+    /// A state nobody leaves and a journey step nobody was named for are both
+    /// drawn by Mermaid, and both say something a reader wants.
+    func testALoneStateStandsAndAStepNeedsNobody() throws {
+        guard case .flowchart(let lone)? = MermaidDiagram.parse("stateDiagram-v2\n A") else {
+            return XCTFail("a state on its own is still a state")
+        }
+        XCTAssertEqual(lone.nodes.map(\.id), ["A"])
+        XCTAssertEqual(lone.edges.count, 0)
+
+        guard case .journey(let quiet)? = MermaidDiagram.parse("journey\n  Make tea: 5") else {
+            return XCTFail("a step with no actors is still a step")
+        }
+        XCTAssertEqual(quiet.tasks[0].actors, [])
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "journey\n  Make tea: 5", theme: Theme(isDark: false), width: 700))
+    }
+
     func testWhatAStateMachineRefuses() {
         for source in [
             // A machine left open, and a note left open.
@@ -620,7 +638,6 @@ final class MermaidTests: XCTestCase {
             // A note with no words, and a kind of state nobody knows.
             "stateDiagram-v2\n [*] --> A\n note right of A:",
             "stateDiagram-v2\n state pause <<wobble>>\n [*] --> pause",
-            "stateDiagram-v2\n A",
             "stateDiagram-v2",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -964,7 +981,6 @@ final class MermaidTests: XCTestCase {
     func testWhatTheChartsRefuse() {
         for source in [
             "journey\n  Make tea: 9: Me",
-            "journey\n  Make tea: 5",
             "journey",
             // A day off nobody can name, and a tick as long as nothing.
             "gantt\n  excludes someday\n  Draft :3d",
@@ -1140,14 +1156,32 @@ final class MermaidTests: XCTestCase {
         XCTAssertNil(MermaidDiagram.parse("gitGraph\n   commit type: CHERRY_PICK"))
     }
 
+    /// Mermaid keeps drawing when a series runs past the names on the axis or
+    /// past its neighbour, so these are charts and not mistakes.
+    func testASeriesMayRunPastItsAxisAndItsNeighbour() throws {
+        let named = "xychart-beta\n  x-axis [a, b]\n  bar [1, 2, 3]"
+        guard case .xy(let long)? = MermaidDiagram.parse(named) else {
+            return XCTFail("a third bar stands on an unnamed place")
+        }
+        XCTAssertEqual(long.categories, ["a", "b", ""])
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: named, theme: Theme(isDark: false), width: 700))
+
+        let uneven = "xychart-beta\n  bar [1, 2]\n  line [1, 2, 3]"
+        guard case .xy(let mixed)? = MermaidDiagram.parse(uneven) else {
+            return XCTFail("a short series stops where its numbers do")
+        }
+        XCTAssertEqual(mixed.categories, ["1", "2", "3"])
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: uneven, theme: Theme(isDark: false), width: 700))
+    }
+
     func testWhatThePlotsRefuse() {
         for source in [
             // A point outside the square, and one with no coordinates at all.
             "quadrantChart\n  A: [1.4, 0.2]",
             "quadrantChart\n  A: [0.2]",
             // Series that do not line up with the names under them.
-            "xychart-beta\n  x-axis [a, b]\n  bar [1, 2, 3]",
-            "xychart-beta\n  bar [1, 2]\n  line [1, 2, 3]",
             "xychart-beta\n  x-axis [a, b]",
             // A cherry-pick of a commit nobody made, and one of a commit on
             // the branch it is already standing on.
@@ -1374,6 +1408,17 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(map.nodes[4].value, 30)
     }
 
+    /// A branch of a treemap may carry a number of its own, and what it holds
+    /// is the truer figure — which is the one Mermaid draws.
+    func testABranchTakesTheSumOfWhatItHolds() throws {
+        guard
+            case .treemap(let map)? = MermaidDiagram.parse(
+                "treemap-beta\n\"A\": 5\n    \"B\": 2")
+        else { return XCTFail("a branch with a number is still a branch") }
+        XCTAssertEqual(map.nodes[0].value, 2)
+        XCTAssertEqual(map.nodes[0].children, [1])
+    }
+
     func testWhatTheFlowsRefuse() {
         for source in [
             // A flow back to where it came from makes the ranks meaningless.
@@ -1384,7 +1429,6 @@ final class MermaidTests: XCTestCase {
             "sankey-beta\nA,B,0",
             "sankey-beta",
             // A node cannot both carry a number and hold other nodes.
-            "treemap-beta\n\"A\": 5\n    \"B\": 2",
             "treemap-beta\n\"A\"\n    \"B\": none",
             "treemap-beta\n\"A\"\n    \"B\": 0",
             "treemap-beta",
@@ -1475,6 +1519,18 @@ final class MermaidTests: XCTestCase {
         XCTAssertFalse(diagram.edges[0].toArrow)
     }
 
+    /// Mermaid draws a question mark for any icon name it cannot resolve, and
+    /// a misspelt name is no different to it than one from a pack nobody
+    /// registered.
+    func testAnIconNobodyKnowsIsDrawnAsAQuestion() throws {
+        guard
+            case .architecture(let diagram)? = MermaidDiagram.parse(
+                "architecture-beta\n  service a(wobble)[A]\n  service b(server)[B]\n  a:R -- L:b")
+        else { return XCTFail("an unknown icon is still a service") }
+        XCTAssertEqual(diagram.services[0].icon, .unknown)
+        XCTAssertEqual(diagram.services[1].icon, .server)
+    }
+
     func testWhatC4AndArchitectureRefuse() {
         for source in [
             // An element with no name, a boundary left open, and a restyling of
@@ -1488,8 +1544,6 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
             "C4Context",
-            // A shape that is neither one of the five nor out of any pack.
-            "architecture-beta\n  service a(wobble)[A]\n  service b(server)[B]\n  a:R -- L:b",
             // A group written inside one nobody declared.
             "architecture-beta\n  group two(cloud)[Two] in one\n  service a(server)[A] in two",
             // A stranger standing inside a group's block would look like a member.
@@ -1690,6 +1744,17 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(bare.width, ringed.width)
     }
 
+    /// A block arrow may name a box that no row wrote out, and Mermaid draws
+    /// that box rather than throwing the diagram away.
+    func testABlockArrowDeclaresTheBoxItNames() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                "block-beta\n  columns 2\n  a b\n  a --> nothing")
+        else { return XCTFail("an arrow names a box into being") }
+        XCTAssertEqual(diagram.chart.nodes.map(\.id), ["a", "b", "nothing"])
+        XCTAssertEqual(diagram.cells.count, 3)
+    }
+
     func testWhatRadarBlocksAndZenUmlRefuse() {
         for source in [
             // A chart with no curve at all has nothing on it, and a web can
@@ -1702,7 +1767,6 @@ final class MermaidTests: XCTestCase {
             "block-beta\n  columns 2\n  a b\n  end",
             "block-beta\n  columns 2\n  block:g\n    a\n  end\n  block:g\n    b\n  end",
             "block-beta\n  columns 2\n  a:0 b",
-            "block-beta\n  columns 2\n  a b\n  a --> nothing",
             "block-beta",
             // A reply with nobody waiting, a call left open and one closed
             // twice.

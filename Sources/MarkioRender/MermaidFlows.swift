@@ -123,9 +123,8 @@ struct Treemap {
                 Node(label: label, value: value ?? 0, children: [], depth: stack.count))
             let index = map.nodes.count - 1
             if let parent = stack.last {
-                // A leaf with a number cannot also hold things, and a branch's
-                // own number would contradict what it holds.
-                guard map.nodes[parent.index].value == 0 else { return nil }
+                // A branch may carry a number of its own, and what it holds is
+                // the truer figure, so the sum below overwrites it.
                 map.nodes[parent.index].children.append(index)
             } else {
                 roots.append(index)

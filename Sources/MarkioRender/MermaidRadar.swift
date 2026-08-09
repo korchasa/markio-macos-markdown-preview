@@ -276,7 +276,13 @@ struct BlockDiagram {
         func end(_ name: String) -> Flowchart.End? {
             if let node = identifiers[name] { return .node(node) }
             if let block = blocks.firstIndex(where: { $0.id == name }) { return .frame(block) }
-            return nil
+            // An arrow may name a box nobody wrote into a row, and Mermaid puts
+            // that box on the page, the same way a flowchart does.
+            guard !name.isEmpty else { return nil }
+            chart.nodes.append(Flowchart.Node(id: name, label: name, shape: .rectangle))
+            identifiers[name] = chart.nodes.count - 1
+            add(Cell(node: chart.nodes.count - 1, span: 1, block: nil))
+            return .node(chart.nodes.count - 1)
         }
         for line in edgeLines {
             guard let read = link(line), let from = end(read.from), let to = end(read.to)

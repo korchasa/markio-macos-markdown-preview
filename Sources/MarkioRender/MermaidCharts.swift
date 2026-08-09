@@ -33,10 +33,12 @@ struct UserJourney {
             // `Make tea: 5: Me, Cat`
             let parts = line.split(separator: ":", omittingEmptySubsequences: false)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count == 3, !parts[0].isEmpty, let score = Int(parts[1]),
+            // `Make tea: 5` is a step nobody was named for, which Mermaid puts
+            // on the line with no faces beside it.
+            guard (2...3).contains(parts.count), !parts[0].isEmpty, let score = Int(parts[1]),
                 (1...5).contains(score)
             else { return nil }
-            let actors = parts[2].split(separator: ",")
+            let actors = (parts.count == 3 ? parts[2] : "").split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
             journey.tasks.append(
