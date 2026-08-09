@@ -20,8 +20,10 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(drawn.box(at: 0)).codeRegion?.isDiagram, true)
 
         // The same fence with something the layout cannot draw stays text.
+        // An invisible link is a construct no layout here can honour, which
+        // keeps this example refused however many diagram kinds are added.
         let refused = DocumentLayout(
-            document: Document(text: "```mermaid\nsankey-beta\nA,B,10\n```"),
+            document: Document(text: "```mermaid\nflowchart TD\n A ~~~ B\n```"),
             theme: Theme(isDark: false), columnWidth: 520)
         XCTAssertEqual(try XCTUnwrap(refused.box(at: 0)).codeRegion?.isDiagram, false)
 
@@ -47,7 +49,7 @@ final class DiagramInteractionTests: XCTestCase {
     func testAFenceItCannotDrawHasNoPictureToCopy() {
         XCTAssertNil(
             DocumentRenderer.diagram(
-                source: "sankey-beta\nA,B,10", theme: Theme(isDark: false), width: 400))
+                source: "flowchart TD\n A ~~~ B", theme: Theme(isDark: false), width: 400))
     }
 
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {

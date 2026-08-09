@@ -79,6 +79,10 @@ enum MermaidLayout {
             return packet(diagram, theme: theme, width: width, metrics: metrics)
         case .kanban(let board):
             return kanban(board, theme: theme, width: width, metrics: metrics)
+        case .sankey(let diagram):
+            return sankey(diagram, theme: theme, width: width, metrics: metrics)
+        case .treemap(let map):
+            return treemap(map, theme: theme, width: width, metrics: metrics)
         }
     }
 
@@ -1201,6 +1205,239 @@ enum MermaidLayout {
             decorations: decorations,
             size: CGSize(width: width, height: height),
             contentWidth: content
+        )
+    }
+
+    // MARK: - Sankey diagram
+
+    /// Flows between nodes, every band as thick as what it carries.
+    private static func sankey(
+        _ diagram: SankeyDiagram, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale * 0.9)
+        let ranks = self.ranks(
+            count: diagram.nodes.count, edges: diagram.flows.map { ($0.from, $0.to) })
+        // A node is as tall as the larger of what reaches it and what leaves,
+        // because both have to fit against its own edge.
+        var incoming = [Double](repeating: 0, count: diagram.nodes.count)
+        var outgoing = [Double](repeating: 0, count: diagram.nodes.count)
+        for flow in diagram.flows {
+            outgoing[flow.from] += flow.value
+            incoming[flow.to] += flow.value
+        }
+        let weight = zip(incoming, outgoing).map(max)
+
+        let barWidth = 12 * metrics.scale
+        let nodeGap = 12 * metrics.scale
+        let plotHeight = 260 * metrics.scale
+        // One scale for the whole picture: the busiest rank fills the height,
+        // and every other band is read against it.
+        let busiest = ranks.map { rank in rank.reduce(0.0) { $0 + weight[$1] } }.max() ?? 1
+        let tallestRank = ranks.map(\.count).max() ?? 1
+        let usable = max(40 * metrics.scale, plotHeight - nodeGap * CGFloat(tallestRank - 1))
+        let perUnit = busiest > 0 ? usable / CGFloat(busiest) : 1
+
+        let labels = diagram.nodes.map { text($0, font: font, color: theme.palette.text) }
+        let widest = labels.map { measure($0).width }.max() ?? 0
+        let columnGap = max(90 * metrics.scale, widest + 24 * metrics.scale)
+        let content = CGFloat(ranks.count - 1) * columnGap + barWidth + widest + 8 * metrics.scale
+        let height = metrics.padding * 2 + plotHeight
+
+        let left = max(metrics.padding, (width - content) / 2)
+        var frames = [CGRect](repeating: .zero, count: diagram.nodes.count)
+        for (level, rank) in ranks.enumerated() {
+            let total =
+                CGFloat(rank.reduce(0.0) { $0 + weight[$1] }) * perUnit
+                + nodeGap * CGFloat(rank.count - 1)
+            var y = metrics.padding + (plotHeight - total) / 2
+            for node in rank {
+                let tall = max(2 * metrics.scale, CGFloat(weight[node]) * perUnit)
+                frames[node] = CGRect(
+                    x: left + CGFloat(level) * columnGap, y: y, width: barWidth, height: tall)
+                y += tall + nodeGap
+            }
+        }
+
+        var decorations: [BlockBox.Decoration] = []
+        // Ribbons first, so a bar is never hidden by what leaves it. Each end
+        // walks down its own node, in the order the flows were written.
+        var leaving = [CGFloat](repeating: 0, count: diagram.nodes.count)
+        var arriving = [CGFloat](repeating: 0, count: diagram.nodes.count)
+        for flow in diagram.flows {
+            let thickness = CGFloat(flow.value) * perUnit
+            let from = frames[flow.from]
+            let to = frames[flow.to]
+            let startTop = from.minY + leaving[flow.from]
+            let endTop = to.minY + arriving[flow.to]
+            leaving[flow.from] += thickness
+            arriving[flow.to] += thickness
+            let waist = (from.maxX + to.minX) / 2
+            let ribbon = CGMutablePath()
+            ribbon.move(to: CGPoint(x: from.maxX, y: startTop))
+            ribbon.addCurve(
+                to: CGPoint(x: to.minX, y: endTop),
+                control1: CGPoint(x: waist, y: startTop),
+                control2: CGPoint(x: waist, y: endTop))
+            ribbon.addLine(to: CGPoint(x: to.minX, y: endTop + thickness))
+            ribbon.addCurve(
+                to: CGPoint(x: from.maxX, y: startTop + thickness),
+                control1: CGPoint(x: waist, y: endTop + thickness),
+                control2: CGPoint(x: waist, y: startTop + thickness))
+            ribbon.closeSubpath()
+            let colour = wheel[flow.from % wheel.count]
+            decorations.append(
+                .path(ribbon, color: colour.copy(alpha: 0.4) ?? colour, lineWidth: 0, filled: true))
+        }
+        for (index, frame) in frames.enumerated() {
+            decorations.append(
+                .fill(
+                    rect: frame, color: wheel[index % wheel.count],
+                    cornerRadius: 2 * metrics.scale))
+            let size = measure(labels[index])
+            // The name goes to the right of its bar, except where there is
+            // nothing to its right but the edge of the picture.
+            let rightwards = frame.maxX + 8 * metrics.scale + size.width <= left + content
+            decorations.append(
+                .glyphs(
+                    labels[index],
+                    origin: CGPoint(
+                        x: rightwards
+                            ? frame.maxX + 8 * metrics.scale
+                            : frame.minX - 8 * metrics.scale - size.width,
+                        y: frame.midY + size.height / 2 - descent(labels[index]))))
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    // MARK: - Treemap
+
+    /// How square a row of rectangles comes out, given the side it runs along.
+    ///
+    /// This is what "squarified" means: a row takes one more rectangle only
+    /// while doing so leaves every rectangle in it closer to square than
+    /// stopping would. Everything is in drawn area, not in the source's units.
+    private static func worstRatio(_ areas: [Double], along side: Double) -> Double {
+        guard let low = areas.min(), let high = areas.max(), low > 0, side > 0 else {
+            return .infinity
+        }
+        let sum = areas.reduce(0, +)
+        guard sum > 0 else { return .infinity }
+        return max(side * side * high / (sum * sum), sum * sum / (side * side * low))
+    }
+
+    /// Nested rectangles, each as big a share of its parent as its value is of
+    /// the parent's total.
+    private static func treemap(
+        _ map: Treemap, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.controlLabel, by: metrics.scale * 0.9)
+        let headFont = scaled(theme.bodyBold, by: metrics.scale * 0.9)
+        let side = min(420 * metrics.scale, max(280 * metrics.scale, width - metrics.padding * 2))
+        let tall = side * 0.62
+        let headRoom =
+            measure(text("Ay", font: headFont, color: theme.palette.text)).height + 6
+            * metrics.scale
+
+        var frames = [CGRect](repeating: .zero, count: map.nodes.count)
+        let left = max(metrics.padding, (width - side) / 2)
+        frames[0] = CGRect(x: left, y: metrics.padding, width: side, height: tall)
+
+        func squarify(_ children: [Int], in area: CGRect) {
+            let total = children.reduce(0.0) { $0 + map.nodes[$1].value }
+            guard total > 0, area.width > 1, area.height > 1 else { return }
+            let perUnit = Double(area.width) * Double(area.height) / total
+            var remaining = children.sorted { map.nodes[$0].value > map.nodes[$1].value }
+            var rest = area
+            while !remaining.isEmpty {
+                let short = Double(min(rest.width, rest.height))
+                guard short > 0 else { return }
+                var row: [Int] = []
+                var areas: [Double] = []
+                while let next = remaining.first {
+                    let area = map.nodes[next].value * perUnit
+                    if !row.isEmpty,
+                        worstRatio(areas + [area], along: short) > worstRatio(areas, along: short)
+                    {
+                        break
+                    }
+                    row.append(next)
+                    areas.append(area)
+                    remaining.removeFirst()
+                }
+                // The row runs along the shorter side, which is what keeps its
+                // rectangles from turning into slivers.
+                let rowTotal = areas.reduce(0, +)
+                let thickness = CGFloat(rowTotal / short)
+                let across = rest.width <= rest.height
+                var offset: CGFloat = 0
+                for (position, node) in row.enumerated() {
+                    let share = CGFloat(areas[position] / rowTotal) * CGFloat(short)
+                    frames[node] =
+                        across
+                        ? CGRect(
+                            x: rest.minX + offset, y: rest.minY, width: share, height: thickness)
+                        : CGRect(
+                            x: rest.minX, y: rest.minY + offset, width: thickness, height: share)
+                    offset += share
+                }
+                rest =
+                    across
+                    ? CGRect(
+                        x: rest.minX, y: rest.minY + thickness, width: rest.width,
+                        height: rest.height - thickness)
+                    : CGRect(
+                        x: rest.minX + thickness, y: rest.minY, width: rest.width - thickness,
+                        height: rest.height)
+            }
+            for child in children where !map.nodes[child].children.isEmpty {
+                var inner = frames[child].insetBy(dx: 3 * metrics.scale, dy: 3 * metrics.scale)
+                inner.origin.y += headRoom
+                inner.size.height -= headRoom
+                squarify(map.nodes[child].children, in: inner)
+            }
+        }
+        squarify(map.nodes[0].children, in: frames[0])
+
+        var decorations: [BlockBox.Decoration] = []
+        for (index, node) in map.nodes.enumerated() where index > 0 {
+            let frame = frames[index]
+            guard frame.width > 2, frame.height > 2 else { continue }
+            let colour = wheel[index % wheel.count]
+            let branch = !node.children.isEmpty
+            decorations.append(
+                .fill(
+                    rect: frame.insetBy(dx: 1, dy: 1),
+                    color: colour.copy(alpha: branch ? 0.18 : 0.55) ?? colour,
+                    cornerRadius: 3 * metrics.scale))
+            decorations.append(
+                .path(
+                    CGPath(rect: frame, transform: nil), color: theme.palette.background,
+                    lineWidth: 1.5, filled: false))
+            // A branch is named along its own top edge, above what it holds; a
+            // leaf gets its name and its number in the middle.
+            let words = branch ? node.label : "\(node.label)  \(number(node.value))"
+            let line = text(words, font: branch ? headFont : font, color: theme.palette.text)
+            let size = measure(line)
+            guard size.width <= frame.width - 6 * metrics.scale,
+                size.height <= frame.height - 4 * metrics.scale
+            else { continue }
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: frame.midX - size.width / 2,
+                        y: branch
+                            ? frame.minY + 4 * metrics.scale + size.height - descent(line)
+                            : frame.midY + size.height / 2 - descent(line))))
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: tall + metrics.padding * 2),
+            contentWidth: side
         )
     }
 

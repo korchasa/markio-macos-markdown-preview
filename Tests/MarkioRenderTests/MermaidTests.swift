@@ -817,6 +817,78 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    func testASankeyReadsItsFlowsAsCsv() throws {
+        guard
+            case .sankey(let diagram)? = MermaidDiagram.parse(
+                """
+                sankey-beta
+                Bytes,Scan,100
+                Scan,Parse,60
+                Scan,"Skipped, unread",40
+                """
+            )
+        else { return XCTFail("expected a Sankey diagram") }
+        XCTAssertEqual(diagram.nodes, ["Bytes", "Scan", "Parse", "Skipped, unread"])
+        XCTAssertEqual(diagram.flows.map(\.value), [100, 60, 40])
+        XCTAssertEqual(diagram.flows.map { [$0.from, $0.to] }, [[0, 1], [1, 2], [1, 3]])
+    }
+
+    func testATreemapSumsItsBranchesFromItsLeaves() throws {
+        guard
+            case .treemap(let map)? = MermaidDiagram.parse(
+                """
+                treemap-beta
+                "Parser"
+                    "Blocks": 42
+                    "Inline": 28
+                "Renderer"
+                    "Typesetting": 30
+                """
+            )
+        else { return XCTFail("expected a treemap") }
+        // Several roots are given a parent that is never itself drawn.
+        XCTAssertEqual(map.nodes[0].label, "")
+        XCTAssertEqual(map.nodes[0].value, 100)
+        XCTAssertEqual(
+            map.nodes.map(\.label), ["", "Parser", "Blocks", "Inline", "Renderer", "Typesetting"])
+        XCTAssertEqual(map.nodes[1].value, 70)
+        XCTAssertEqual(map.nodes[4].value, 30)
+    }
+
+    func testWhatTheFlowsRefuse() {
+        for source in [
+            // A flow back to where it came from makes the ranks meaningless.
+            "sankey-beta\nA,B,1\nB,A,1",
+            "sankey-beta\nA,A,1",
+            "sankey-beta\nA,B",
+            "sankey-beta\nA,B,none",
+            "sankey-beta\nA,B,0",
+            "sankey-beta",
+            // A node cannot both carry a number and hold other nodes.
+            "treemap-beta\n\"A\": 5\n    \"B\": 2",
+            "treemap-beta\n\"A\"\n    \"B\": none",
+            "treemap-beta\n\"A\"\n    \"B\": 0",
+            "treemap-beta",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    func testTheFlowsAreDrawnWhole() throws {
+        for source in [
+            "sankey-beta\nA,B,10\nB,C,6\nB,D,4",
+            "treemap-beta\n\"A\"\n    \"B\": 5\n    \"C\": 3",
+        ] {
+            let document = Document(text: "```mermaid\n\(source)\n```")
+            let layout = DocumentLayout(
+                document: document, theme: Theme(isDark: false), columnWidth: 520)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            XCTAssertTrue(box.segments.isEmpty, source)
+            XCTAssertGreaterThan(box.decorations.count, 6, source)
+            XCTAssertGreaterThan(box.height, 50, source)
+        }
+    }
+
     func testADrawnDiagramReplacesItsFenceButKeepsItsText() throws {
         let source = """
             ```mermaid

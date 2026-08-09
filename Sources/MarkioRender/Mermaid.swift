@@ -24,6 +24,8 @@ enum MermaidDiagram {
     case git(GitGraph)
     case packet(PacketDiagram)
     case kanban(KanbanBoard)
+    case sankey(SankeyDiagram)
+    case treemap(Treemap)
 
     static func parse(_ source: String) -> MermaidDiagram? {
         var lines: [Substring] = []
@@ -40,11 +42,18 @@ enum MermaidDiagram {
         }
         guard let header = lines.first else { return nil }
         let rest = Array(lines.dropFirst())
-        if header == "mindmap" || header == "kanban" {
+        if header == "mindmap" || header == "kanban" || header == "treemap-beta"
+            || header == "treemap"
+        {
             let body = zip(indents.dropFirst(), rest).map { (indent: $0, text: $1) }
-            return header == "mindmap"
-                ? Mindmap.parse(body).map(MermaidDiagram.mindmap)
-                : KanbanBoard.parse(body).map(MermaidDiagram.kanban)
+            switch header {
+            case "mindmap": return Mindmap.parse(body).map(MermaidDiagram.mindmap)
+            case "kanban": return KanbanBoard.parse(body).map(MermaidDiagram.kanban)
+            default: return Treemap.parse(body).map(MermaidDiagram.treemap)
+            }
+        }
+        if header == "sankey-beta" || header == "sankey" {
+            return SankeyDiagram.parse(rest).map(MermaidDiagram.sankey)
         }
         if header == "timeline" {
             return Timeline.parse(rest).map(MermaidDiagram.timeline)
