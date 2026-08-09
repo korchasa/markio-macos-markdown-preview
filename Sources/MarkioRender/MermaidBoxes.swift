@@ -246,7 +246,13 @@ enum RequirementDiagram {
                 let value = line[line.index(after: colon)...]
                     .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
                 guard !key.isEmpty, !value.isEmpty else { return nil }
-                diagram.boxes[box].compartments[0].append("\(key): \(value)")
+                // `risk: high` and `verifymethod: test` are chosen from a list
+                // of words the syntax spells in lower case; the prose ones —
+                // `text`, `docref` — are the author's own and stay as written.
+                let written =
+                    ["risk", "verifymethod", "type"].contains(key)
+                    ? value.prefix(1).uppercased() + value.dropFirst() : value
+                diagram.boxes[box].compartments[0].append("\(named(key)): \(written)")
                 continue
             }
             let words = line.split(separator: " ", omittingEmptySubsequences: true)
@@ -279,6 +285,17 @@ enum RequirementDiagram {
         guard open == nil, !diagram.boxes.isEmpty else { return nil }
         return diagram
     }
+
+    /// A property as a reader would write it rather than as the syntax spells
+    /// it: `verifymethod` is a keyword, `Verification` is a word.
+    private static func named(_ key: String) -> String {
+        switch key {
+        case "id": return "ID"
+        case "verifymethod": return "Verification"
+        case "docref": return "Doc ref"
+        default: return key.prefix(1).uppercased() + key.dropFirst()
+        }
+    }
 }
 
 // MARK: - Entity–relationship diagram
@@ -307,10 +324,12 @@ enum EntityDiagram {
                 }
                 let words = text.split(separator: " ", omittingEmptySubsequences: true)
                 guard words.count >= 2 else { return nil }
+                // Type first and then the name, the order the line is written
+                // in and the order the diagram is read in.
                 let keys = words.dropFirst(2).joined(separator: " ")
                 let member =
                     keys.isEmpty
-                    ? "\(words[1])  \(words[0])" : "\(words[1])  \(words[0])  \(keys)"
+                    ? "\(words[0])  \(words[1])" : "\(words[0])  \(words[1])  \(keys)"
                 diagram.boxes[box].compartments[0].append(member)
                 continue
             }

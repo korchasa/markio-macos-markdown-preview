@@ -162,9 +162,35 @@ final class MermaidTests: XCTestCase {
         )
         XCTAssertEqual(chart.groups.count, 1)
         XCTAssertEqual(chart.groups[0].title, "Doing the work")
-        // A node belongs to the frame it is first written in, and `Read` was
-        // already named on the line above.
-        XCTAssertEqual(chart.groups[0].members.map { chart.nodes[$0].id }, ["Write"])
+        // A node belongs to the frame it is written inside. `Read` was named on
+        // the line above as well, and that does not take it out of the frame —
+        // the frame is where the author drew it.
+        XCTAssertEqual(chart.groups[0].members.map { chart.nodes[$0].id }, ["Read", "Write"])
+        // `Start` and `Done` were never written inside, so they stay outside.
+        XCTAssertEqual(chart.nodes.map(\.id), ["Start", "Read", "Write", "Done"])
+    }
+
+    /// One node cannot stand in two frames, so the first frame to use it keeps
+    /// it and the second draws without it.
+    func testANodeUsedByTwoFramesStaysInTheFirst() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                flowchart TD
+                    subgraph one
+                        a --> shared
+                    end
+                    subgraph two
+                        shared --> b
+                    end
+                """
+            )
+        )
+        XCTAssertEqual(
+            chart.groups.map { $0.members.map { chart.nodes[$0].id } },
+            [
+                ["a", "shared"], ["b"],
+            ])
     }
 
     func testStylesReachTheNodesTheyName() throws {
@@ -406,8 +432,9 @@ final class MermaidTests: XCTestCase {
             )
         )
         XCTAssertEqual(diagram.boxes.map(\.name), ["CUSTOMER", "ORDER", "LINE-ITEM"])
-        // The name is written before its type, the way a table reads.
-        XCTAssertEqual(diagram.boxes[0].compartments, [["email  string  PK"]])
+        // Type, then name, then what the line said about it — the order it is
+        // written in.
+        XCTAssertEqual(diagram.boxes[0].compartments, [["string  email  PK"]])
         XCTAssertEqual(diagram.links.map(\.fromEnd), [.one, .oneOrMore])
         XCTAssertEqual(diagram.links.map(\.toEnd), [.zeroOrMore, .oneOrMore])
         XCTAssertEqual(diagram.links.map(\.dashed), [false, true])
@@ -795,8 +822,10 @@ final class MermaidTests: XCTestCase {
         else { return XCTFail("expected a requirement diagram") }
         XCTAssertEqual(diagram.boxes.map(\.name), ["speed_req", "bench"])
         XCTAssertEqual(diagram.boxes.map(\.stereotype), ["requirement", "element"])
+        // The keywords are written as words: `id` is an ID, `high` a risk that
+        // starts a sentence.
         XCTAssertEqual(
-            diagram.boxes[0].compartments[0], ["id: 1", "text: opens fast.", "risk: high"])
+            diagram.boxes[0].compartments[0], ["ID: 1", "Text: opens fast.", "Risk: High"])
         XCTAssertEqual(diagram.links.count, 1)
         XCTAssertEqual(diagram.links[0].label, "verifies")
         // The arrow runs from the thing that verifies to the thing verified.
@@ -913,8 +942,10 @@ final class MermaidTests: XCTestCase {
     }
 
     func testAC4DiagramBecomesAFlowchartWithC4Shapes() throws {
-        let chart = try XCTUnwrap(
-            flowchart(
+        // The `title` line names the picture, so what comes back is a named
+        // diagram with the flowchart inside it.
+        guard
+            case .titled("Orders", .flowchart(let chart))? = MermaidDiagram.parse(
                 """
                 C4Context
                   title Orders
@@ -930,7 +961,7 @@ final class MermaidTests: XCTestCase {
                   BiRel(web, bank, "Settles")
                 """
             )
-        )
+        else { return XCTFail("expected a named C4 diagram") }
         XCTAssertEqual(chart.nodes.map(\.id), ["customer", "web", "db", "queue", "bank"])
         XCTAssertEqual(
             chart.nodes.map(\.shape), [.stadium, .rectangle, .cylinder, .subroutine, .rectangle])

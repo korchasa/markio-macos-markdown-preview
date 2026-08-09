@@ -39,8 +39,11 @@ enum C4Diagram {
     /// Something outside the system under discussion, drawn paler than the rest.
     private static let outside = Flowchart.Colour(red: 0.90, green: 0.90, blue: 0.92)
 
-    static func parse(_ lines: [Substring]) -> Flowchart? {
+    /// The diagram and the name its `title` line gave it, which is drawn above
+    /// it like any other diagram's.
+    static func parse(_ lines: [Substring]) -> (title: String, chart: Flowchart)? {
         var chart = Flowchart(direction: .down, nodes: [], edges: [], groups: [])
+        var title = ""
         var identifiers: [String: Int] = [:]
         // The boundary each open brace belongs to, so `}` closes the right one.
         var open: [Int] = []
@@ -60,7 +63,10 @@ enum C4Diagram {
                 open.removeLast()
                 continue
             }
-            if line.hasPrefix("title ") { continue }
+            if line.hasPrefix("title ") {
+                title = line.dropFirst("title ".count).trimmingCharacters(in: .whitespaces)
+                continue
+            }
             // `UpdateElementStyle` and friends restyle a diagram that is already
             // drawn, which is not something this reads.
             guard !line.hasPrefix("Update") else { return nil }
@@ -113,7 +119,7 @@ enum C4Diagram {
             return nil
         }
         guard open.isEmpty, !chart.nodes.isEmpty else { return nil }
-        return chart
+        return (title, chart)
     }
 
     /// The comma-separated arguments inside `Keyword(…)`, quotes removed.

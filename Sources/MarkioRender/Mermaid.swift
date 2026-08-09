@@ -168,7 +168,10 @@ enum MermaidDiagram {
         if C4Diagram.headers.contains(String(header)) {
             // A C4 diagram is elements, boundaries and relations, which is a
             // flowchart with its shapes chosen by what each element is.
-            return C4Diagram.parse(rest).map(MermaidDiagram.flowchart)
+            return C4Diagram.parse(rest).map { read in
+                read.title.isEmpty
+                    ? .flowchart(read.chart) : .titled(read.title, .flowchart(read.chart))
+            }
         }
         if header == "requirementDiagram" {
             return RequirementDiagram.parse(rest).map(MermaidDiagram.boxes)
@@ -606,8 +609,13 @@ struct Flowchart {
         } else {
             nodes.append(Node(id: id, label: label ?? id, shape: shape ?? .rectangle))
             index = nodes.count - 1
-            // A node belongs to the frame it was first written in.
-            if let group = openGroup { groups[group].members.append(index) }
+        }
+        // A node belongs to the frame it is written inside, whether or not that
+        // is where it was first named: `c1-->a2` above the frames still leaves
+        // `a2` a member of the frame that goes on to use it. The first frame to
+        // use a node keeps it — one node cannot sit in two frames.
+        if let group = openGroup, !groups.contains(where: { $0.members.contains(index) }) {
+            groups[group].members.append(index)
         }
         if let name {
             guard let style = classes[name] else { return nil }

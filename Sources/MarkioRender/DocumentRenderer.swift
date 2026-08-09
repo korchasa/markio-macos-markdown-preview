@@ -107,8 +107,15 @@ public enum DocumentRenderer {
         source: String, theme: Theme, width: CGFloat, scale: CGFloat = 2
     ) -> CGImage? {
         guard let parsed = MermaidDiagram.parse(source) else { return nil }
-        let drawing = MermaidLayout.draw(parsed, theme: theme, width: width)
-        let size = CGSize(width: width, height: drawing.size.height)
+        var drawing = MermaidLayout.draw(parsed, theme: theme, width: width)
+        // A picture is centred in the width it is given, so a small diagram
+        // asked for at a large one comes back sitting in a field of empty card.
+        // Here the width is a limit and not a frame — the enlarged window and
+        // Copy PNG both want the picture and nothing else — so a drawing
+        // narrower than the room is drawn again at its own size.
+        let tight = min(width, drawing.contentWidth + 32)
+        if tight < width { drawing = MermaidLayout.draw(parsed, theme: theme, width: tight) }
+        let size = CGSize(width: tight, height: drawing.size.height)
         guard size.width > 0, size.height > 0,
             let context = CGContext(
                 data: nil,

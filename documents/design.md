@@ -279,24 +279,44 @@ rule above forbids, so the fence stays source.
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
 — then each rank is measured, centred against the widest, and laid along the
-rank axis. All four directions are the same routine: `TD` and `LR` swap the
-axes, `BT` and `RL` turn the rank axis over once every box is placed. Edges are
-drawn between box centres and clipped to the boxes, so an edge across a rank or
-back up the graph needs no special case; their words are written last, over the
-nodes, because an edge that skips a rank passes over whatever stands between.
+rank axis. Relaxing over a cycle terminates but settles on a wrong answer: every
+node in the loop is pushed to the same late rank, and a state machine that
+returns to its start collapses into one row. So a depth-first walk marks the
+edges that close a cycle first, and the ranking is run on the graph without
+them; the edges themselves are still drawn. All four directions are the same
+routine: `TD` and `LR` swap the axes, `BT` and `RL` turn the rank axis over once
+every box is placed.
+
+Edges are drawn between box centres and clipped to the boxes, so an edge across
+a rank or back up the graph needs no special case. Two straight lines between
+the same pair of boxes would land on top of each other, and a line drawn to a
+box three ranks away would cut through everything in between, so an edge is
+bowed: it is given a lane — the pairs are counted, and the *n*th edge between
+the same two boxes is offset by its place in that count — and then pushed
+sideways until it clears the box frames it would otherwise cross. The curve is
+flattened into a path, which is what lets a dashed edge keep an even rhythm
+around the bend and an arrowhead sit square on the line's real direction. Their
+words are written last, over the nodes, because an edge that skips a rank passes
+over whatever stands between, and the line is broken around each word so the two
+never overlap.
 
 A subgraph is given a strip of the cross axis to itself — the same strip on
 every rank — and that is what makes its frame enclose its own members and
 nothing else: no node outside the group is ever placed in the strip. The strips
 are ordered by the rank their contents first appear on, so the graph still reads
-from its first node onwards.
+from its first node onwards. A node belongs to the frame it is *written* inside,
+which is not always the frame that named it first: a node mentioned by an edge
+in one subgraph and then declared inside another belongs to the second, because
+that is where its author drew it.
 
 A class diagram and an entity–relationship diagram are one layout: titled boxes
 with rows in them, ranked the same way a flowchart is, joined by lines whose
 ends carry the meaning — a hollow triangle for inheritance, a diamond for
 composition, a crow's foot for how many. They differ only in how they are read
 and in which ends their lines may have, which is why `BoxDiagram` is shared and
-`ClassDiagram`/`EntityDiagram` are two readers of it.
+`ClassDiagram`/`EntityDiagram` are two readers of it. An entity's attribute is
+written type first and name second, the order it is declared in: `string email`
+and not `email string`, which would say the attribute is called `string`.
 
 A mindmap is a tree, and depth alone decides the column, so every node the same
 number of steps from the root lines up. A parent is then centred on the children
@@ -313,9 +333,11 @@ it is a stack of cards below. The colour comes from the section where there is
 one and from the column where there is not.
 
 A quadrant chart is a square cut in four, with each quarter's name along its own
-top edge rather than through the middle of it, which is where the points are; a
-point's name goes to the right of its dot, or to the left when the right would
-run out of the square. An xy chart is bars and lines over named categories, and
+top edge rather than through the middle of it, which is where the points are. A
+point's name goes to the right of its dot, and if that name would leave the
+square or land on something already drawn it is tried on the left and then a
+line up or down, in that order — every dot is placed before any name, so a name
+is never allowed to cover a point it does not belong to. An xy chart is bars and lines over named categories, and
 several bar series share a category by each taking a slice of it. Its y axis is
 named above itself rather than turned on its side: rotated glyphs are the one
 thing this drawing has no way to place.
@@ -341,7 +363,13 @@ than a bar nobody would see.
 A packet diagram is a row per word of bits: the fields are checked for
 contiguity as they are read, so a picture with a hole in it is refused rather
 than drawn with a gap nobody can measure. A field that spans a word boundary is
-drawn as one box per row.
+drawn as one box per row. A bit is wide enough that the longest field name fits
+inside its own box, so a header whose fields are named at all is drawn wider
+than the bits alone would need. The bit numbers over the boxes are placed after
+the boxes are: the number that ends a row is written first, then each remaining
+one only where it does not touch a number already there — a 32-bit word cannot
+show all thirty-two of its numbers at a readable size, and a row of numbers
+printed over each other measures nothing.
 
 A kanban board is a column per list and a card per item, and the indentation is
 what separates the two — the first line's indent is the column level, and
@@ -351,26 +379,39 @@ its left edge.
 
 A requirement diagram is read into the same `BoxDiagram` a class diagram uses: a
 requirement is a titled box with its id, its text and its verification method in
-the rows, and `satisfies`/`verifies` and the rest are the lines between them.
+the rows, and `satisfies`/`verifies` and the rest are the lines between them. The
+rows are written the way a reader would say them rather than the way the source
+spells them — `verifymethod: Test` becomes `Verification: Test` — because the
+keyword is the source's grammar and the box is what a person reads.
 
 A Sankey diagram ranks its nodes the way a flowchart does and then gives each one
 a bar as tall as the larger of what reaches it and what leaves it. The ribbons
 are drawn before the bars, each leaving and arriving in the order the flows were
 written, so a bar is never hidden under what leaves it. A flow that returns to
-where it came from would make the ranks meaningless, so a cycle is refused.
+where it came from would make the ranks meaningless, so a cycle is refused. Each
+bar is labelled with its name and its total, because a diagram whose whole
+subject is how much goes where should not make its reader estimate the amounts
+from the height of a ribbon.
 
 A treemap is squarified: a row takes one more rectangle only while doing so
 leaves every rectangle in it closer to square than stopping would. A branch's
 value is the sum of what it holds, summed upwards over the flat array, which
-already has every child after its parent. Several roots are given a parent that
-is never itself drawn.
+already has every child after its parent. Every rectangle is labelled with its
+name and its value, branches included; a named root is given a head row across
+the top so its own total is visible above the parts it splits into. Several
+roots are given a parent that is never itself drawn, and that parent, having no
+name, gets no head row.
 
 A C4 diagram has no layout of its own — it is read into a `Flowchart` whose
 shapes come from what each element is: a person is a stadium, a `*Db` a cylinder,
 a `*Queue` a subroutine, and anything `_Ext` is filled paler because it is
 outside the system under discussion. The kind, the name and the description are
 three lines of one label, which is what multi-line labels were added for and what
-`<br/>` in an ordinary flowchart now gets as well.
+`<br/>` in an ordinary flowchart now gets as well. A C4 diagram names itself on a
+`title` line rather than in a preamble, so `C4Diagram.parse` hands that name back
+beside the chart and the reader wraps the pair in the same `titled` case a
+preamble produces — one way of drawing a diagram's name, whichever way it was
+written.
 
 An architecture diagram takes its grid from its edges. In that language
 `db:L -- R:server` is not decoration — it says the server stands to the left of
@@ -418,6 +459,9 @@ messages and notes themselves — because they are painted in that order: a fram
 is behind its contents, and a bar is behind the arrows that start and end it. A
 block's frame cannot be drawn until its contents have been placed, which is why
 the whole body is laid out before anything below the participant boxes appears.
+An arm of a block carries the word that opened it and its condition; an arm
+written without a condition still gets the word — `else` in an `alt`, `and` in a
+`par` — because a divider with nothing beside it reads as an accident.
 
 A diagram in the reading column is as wide as the column, which is why clicking
 one opens `DiagramWindow`: the same source laid out again at the width of the
@@ -426,6 +470,10 @@ and a graph drawn smaller to fit the column has ranks it could have spread out.
 Copy PNG goes through the same renderer. Neither keeps a drawing beside the
 block: re-reading the fence costs a parse of a few lines, and a second copy of
 every picture on screen would cost exactly what this viewer refuses to spend.
+In both, the width asked for is a limit and not a frame: a picture is centred in
+the room it is given, so a small diagram in a wide window would come back
+sitting in a field of empty card. A drawing narrower than the room is laid out a
+second time at its own size, and what leaves is the picture and nothing else.
 
 Everything it produces is `BlockBox.Decoration` — filled and stroked paths, and
 the glyph runs added for formulas — so the diagram draws in the window and in

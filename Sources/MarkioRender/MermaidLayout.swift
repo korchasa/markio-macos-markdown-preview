@@ -29,7 +29,7 @@ enum MermaidLayout {
         var nodePaddingY: CGFloat { 9 * scale }
         var minimumNodeWidth: CGFloat { 54 * scale }
         var rankGap: CGFloat { 44 * scale }
-        var siblingGap: CGFloat { 26 * scale }
+        var siblingGap: CGFloat { 32 * scale }
         var arrowLength: CGFloat { 9 * scale }
         var arrowWidth: CGFloat { 7 * scale }
         var messageGap: CGFloat { 34 * scale }
@@ -1287,7 +1287,13 @@ enum MermaidLayout {
         let usable = max(40 * metrics.scale, plotHeight - nodeGap * CGFloat(tallestRank - 1))
         let perUnit = busiest > 0 ? usable / CGFloat(busiest) : 1
 
-        let labels = diagram.nodes.map { text($0, font: font, color: theme.palette.text) }
+        // A flow diagram is drawn to be read for its sizes, so each name carries
+        // the number the author gave it rather than leaving it to the eye.
+        let labels = diagram.nodes.indices.map { index in
+            text(
+                "\(diagram.nodes[index])  \(number(weight[index]))", font: font,
+                color: theme.palette.text)
+        }
         let widest = labels.map { measure($0).width }.max() ?? 0
         let columnGap = max(90 * metrics.scale, widest + 24 * metrics.scale)
         let content = CGFloat(ranks.count - 1) * columnGap + barWidth + widest + 8 * metrics.scale
@@ -1450,10 +1456,20 @@ enum MermaidLayout {
                 squarify(map.nodes[child].children, in: inner)
             }
         }
-        squarify(map.nodes[0].children, in: frames[0])
+        // The outermost name is a level of the map like any other, so it gets
+        // its own head row and its children are drawn inside it. The one root
+        // that is not drawn is the nameless parent invented for a map that was
+        // written with several.
+        var inside = frames[0]
+        if !map.nodes[0].label.isEmpty {
+            inside = inside.insetBy(dx: 3 * metrics.scale, dy: 3 * metrics.scale)
+            inside.origin.y += headRoom
+            inside.size.height -= headRoom
+        }
+        squarify(map.nodes[0].children, in: inside)
 
         var decorations: [BlockBox.Decoration] = []
-        for (index, node) in map.nodes.enumerated() where index > 0 {
+        for (index, node) in map.nodes.enumerated() where index > 0 || !node.label.isEmpty {
             let frame = frames[index]
             guard frame.width > 2, frame.height > 2 else { continue }
             let colour = wheel[index % wheel.count]
@@ -1468,8 +1484,10 @@ enum MermaidLayout {
                     CGPath(rect: frame, transform: nil), color: theme.palette.background,
                     lineWidth: 1.5, filled: false))
             // A branch is named along its own top edge, above what it holds; a
-            // leaf gets its name and its number in the middle.
-            let words = branch ? node.label : "\(node.label)  \(number(node.value))"
+            // leaf gets its name in the middle. Both carry their number: a
+            // branch's is the sum of what it holds, and that is what the map is
+            // about.
+            let words = "\(node.label)  \(number(node.value))"
             let line = text(words, font: branch ? headFont : font, color: theme.palette.text)
             let size = measure(line)
             guard size.width <= frame.width - 6 * metrics.scale,
@@ -1499,7 +1517,20 @@ enum MermaidLayout {
     ) -> Drawing {
         let font = scaled(theme.controlLabel, by: metrics.scale * 0.85)
         let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
-        let bit = 15 * metrics.scale
+        // Every field has to hold its own name, so the field that needs the most
+        // room per bit decides how wide a bit is drawn. A row of one-bit flags
+        // is what forces this: at a fixed width their names do not fit, and a
+        // packet drawn with the names left out is not the packet that was
+        // written. The stretch stops at two and a half times, past which one
+        // name would decide the size of the whole picture.
+        let baseBit = 15 * metrics.scale
+        var bit = baseBit
+        for field in packet.fields {
+            let words = measure(text(field.label, font: font, color: theme.palette.text)).width
+            let bits = CGFloat(field.last - field.first + 1)
+            guard bits > 0 else { continue }
+            bit = max(bit, min(baseBit * 2.5, (words + 6 * metrics.scale) / bits))
+        }
         let rowHeight = 30 * metrics.scale
         let numberRoom =
             measure(text("00", font: font, color: theme.palette.text)).height
@@ -1556,6 +1587,7 @@ enum MermaidLayout {
                 )
             )
         }
+        var wantedNumbers: [(row: Int, value: Int, x: CGFloat, opening: Bool, top: CGFloat)] = []
         for piece in pieces {
             let top = metrics.padding + titleRoom + CGFloat(piece.row) * (rowHeight + numberRoom)
             let frame = CGRect(
@@ -1593,15 +1625,45 @@ enum MermaidLayout {
                 (piece.row * packet.bitsPerRow + piece.first, frame.minX),
                 (piece.row * packet.bitsPerRow + piece.last, frame.maxX),
             ] {
-                let line = text("\(number)", font: font, color: theme.palette.secondaryText)
+                wantedNumbers.append(
+                    (row: piece.row, value: number, x: x, opening: x == frame.minX, top: top))
+            }
+        }
+        // A row of one-bit fields wants more numbers over it than the row is
+        // wide, and printed as asked they run into each other and become a
+        // smear. The two ends of the row are placed first — they are what says
+        // how long the row is — and after them each number is placed only where
+        // it is still clear of the ones already there.
+        for row in 0..<rows {
+            var placed: [CGRect] = []
+            let candidates = wantedNumbers.filter { $0.row == row }
+            let ends = row * packet.bitsPerRow
+            let ordered = candidates.sorted { a, b in
+                func rank(_ item: (row: Int, value: Int, x: CGFloat, opening: Bool, top: CGFloat))
+                    -> Int
+                {
+                    item.value == ends || item.value == ends + packet.bitsPerRow - 1 ? 0 : 1
+                }
+                return (rank(a), a.x) < (rank(b), b.x)
+            }
+            for candidate in ordered {
+                let line = text(
+                    "\(candidate.value)", font: font, color: theme.palette.secondaryText)
                 let size = measure(line)
-                let anchor = x == frame.minX ? x + 1 : x - 1 - size.width
+                let anchor =
+                    candidate.opening ? candidate.x + 1 : candidate.x - 1 - size.width
+                let originX = min(left + content - size.width, max(left, anchor))
+                let box = CGRect(
+                    x: originX - 2 * metrics.scale, y: 0, width: size.width + 4 * metrics.scale,
+                    height: 1)
+                guard !placed.contains(where: { $0.intersects(box) }) else { continue }
+                placed.append(box)
                 decorations.append(
                     .glyphs(
                         line,
                         origin: CGPoint(
-                            x: min(left + content - size.width, max(left, anchor)),
-                            y: top + numberRoom - 3 * metrics.scale - descent(line))))
+                            x: originX,
+                            y: candidate.top + numberRoom - 3 * metrics.scale - descent(line))))
             }
         }
         return Drawing(
@@ -1825,6 +1887,10 @@ enum MermaidLayout {
         decorations.append(
             .path(frame, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
 
+        // What is already on the square: every dot, and every name written so
+        // far. A name goes where it runs into neither.
+        var written: [CGRect] = []
+        var centres: [CGPoint] = []
         for point in chart.points {
             // y grows up the page here and down everywhere else, so a point
             // written at 1 belongs at the top.
@@ -1832,25 +1898,51 @@ enum MermaidLayout {
                 x: plot.minX + CGFloat(point.x) * side,
                 y: plot.maxY - CGFloat(point.y) * side
             )
+            centres.append(centre)
             let dot = CGRect(
                 x: centre.x - 5 * metrics.scale, y: centre.y - 5 * metrics.scale,
                 width: 10 * metrics.scale, height: 10 * metrics.scale)
+            written.append(dot)
             decorations.append(
                 .path(
                     CGPath(ellipseIn: dot, transform: nil), color: wheel[0], lineWidth: 0,
                     filled: true))
+        }
+        for (index, point) in chart.points.enumerated() {
+            let centre = centres[index]
             let line = text(point.label, font: font, color: theme.palette.text)
             let size = measure(line)
             // Beside its dot, and on the other side of it when the name would
-            // otherwise run out of the square.
-            let right = centre.x + 8 * metrics.scale
-            let x =
-                right + size.width <= plot.maxX ? right : centre.x - 8 * metrics.scale - size.width
+            // otherwise run out of the square. Where that place is already taken
+            // by another name — two campaigns a few points apart — the name
+            // steps a line up or down until it is clear, because two names on
+            // top of each other say less than one.
+            let step = size.height + 3 * metrics.scale
+            var places: [CGPoint] = []
+            for lift in [0, -step, step, -step * 2, step * 2] {
+                let right = centre.x + 8 * metrics.scale
+                let left = centre.x - 8 * metrics.scale - size.width
+                places.append(CGPoint(x: right, y: centre.y + lift))
+                places.append(CGPoint(x: left, y: centre.y + lift))
+            }
+            var origin = places[0]
+            for place in places {
+                let x = max(plot.minX, min(place.x, plot.maxX - size.width))
+                let box = CGRect(
+                    x: x, y: place.y - size.height / 2, width: size.width, height: size.height)
+                guard plot.contains(box) else { continue }
+                if !written.contains(where: { $0.intersects(box.insetBy(dx: -2, dy: -1)) }) {
+                    origin = CGPoint(x: x, y: place.y)
+                    written.append(box)
+                    break
+                }
+            }
             decorations.append(
                 .glyphs(
                     line,
                     origin: CGPoint(
-                        x: max(plot.minX, x), y: centre.y + size.height / 2 - descent(line))))
+                        x: max(plot.minX, min(origin.x, plot.maxX - size.width)),
+                        y: origin.y + size.height / 2 - descent(line))))
         }
 
         for (words, position) in [
@@ -2027,9 +2119,15 @@ enum MermaidLayout {
         )
     }
 
-    /// A number for an axis: no decimal point where it does not need one.
+    /// A number as written: no decimal point where it does not need one, and no
+    /// trailing zeros where it does. Two places is as far as it goes, which is
+    /// as far as the numbers in a diagram ever mean anything.
     private static func number(_ value: Double) -> String {
-        value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
+        if value == value.rounded() { return "\(Int(value))" }
+        var written = String(format: "%.2f", value)
+        while written.hasSuffix("0") { written.removeLast() }
+        if written.hasSuffix(".") { written.removeLast() }
+        return written
     }
 
     // MARK: - Git graph
@@ -2381,6 +2479,11 @@ enum MermaidLayout {
         for edge in chart.edges where !edge.label.isEmpty {
             pairs[pair(edge), default: 0] += 1
         }
+        // Every edge between the same two nodes, labelled or not: two states
+        // that go back and forth would otherwise be one line drawn twice.
+        var lanes: [Int: Int] = [:]
+        for edge in chart.edges { lanes[pair(edge), default: 0] += 1 }
+        var lanesSeen: [Int: Int] = [:]
         var seen: [Int: Int] = [:]
         for edge in chart.edges {
             guard edge.from < boxes.count, edge.to < boxes.count else { continue }
@@ -2395,9 +2498,16 @@ enum MermaidLayout {
                 let count = pairs[key] ?? 1
                 side = CGFloat(index) - CGFloat(count - 1) / 2
             }
+            let key = pair(edge)
+            let taken = lanesSeen[key, default: 0]
+            lanesSeen[key] = taken + 1
+            let lane = CGFloat(taken) - CGFloat((lanes[key] ?? 1) - 1) / 2
+            let obstacles = boxes.indices
+                .filter { $0 != edge.from && $0 != edge.to }
+                .map { boxes[$0].frame }
             let drawn = self.edge(
                 edge, from: boxes[edge.from], to: boxes[edge.to], theme: theme, metrics: metrics,
-                order: order, side: side)
+                order: order, side: side, lane: lane, obstacles: obstacles)
             decorations += drawn.shaft
             labels += drawn.label
         }
@@ -2421,9 +2531,10 @@ enum MermaidLayout {
 
     private static func ranks(count: Int, edges: [(from: Int, to: Int)]) -> [[Int]] {
         var rank = [Int](repeating: 0, count: count)
+        let forward = withoutBackEdges(count: count, edges: edges)
         for _ in 0..<count {
             var moved = false
-            for edge in edges where edge.from < rank.count && edge.to < rank.count {
+            for edge in forward where edge.from < rank.count && edge.to < rank.count {
                 if rank[edge.to] < rank[edge.from] + 1 {
                     rank[edge.to] = rank[edge.from] + 1
                     moved = true
@@ -2437,6 +2548,56 @@ enum MermaidLayout {
             grouped[level].append(index)
         }
         return grouped.filter { !$0.isEmpty }
+    }
+
+    /// The graph with the edges that close a cycle left out.
+    ///
+    /// Relaxing over a cycle terminates, but the answer it settles on is the
+    /// order the edges happened to be written in: a state machine with
+    /// `Still --> Moving` and `Moving --> Still` came out with `Moving` above
+    /// the state that reaches it, and the arrow from the start ran through it.
+    /// A walk from the entry points settles that instead — an edge back to a
+    /// node the walk is still inside is the one that closes the cycle, and it is
+    /// still drawn, just not counted when the ranks are worked out.
+    private static func withoutBackEdges(count: Int, edges: [(from: Int, to: Int)])
+        -> [(from: Int, to: Int)]
+    {
+        var out = [[Int]](repeating: [], count: count)
+        for (index, edge) in edges.enumerated()
+        where edge.from < count && edge.to < count {
+            out[edge.from].append(index)
+        }
+        var incoming = [Int](repeating: 0, count: count)
+        for edge in edges where edge.from < count && edge.to < count { incoming[edge.to] += 1 }
+        // 0 not walked, 1 on the walk, 2 done.
+        var state = [Int](repeating: 0, count: count)
+        var back = Set<Int>()
+        // Entry points first, so the walk starts where the graph does.
+        let order = (0..<count).filter { incoming[$0] == 0 } + (0..<count)
+        for root in order where state[root] == 0 {
+            var stack: [(node: Int, next: Int)] = [(root, 0)]
+            state[root] = 1
+            while let top = stack.last {
+                if top.next == out[top.node].count {
+                    state[top.node] = 2
+                    stack.removeLast()
+                    continue
+                }
+                stack[stack.count - 1].next += 1
+                let index = out[top.node][top.next]
+                let target = edges[index].to
+                switch state[target] {
+                case 0:
+                    state[target] = 1
+                    stack.append((target, 0))
+                case 1:
+                    back.insert(index)
+                default:
+                    break
+                }
+            }
+        }
+        return edges.enumerated().filter { !back.contains($0.offset) }.map(\.element)
     }
 
     /// The titled frame a `subgraph` draws around its own nodes.
@@ -2650,29 +2811,203 @@ enum MermaidLayout {
         }
     }
 
+    /// How far to one side a line has to bow: enough to clear whatever stands
+    /// on it, plus its own lane when two nodes are joined more than once.
+    ///
+    /// The side chosen is whichever needs less deviation. The clearance is asked
+    /// for at the apex of the curve, which the obstacle usually sits near but
+    /// not exactly at, so it is taken with room to spare.
+    private static func bow(
+        from start: CGPoint, to end: CGPoint, lane: CGFloat, obstacles: [CGRect], metrics: Metrics
+    ) -> CGFloat {
+        let laneOffset = lane * metrics.siblingGap
+        let across = normal(from: start, to: end)
+        let margin = 10 * metrics.scale
+        var plus: CGFloat = 0
+        var minus: CGFloat = 0
+        for rect in obstacles where crosses(rect, from: start, to: end) {
+            var high = -CGFloat.greatestFiniteMagnitude
+            var low = CGFloat.greatestFiniteMagnitude
+            for corner in [
+                CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY),
+            ] {
+                let offset = (corner.x - start.x) * across.x + (corner.y - start.y) * across.y
+                high = max(high, offset)
+                low = min(low, offset)
+            }
+            plus = max(plus, (high + margin) * 1.6)
+            minus = max(minus, (margin - low) * 1.6)
+        }
+        guard plus > 0 || minus > 0 else { return laneOffset }
+        return laneOffset + (plus <= minus ? plus : -minus)
+    }
+
+    /// Whether a straight line from one point to another passes over a box.
+    private static func crosses(_ rect: CGRect, from start: CGPoint, to end: CGPoint) -> Bool {
+        let box = rect.insetBy(dx: -1, dy: -1)
+        guard
+            box.intersects(
+                CGRect(
+                    x: min(start.x, end.x), y: min(start.y, end.y),
+                    width: abs(end.x - start.x), height: abs(end.y - start.y)
+                ).insetBy(dx: -1, dy: -1))
+        else { return false }
+        let steps = 48
+        for step in 0...steps {
+            let t = CGFloat(step) / CGFloat(steps)
+            let point = CGPoint(
+                x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t)
+            if box.contains(point) { return true }
+        }
+        return false
+    }
+
+    private static func midpoint(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+        CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+    }
+
+    /// The unit vector at a right angle to the line from one point to another.
+    private static func normal(from start: CGPoint, to end: CGPoint) -> CGPoint {
+        let direction = normalized(CGPoint(x: end.x - start.x, y: end.y - start.y))
+        return CGPoint(x: -direction.y, y: direction.x)
+    }
+
+    /// A quadratic curve as a run of points. Everything downstream — dashes,
+    /// the arrowhead, where the words sit — walks the line, so it is flattened
+    /// once here rather than being asked of `CGPath` afterwards.
+    private static func samples(from start: CGPoint, through control: CGPoint, to end: CGPoint)
+        -> [CGPoint]
+    {
+        let steps = 24
+        return (0...steps).map { step in
+            let t = CGFloat(step) / CGFloat(steps)
+            let u = 1 - t
+            return CGPoint(
+                x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+                y: u * u * start.y + 2 * u * t * control.y + t * t * end.y
+            )
+        }
+    }
+
+    private static func length(of points: [CGPoint]) -> CGFloat {
+        zip(points, points.dropFirst()).reduce(0) { $0 + distance($1.0, $1.1) }
+    }
+
+    /// The same run of points with its tail cut back, which is where an
+    /// arrowhead goes.
+    private static func shortened(_ points: [CGPoint], by amount: CGFloat) -> [CGPoint] {
+        guard amount > 0, points.count >= 2 else { return points }
+        var remaining = amount
+        var out = points
+        while out.count >= 2 {
+            let last = out[out.count - 1]
+            let previous = out[out.count - 2]
+            let segment = distance(previous, last)
+            if segment > remaining {
+                let t = (segment - remaining) / segment
+                out[out.count - 1] = CGPoint(
+                    x: previous.x + (last.x - previous.x) * t,
+                    y: previous.y + (last.y - previous.y) * t)
+                return out
+            }
+            remaining -= segment
+            out.removeLast()
+        }
+        return points
+    }
+
+    /// Where a given distance along the line falls, and which way the line is
+    /// going there.
+    private static func point(along points: [CGPoint], at distance: CGFloat)
+        -> (point: CGPoint, heading: CGPoint)
+    {
+        var remaining = distance
+        for (a, b) in zip(points, points.dropFirst()) {
+            let segment = self.distance(a, b)
+            guard segment > 0 else { continue }
+            if remaining <= segment {
+                let t = remaining / segment
+                return (
+                    CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t),
+                    normalized(CGPoint(x: b.x - a.x, y: b.y - a.y))
+                )
+            }
+            remaining -= segment
+        }
+        let last = points[points.count - 1]
+        let previous = points[max(0, points.count - 2)]
+        return (last, normalized(CGPoint(x: last.x - previous.x, y: last.y - previous.y)))
+    }
+
+    /// A run of points drawn as dashes, the gaps carried from one segment to the
+    /// next so a curve dashes as evenly as a straight line does.
+    private static func dashed(along points: [CGPoint], dash: CGFloat, gap: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        var travelled: CGFloat = 0
+        for (a, b) in zip(points, points.dropFirst()) {
+            let segment = distance(a, b)
+            guard segment > 0 else { continue }
+            var offset: CGFloat = 0
+            while offset < segment {
+                let position = travelled + offset
+                let phase = position.truncatingRemainder(dividingBy: dash + gap)
+                let step =
+                    phase < dash
+                    ? min(dash - phase, segment - offset)
+                    : min(dash + gap - phase, segment - offset)
+                if phase < dash {
+                    let from = offset / segment
+                    let to = (offset + step) / segment
+                    path.move(to: CGPoint(x: a.x + (b.x - a.x) * from, y: a.y + (b.y - a.y) * from))
+                    path.addLine(to: CGPoint(x: a.x + (b.x - a.x) * to, y: a.y + (b.y - a.y) * to))
+                }
+                offset += max(step, 0.01)
+            }
+            travelled += segment
+        }
+        return path
+    }
+
     /// A line between two centres, cut off at each box's edge.
     ///
     /// Clipping to the boxes rather than joining named sides is what lets the
     /// same routine draw an edge down a rank, across one, or back up the graph.
     private static func edge(
         _ edge: Flowchart.Edge, from: Placed, to: Placed, theme: Theme, metrics: Metrics,
-        order: Int, side: CGFloat
+        order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect]
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
-        let start = exit(of: from.frame, towards: to.frame.center)
-        let end = exit(of: to.frame, towards: from.frame.center)
+        var start = exit(of: from.frame, towards: to.frame.center)
+        var end = exit(of: to.frame, towards: from.frame.center)
+        // An edge that skips a rank would otherwise run straight through
+        // whatever stands between, which reads as an edge to that box; and two
+        // nodes joined both ways would put one line exactly on top of the other.
+        // Both are answered the same way: the line is bowed to one side.
+        let curveOut = bow(from: start, to: end, lane: lane, obstacles: obstacles, metrics: metrics)
+        var control = midpoint(start, end)
+        if curveOut != 0 {
+            let across = normal(from: start, to: end)
+            control = CGPoint(
+                x: control.x + across.x * curveOut * 2, y: control.y + across.y * curveOut * 2)
+            start = exit(of: from.frame, towards: control)
+            end = exit(of: to.frame, towards: control)
+        }
+        let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
         var decorations: [BlockBox.Decoration] = []
         let color = theme.palette.secondaryText
         let width: CGFloat = (edge.stroke == .thick ? 2.5 : 1.3) * metrics.scale
         let shaft = CGMutablePath()
         let head = edge.arrow ? metrics.arrowLength : 0
         let tip = end
-        let direction = normalized(CGPoint(x: end.x - start.x, y: end.y - start.y))
-        let shaftEnd = CGPoint(x: tip.x - direction.x * head, y: tip.y - direction.y * head)
+        let body = shortened(path, by: head)
+        let last = body.count >= 2 ? body[body.count - 2] : start
+        let direction = normalized(CGPoint(x: tip.x - last.x, y: tip.y - last.y))
+        let shaftEnd = body.last ?? start
         if edge.stroke == .dotted {
-            shaft.addPath(dashed(from: start, to: shaftEnd, dash: 4, gap: 4))
+            shaft.addPath(dashed(along: body, dash: 4, gap: 4))
         } else {
-            shaft.move(to: start)
-            shaft.addLine(to: shaftEnd)
+            shaft.move(to: body[0])
+            for point in body.dropFirst() { shaft.addLine(to: point) }
         }
         decorations.append(.path(shaft, color: color, lineWidth: width, filled: false))
         if edge.arrow {
@@ -2701,17 +3036,24 @@ enum MermaidLayout {
         let size = measure(line)
         // An edge between neighbouring ranks is labelled in the middle; one that
         // skips a rank is labelled in the first gap it crosses, where there is
-        // nothing else to sit on.
-        let length = distance(start, end)
+        // nothing else to sit on. Either way the words keep clear of both boxes,
+        // so a label never ends up touching the box it points at.
+        let length = self.length(of: path)
+        let clearance = size.width / 2 + 8 * metrics.scale
         let base = min(length / 2, metrics.rankGap / 2 + 6) + CGFloat(order) * (size.width + 10)
-        let along = max(size.width / 2 + 2, min(base, length - size.width / 2 - 2))
+        // On a line too short to hold the words clear of both ends, the middle
+        // is the least bad place: better over the line than over a box.
+        let along =
+            length <= clearance * 2
+            ? length / 2 : min(max(clearance, base), length - clearance)
+        let (anchor, heading) = point(along: path, at: along)
         // Sideways room is the label's own size, so two words either side of a
         // vertical line clear each other however long they are.
-        let across = CGPoint(x: -direction.y, y: direction.x)
-        let step = abs(direction.y) > abs(direction.x) ? size.width + 10 : size.height + 6
+        let across = CGPoint(x: -heading.y, y: heading.x)
+        let step = abs(heading.y) > abs(heading.x) ? size.width + 10 : size.height + 6
         let middle = CGPoint(
-            x: start.x + direction.x * along + across.x * side * step,
-            y: start.y + direction.y * along + across.y * side * step
+            x: anchor.x + across.x * side * step,
+            y: anchor.y + across.y * side * step
         )
         let plate = CGRect(
             x: middle.x - size.width / 2 - 3,
@@ -2911,7 +3253,13 @@ enum MermaidLayout {
                                 font: font, metrics: metrics)
                             y += 12 * metrics.scale
                         } else {
-                            dividers.append((y - metrics.messageGap * 0.4, section.title))
+                            // An arm with no condition of its own is still an
+                            // arm, and without a word on it the two halves of an
+                            // `alt` read as one run of messages.
+                            let words =
+                                section.title.isEmpty
+                                ? (block.kind == "par" ? "and" : "else") : section.title
+                            dividers.append((y - metrics.messageGap * 0.4, words))
                             y += 14 * metrics.scale
                         }
                         walk(section.items, depth: depth + 1)
@@ -3342,7 +3690,11 @@ enum MermaidLayout {
         for edge in diagram.chart.edges {
             guard let from = boxes[edge.from], let to = boxes[edge.to] else { continue }
             let drawn = self.edge(
-                edge, from: from, to: to, theme: theme, metrics: metrics, order: 0, side: 1)
+                edge, from: from, to: to, theme: theme, metrics: metrics, order: 0, side: 1,
+                lane: 0,
+                obstacles: diagram.chart.nodes.indices.compactMap {
+                    $0 == edge.from || $0 == edge.to ? nil : boxes[$0]?.frame
+                })
             decorations += drawn.shaft
             labelDecorations += drawn.label
         }
@@ -3397,10 +3749,16 @@ enum MermaidLayout {
             columnWidths[service.column] = max(columnWidths[service.column], tiles[index].width)
             rowHeights[service.row] = max(rowHeights[service.row], tiles[index].height)
         }
+        // A group's frame stands outside its tiles and carries its name above
+        // them. Without that room the frame — and the name with it — is drawn
+        // off the top of the picture.
+        let frameRoom = diagram.groups.isEmpty ? 0 : titleRoom + framePadding
         let content =
             columnWidths.reduce(0, +) + columnGap * CGFloat(columns - 1)
+            + (diagram.groups.isEmpty ? 0 : framePadding * 2)
         let height =
             rowHeights.reduce(0, +) + rowGap * CGFloat(rows - 1) + metrics.padding * 2
+            + frameRoom + (diagram.groups.isEmpty ? 0 : framePadding)
         let left = max(metrics.padding, (width - content) / 2)
 
         var columnStarts = [CGFloat](repeating: 0, count: columns)
@@ -3410,7 +3768,7 @@ enum MermaidLayout {
             x += columnWidths[column] + columnGap
         }
         var rowStarts = [CGFloat](repeating: 0, count: rows)
-        var y = metrics.padding
+        var y = metrics.padding + frameRoom
         for row in 0..<rows {
             rowStarts[row] = y
             y += rowHeights[row] + rowGap
