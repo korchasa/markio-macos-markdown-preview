@@ -184,10 +184,15 @@ final class DocumentWindowController: NSWindowController {
         // opens as a bare title bar over the bottom strip. The floor keeps it
         // from collapsing on resize; the preference is what the first window
         // opens at, and it yields to the saved frame on every later launch.
+        //
+        // Their priority has to stay under 510: a drag on a window edge reaches
+        // the layout as a constraint at `dragThatCanResizeWindow`, and anything
+        // in the content that outranks it wins, which leaves a window nobody can
+        // resize. `.defaultHigh` is 750 and did exactly that.
         let preferredWidth = scrollView.widthAnchor.constraint(equalToConstant: 900)
-        preferredWidth.priority = .defaultHigh
+        preferredWidth.priority = .defaultLow
         let preferredHeight = scrollView.heightAnchor.constraint(equalToConstant: 810)
-        preferredHeight.priority = .defaultHigh
+        preferredHeight.priority = .defaultLow
         NSLayoutConstraint.activate([
             scrollView.widthAnchor.constraint(greaterThanOrEqualToConstant: 320),
             scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200),
