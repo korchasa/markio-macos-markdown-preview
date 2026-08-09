@@ -116,6 +116,32 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.nodes[1].label, "Done")
     }
 
+    /// A name with nothing written under it is a diagram with nothing in it,
+    /// which Mermaid draws as an empty picture. An empty picture can leave
+    /// nothing out, so there is no half-truth to refuse here.
+    func testANameWithNothingUnderItDrawsAnEmptyPicture() throws {
+        for kind in [
+            "flowchart TD", "stateDiagram-v2", "sequenceDiagram", "classDiagram", "erDiagram",
+            "mindmap", "kanban", "timeline", "journey", "gantt", "quadrantChart", "xychart-beta",
+            "gitGraph", "packet-beta", "requirementDiagram", "sankey-beta", "treemap-beta",
+            "radar-beta", "block-beta", "zenuml", "architecture-beta", "C4Context", "pie",
+        ] {
+            guard case .empty(let name)? = MermaidDiagram.parse(kind) else {
+                return XCTFail("\(kind) is a kind this knows")
+            }
+            XCTAssertEqual(name, kind)
+            XCTAssertNotNil(
+                DocumentRenderer.diagram(
+                    source: kind, theme: Theme(isDark: false), width: 520), kind)
+        }
+        // A name it does not know is still not a diagram.
+        XCTAssertNil(MermaidDiagram.parse("wobbleDiagram"))
+        // A title over an empty picture is still written on the page.
+        guard case .titled("Costs", .empty)? = MermaidDiagram.parse("pie title Costs") else {
+            return XCTFail("an empty pie keeps its name")
+        }
+    }
+
     func testWhatItRefuses() {
         // Each of these has to come back nil, because drawing what is left after
         // ignoring the rest would be a different diagram.
@@ -134,7 +160,6 @@ final class MermaidTests: XCTestCase {
             // A line, and a click, naming something nobody wrote.
             "flowchart TD\n A --> B\n linkStyle 4 stroke:red",
             "flowchart TD\n A --> B\n click Z \"https://example.com\"",
-            "flowchart TD",
             "",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -504,7 +529,6 @@ final class MermaidTests: XCTestCase {
 
     func testWhatAPieRefuses() {
         for source in [
-            "pie title Costs",
             "pie\n \"Parsing\" : none",
             "pie\n \"Parsing\" : 0",
             "pie something else\n \"Parsing\" : 1",
@@ -638,7 +662,6 @@ final class MermaidTests: XCTestCase {
             // A note with no words, and a kind of state nobody knows.
             "stateDiagram-v2\n [*] --> A\n note right of A:",
             "stateDiagram-v2\n state pause <<wobble>>\n [*] --> pause",
-            "stateDiagram-v2",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -742,11 +765,9 @@ final class MermaidTests: XCTestCase {
             "classDiagram\n class A\n style Z fill:red",
             "classDiagram\n class A\n cssClass \"A\" missing",
             "classDiagram\n A B C",
-            "classDiagram",
             // A relation with an end this does not know, and an unclosed block.
             "erDiagram\n A |>--o{ B : x",
             "erDiagram\n A {\n string name",
-            "erDiagram",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -894,8 +915,6 @@ final class MermaidTests: XCTestCase {
             // An icon with no node over it belongs to nothing.
             "mindmap\n  ::icon(fa fa-book)",
             "mindmap\n  root\n    a\n  second root",
-            "mindmap",
-            "timeline",
             "timeline\n    section",
             "timeline\n    : an event with no period",
         ] {
@@ -981,7 +1000,6 @@ final class MermaidTests: XCTestCase {
     func testWhatTheChartsRefuse() {
         for source in [
             "journey\n  Make tea: 9: Me",
-            "journey",
             // A day off nobody can name, and a tick as long as nothing.
             "gantt\n  excludes someday\n  Draft :3d",
             "gantt\n  includes weekends\n  Draft :3d",
@@ -993,7 +1011,6 @@ final class MermaidTests: XCTestCase {
             "gantt\n  Draft :after nothing, 3d",
             // A unit this does not know.
             "gantt\n  Draft :3y",
-            "gantt",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1191,7 +1208,6 @@ final class MermaidTests: XCTestCase {
             "gitGraph\n  commit\n  checkout nothing",
             // A direction nobody knows.
             "gitGraph XY:\n  commit",
-            "gitGraph",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1292,15 +1308,12 @@ final class MermaidTests: XCTestCase {
             // Two fields over one bit.
             "packet-beta\n0-15: \"A\"\n8-31: \"B\"",
             "packet-beta\n0-15",
-            "packet-beta",
             // Metadata this does not draw, and a card with no column above it.
             "kanban\n  Todo\n    t1[A]@{ colour: 'red' }",
             "kanban\n    t1[A]\n  Todo",
-            "kanban",
             // A relation this does not know, and an unclosed block.
             "requirementDiagram\n requirement a {\n id: 1\n }\n a - invents -> a",
             "requirementDiagram\n requirement a {\n id: 1",
-            "requirementDiagram",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1427,11 +1440,9 @@ final class MermaidTests: XCTestCase {
             "sankey-beta\nA,B",
             "sankey-beta\nA,B,none",
             "sankey-beta\nA,B,0",
-            "sankey-beta",
             // A node cannot both carry a number and hold other nodes.
             "treemap-beta\n\"A\"\n    \"B\": none",
             "treemap-beta\n\"A\"\n    \"B\": 0",
-            "treemap-beta",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1543,7 +1554,6 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartruse\")",
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
-            "C4Context",
             // A group written inside one nobody declared.
             "architecture-beta\n  group two(cloud)[Two] in one\n  service a(server)[A] in two",
             // A stranger standing inside a group's block would look like a member.
@@ -1551,7 +1561,6 @@ final class MermaidTests: XCTestCase {
                 + "  service b(server)[B] in g\n  service c(server)[C]\n"
                 + "  a:R -- L:c\n  c:R -- L:b",
             "architecture-beta\n  service a(server)[A]\n  a:X -- L:a",
-            "architecture-beta",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1761,19 +1770,16 @@ final class MermaidTests: XCTestCase {
             // only be drawn round or many-sided.
             "radar-beta\n  axis a, b, c",
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
-            "radar-beta",
             // A block left open, one closed twice, and one named twice.
             "block-beta\n  columns 2\n  block:group\n    a b",
             "block-beta\n  columns 2\n  a b\n  end",
             "block-beta\n  columns 2\n  block:g\n    a\n  end\n  block:g\n    b\n  end",
             "block-beta\n  columns 2\n  a:0 b",
-            "block-beta",
             // A reply with nobody waiting, a call left open and one closed
             // twice.
             "zenuml\n  @Starter(A)\n  return done",
             "zenuml\n  @Starter(A)\n  B.open() {",
             "zenuml\n  @Starter(A)\n  B.open()\n  }",
-            "zenuml",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -2047,7 +2053,7 @@ final class MermaidTests: XCTestCase {
     }
 
     func testAFenceItCannotDrawIsStillACodeBlock() throws {
-        let document = Document(text: "```mermaid\npie title Costs\n```")
+        let document = Document(text: "```mermaid\npie title Costs\n  \"A\" : none\n```")
         let layout = DocumentLayout(
             document: document, theme: Theme(isDark: false), columnWidth: 520)
         let box = try XCTUnwrap(layout.box(at: 0))

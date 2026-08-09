@@ -34,6 +34,10 @@ enum MermaidDiagram {
     /// A diagram painted in one of Mermaid's own themes, which its preamble
     /// asked for by name.
     indirect case themed(String, MermaidDiagram)
+    /// A diagram of a kind this knows with nothing written under it. Mermaid
+    /// draws an empty picture for one, and an empty picture can misrepresent
+    /// nothing, so there is no half-truth to guard against here.
+    case empty(String)
 
     /// What a diagram's preamble said, beyond its name.
     struct Settings {
@@ -198,6 +202,46 @@ enum MermaidDiagram {
         }
     }
 
+    /// The kinds this can draw, for deciding whether a name with nothing under
+    /// it is an empty diagram or a word nobody recognises.
+    private static let kinds: Set<String> = [
+        "mindmap", "kanban", "treemap-beta", "treemap", "sankey-beta", "sankey", "timeline",
+        "journey", "gantt", "quadrantChart", "xychart-beta", "xychart", "packet-beta", "packet",
+        "zenuml", "radar-beta", "radar", "block-beta", "block", "architecture-beta",
+        "architecture", "requirementDiagram", "sequenceDiagram", "stateDiagram-v2",
+        "stateDiagram", "classDiagram", "classDiagram-v2", "erDiagram",
+    ]
+
+    /// `flowchart TD` with nothing after it, or `pie title Costs` with no
+    /// slices: a diagram of a kind this knows and nothing to put in it.
+    private static func emptyDiagram(header: Substring, rest: [Substring]) -> MermaidDiagram? {
+        var title = ""
+        var body = rest
+        if let first = body.first, first.hasPrefix("title ") {
+            title = String(first.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            body = Array(body.dropFirst())
+        }
+        guard body.isEmpty else { return nil }
+        let name = String(header)
+        if name.hasPrefix("pie") {
+            // A pie writes its name on the same line as its kind.
+            let tail = name.dropFirst(3).trimmingCharacters(in: .whitespaces)
+            if tail.hasPrefix("title ") {
+                guard title.isEmpty else { return nil }
+                title = String(tail.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            } else if !tail.isEmpty, tail != "showData" {
+                return nil
+            }
+        } else {
+            guard
+                kinds.contains(name) || C4Diagram.headers.contains(name)
+                    || name.hasPrefix("gitGraph") || Flowchart.direction(header: header) != nil
+            else { return nil }
+        }
+        let blank = MermaidDiagram.empty(name)
+        return title.isEmpty ? blank : .titled(title, blank)
+    }
+
     private static func parse(body source: String, settings: Settings) -> MermaidDiagram? {
         var lines: [Substring] = []
         /// How far each line was indented. A mindmap is the one diagram whose
@@ -215,6 +259,7 @@ enum MermaidDiagram {
         // A key meant for another kind of diagram is written for a chart that is
         // not here, which is a preamble Mermaid simply leaves unused.
         let rest = Array(lines.dropFirst())
+        if let blank = emptyDiagram(header: header, rest: rest) { return blank }
         if header == "mindmap" || header == "kanban" || header == "treemap-beta"
             || header == "treemap"
         {

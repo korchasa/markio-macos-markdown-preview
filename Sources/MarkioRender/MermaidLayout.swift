@@ -91,6 +91,13 @@ enum MermaidLayout {
             return radar(chart, theme: theme, width: width, metrics: metrics)
         case .blocks(let diagram):
             return blocks(diagram, theme: theme, width: width, metrics: metrics)
+        case .empty:
+            // Nothing was written, so nothing is drawn: a picture the size of
+            // one line, which is what an empty diagram takes up in Mermaid.
+            return Drawing(
+                decorations: [],
+                size: CGSize(width: metrics.padding * 2, height: metrics.padding * 2),
+                contentWidth: metrics.padding * 2)
         case .titled(let title, let inner):
             return titled(title, inner, theme: theme, width: width, metrics: metrics)
         case .themed(let name, let inner):
