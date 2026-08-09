@@ -70,7 +70,9 @@ enum ZenUML {
                     stack[stack.count - 1] = .control(block)
                     continue
                 }
-                guard let frame = stack.popLast() else { return nil }
+                // A brace closing nothing closes nothing, which is how Mermaid
+                // reads a stray one.
+                guard let frame = stack.popLast() else { continue }
                 switch frame {
                 case .call:
                     guard let callee = callers.last, callers.count > 1 else { return nil }
@@ -125,7 +127,9 @@ enum ZenUML {
             if word == "return" || word == "@return" {
                 // A reply goes back to whoever is waiting, which is the caller
                 // one step down the stack.
-                guard callers.count > 1 else { return nil }
+                // A reply with nobody waiting for it has nowhere to go, and
+                // Mermaid draws the diagram without it.
+                guard callers.count > 1 else { continue }
                 let words = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
                 append(
                     .message(
@@ -161,7 +165,20 @@ enum ZenUML {
                 callers = [message.from]
             }
         }
-        guard stack.isEmpty, !diagram.messages.isEmpty else { return nil }
+        // A brace never closed is closed at the end of the diagram, which is
+        // what Mermaid's own reading of it comes to.
+        while let frame = stack.popLast() {
+            switch frame {
+            case .call:
+                if let callee = callers.last, callers.count > 1 {
+                    append(.deactivate(callee))
+                    callers.removeLast()
+                }
+            case .control(let block):
+                append(.block(block))
+            }
+        }
+        guard !diagram.messages.isEmpty || !diagram.participants.isEmpty else { return nil }
         return diagram
     }
 

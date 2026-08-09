@@ -56,8 +56,8 @@ enum MermaidDiagram {
         guard let front = frontMatter(source) else { return nil }
         var settings = front.settings
         // `%%{init: {'theme':'forest'}}%%` says the same thing the preamble
-        // does, on a line that otherwise looks like a comment. Reading it as
-        // one would draw the diagram in colours its author did not choose.
+        // does, on a line that otherwise looks like a comment, so it is read
+        // rather than swallowed as one.
         guard let body = directives(front.body, into: &settings) else { return nil }
         guard var diagram = parse(body: body, settings: settings) else { return nil }
         if !settings.theme.isEmpty {
@@ -65,22 +65,22 @@ enum MermaidDiagram {
         }
         guard !front.title.isEmpty else { return diagram }
         // A title in the preamble and a `title` line in the diagram are two
-        // names for one picture, and which of them Mermaid shows is not
-        // something to guess at.
-        guard !declaresTitle(front.body) else { return nil }
+        // names for one picture, and the one the diagram writes for itself is
+        // the one Mermaid shows — the diagram has already taken it.
+        guard !declaresTitle(front.body) else { return diagram }
         return .titled(front.title, diagram)
     }
 
     /// Mermaid's YAML preamble: `---`, some keys, `---`, and then the diagram.
     ///
-    /// Two keys are read. `title` names the picture, and the drawing shows it.
-    /// `config` changes how Mermaid draws rather than what it draws — the theme,
-    /// a gantt's display mode — and a picture drawn to settings other than the
-    /// ones its author wrote is not the picture they asked for, so a `config`
-    /// holding anything but the settings named in `Settings` refuses the fence.
+    /// `title` names the picture, and the drawing shows it. `config` changes
+    /// how Mermaid draws rather than what it draws — the theme, a gantt's
+    /// display mode, how wide a board's columns stand — and each of those is
+    /// read. A key or a value this cannot use is passed over, which is what
+    /// Mermaid does with one.
     ///
-    /// A source with no preamble is returned untouched; nil means there was one
-    /// and it said something this does not understand.
+    /// A source with no preamble is returned untouched; nil means a preamble
+    /// was opened and never closed.
     private static func frontMatter(_ source: String)
         -> (title: String, settings: Settings, body: String)?
     {
@@ -125,26 +125,30 @@ enum MermaidDiagram {
             }
             switch here {
             case ["title"]:
-                guard title.isEmpty else { return nil }
+                // Written twice, the last one wins, the way a later key wins in
+                // any other mapping.
                 title = value
             case ["config", "kanban", "ticketBaseUrl"]:
                 settings.ticketBaseUrl = value
             case ["config", "kanban", "sectionWidth"]:
-                guard let width = Double(value), width >= 40, width <= 2000 else { return nil }
-                settings.kanbanColumnWidth = width
-            case ["displayMode"], ["config", "gantt", "displayMode"]:
-                guard value == "compact" else { return nil }
-                settings.ganttCompact = true
-            case ["config", "theme"]:
-                // The name has to be one this can paint in; a theme nobody
-                // knows would be drawn in the reader's colours instead, which
-                // is not the picture the author asked for.
-                guard ["default", "base", "neutral", "forest", "dark"].contains(value) else {
-                    return nil
+                // A width nobody can read leaves the columns as wide as their
+                // cards make them.
+                if let width = Double(value), width >= 40, width <= 2000 {
+                    settings.kanbanColumnWidth = width
                 }
-                settings.theme = value
+            case ["displayMode"], ["config", "gantt", "displayMode"]:
+                // A mode nobody knows leaves the gantt drawn as it always is.
+                settings.ganttCompact = value == "compact"
+            case ["config", "theme"]:
+                // A theme nobody knows leaves the reader's own colours, which
+                // is what Mermaid falls back to for one.
+                if ["default", "base", "neutral", "forest", "dark"].contains(value) {
+                    settings.theme = value
+                }
             default:
-                return nil
+                // A key this does not read changes how Mermaid draws rather
+                // than what it draws, and the diagram is drawn without it.
+                continue
             }
         }
         // Opened and never closed, which is neither a preamble nor a diagram.
@@ -393,7 +397,9 @@ struct PieChart {
             guard !label.isEmpty, let value = Double(number), value >= 0 else { return nil }
             chart.slices.append(Slice(label: label, value: value))
         }
-        guard !chart.slices.isEmpty, chart.total > 0 else { return nil }
+        // A pie of nothing but zeroes has no wedge to draw, and Mermaid draws
+        // its legend all the same, so the chart is kept as it was written.
+        guard !chart.slices.isEmpty else { return nil }
         return chart
     }
 }
@@ -1465,6 +1471,58 @@ struct SequenceDiagram {
     /// title; a ZenUML one does, and it is read into this.
     var title = ""
 
+    /// Move each box's members together, so that the frame drawn around them
+    /// holds nobody else.
+    ///
+    /// A participant declared between two of a box's members would otherwise
+    /// stand inside a frame it does not belong to. Every member is gathered at
+    /// the place its first member stood, and everything that names a
+    /// participant by number — messages, notes, the boxes themselves — is
+    /// renumbered to follow. Mermaid draws a box's members side by side too.
+    mutating func gatherGroups() {
+        var order = Array(participants.indices)
+        for group in groups {
+            let members = group.members.sorted { lhs, rhs in
+                order.firstIndex(of: lhs)! < order.firstIndex(of: rhs)!
+            }
+            guard let first = members.first,
+                let at = order.firstIndex(of: first)
+            else { continue }
+            order.removeAll { members.contains($0) }
+            let insert = min(at, order.count)
+            order.insert(contentsOf: members, at: insert)
+        }
+        guard order != Array(participants.indices) else { return }
+        var moved = [Int](repeating: 0, count: participants.count)
+        for (place, old) in order.enumerated() { moved[old] = place }
+        participants = order.map { participants[$0] }
+        for index in groups.indices {
+            groups[index].members = groups[index].members.map { moved[$0] }
+        }
+        items = SequenceDiagram.renumbered(items, by: moved)
+    }
+
+    private static func renumbered(_ items: [Item], by moved: [Int]) -> [Item] {
+        items.map { item in
+            switch item {
+            case .message(var message):
+                message.from = moved[message.from]
+                message.to = moved[message.to]
+                return .message(message)
+            case .note(var note):
+                note.participants = note.participants.map { moved[$0] }
+                return .note(note)
+            case .block(var block):
+                block.sections = block.sections.map {
+                    Section(title: $0.title, items: renumbered($0.items, by: moved))
+                }
+                return .block(block)
+            case .activate(let who): return .activate(moved[who])
+            case .deactivate(let who): return .deactivate(moved[who])
+            }
+        }
+    }
+
     /// Every message in the diagram, whatever it is nested inside. Handy for
     /// tests and for deciding whether there is a diagram at all.
     var messages: [Message] {
@@ -1510,10 +1568,10 @@ struct SequenceDiagram {
                 continue
             }
             if word == "rect" {
-                // A `rect` with no colour of its own is still a band; the
-                // drawing gives it the faintest tint the theme has.
-                let (fill, label) = tint(rest)
-                guard label.isEmpty else { return nil }
+                // A `rect` with no colour of its own is still a band, and so is
+                // one whose colour is a word nobody knows; the drawing gives
+                // both the faintest tint the theme has.
+                let (fill, _) = tint(rest)
                 stack.append(
                     Block(kind: "rect", sections: [Section(title: "", items: [])], fill: fill))
                 continue
@@ -1563,11 +1621,11 @@ struct SequenceDiagram {
         else { return nil }
         // A box frames neighbours: one drawn around participants with a
         // stranger standing between them would say they were in it too.
-        for group in diagram.groups {
-            let members = group.members.sorted()
-            guard let first = members.first, let last = members.last else { continue }
-            guard last - first == members.count - 1 else { return nil }
-        }
+        // A box frames a run of neighbours, so a stranger declared between two
+        // of its members is moved out of the way: the box's members are drawn
+        // together, starting where the first of them stood. Mermaid puts them
+        // side by side too.
+        diagram.gatherGroups()
         return diagram
     }
 

@@ -16,9 +16,13 @@ struct SankeyDiagram {
         var diagram = SankeyDiagram(nodes: [], flows: [])
         for line in lines {
             guard let fields = csv(line), fields.count == 3 else { return nil }
-            guard let value = Double(fields[2]), value > 0, !fields[0].isEmpty,
-                !fields[1].isEmpty, fields[0] != fields[1]
-            else { return nil }
+            // A flow carrying nothing — written as a zero or as a word that is
+            // no number — is a flow of no width, and Mermaid draws the two ends
+            // it names all the same.
+            let value = max(Double(fields[2]) ?? 0, 0)
+            guard !fields[0].isEmpty, !fields[1].isEmpty, fields[0] != fields[1] else {
+                return nil
+            }
             diagram.flows.append(
                 Flow(
                     from: diagram.index(of: fields[0]), to: diagram.index(of: fields[1]),
@@ -139,7 +143,8 @@ struct Treemap {
                 $0 + map.nodes[$1].value
             }
         }
-        guard map.nodes[0].value > 0 else { return nil }
+        // A map of nothing but zeroes has no area to divide; the labels are
+        // still what the author wrote, which is what Mermaid draws for it.
         // Several roots are drawn as one map, so they are given a parent that
         // is never itself drawn.
         if roots.count > 1 {

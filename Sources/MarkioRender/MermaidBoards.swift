@@ -100,7 +100,10 @@ struct KanbanBoard {
             columns: [], ticketBaseUrl: ticketBaseUrl, columnWidth: columnWidth)
         // The first line's indent is what a column is written at; anything
         // deeper is a card in the column above it.
-        guard let columnIndent = lines.first?.indent else { return nil }
+        // The shallowest line is the depth a column is written at; anything
+        // deeper is a card. A card written before any column opens a nameless
+        // one rather than stopping the board.
+        guard let columnIndent = lines.map(\.indent).min() else { return nil }
         for line in lines {
             // A line shallower than the first one means the board's own columns
             // are not all written at one depth, and which line is a card would
@@ -112,7 +115,8 @@ struct KanbanBoard {
                 board.columns.append(Column(title: title, cards: []))
                 continue
             }
-            guard !board.columns.isEmpty, let card = card(line.text) else { return nil }
+            if board.columns.isEmpty { board.columns.append(Column(title: "", cards: [])) }
+            guard let card = card(line.text) else { return nil }
             board.columns[board.columns.count - 1].cards.append(card)
         }
         guard !board.columns.isEmpty else { return nil }
@@ -149,8 +153,8 @@ struct KanbanBoard {
                 case "ticket": ticket = value
                 case "priority": priority = value
                 // Anything else changes how the card looks in ways this does
-                // not draw, so the board falls back to its source.
-                default: return nil
+                // not draw, and Mermaid draws the card without it.
+                default: continue
                 }
             }
             body = body[body.startIndex..<brace.lowerBound]

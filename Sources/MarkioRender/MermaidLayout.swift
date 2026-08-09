@@ -734,11 +734,13 @@ enum MermaidLayout {
         let titleFont = scaled(theme.bodyBold, by: metrics.scale)
         let diameter = 180 * metrics.scale
         let swatch = 12 * metrics.scale
+        // Every slice at nothing leaves no wedge to cut, so none is drawn; the
+        // legend still says what the author wrote, which is what Mermaid draws.
         let total = chart.total
 
         var entries: [(line: CTLine, size: CGSize)] = []
         for slice in chart.slices {
-            let share = Int((slice.value / total * 100).rounded())
+            let share = total > 0 ? Int((slice.value / total * 100).rounded()) : 0
             let number =
                 slice.value == slice.value.rounded() ? "\(Int(slice.value))" : "\(slice.value)"
             let words =
@@ -785,7 +787,7 @@ enum MermaidLayout {
         // Wedges start at twelve o'clock and go round clockwise, which is the
         // order a reader expects the first slice to be in.
         var angle = -CGFloat.pi / 2
-        for (index, slice) in chart.slices.enumerated() {
+        for (index, slice) in chart.slices.enumerated() where total > 0 {
             let sweep = CGFloat(slice.value / total) * .pi * 2
             let wedge = CGMutablePath()
             wedge.move(to: centre)
@@ -1262,8 +1264,12 @@ enum MermaidLayout {
         // above it and a one would sit on the names below.
         let plotBottom = bandTop + bandHeight + plotHeight
         let dotRadius = 11 * metrics.scale
+        // The scale runs from one to five, so a score written outside it sits on
+        // the nearest line rather than off the picture.
         func level(_ score: Int) -> CGFloat {
-            (plotBottom - dotRadius) - (plotHeight - dotRadius * 2) * CGFloat(score - 1) / 4
+            let placed = min(max(score, 1), 5)
+            return (plotBottom - dotRadius) - (plotHeight - dotRadius * 2) * CGFloat(placed - 1)
+                / 4
         }
         for score in 1...5 {
             let y = level(score)

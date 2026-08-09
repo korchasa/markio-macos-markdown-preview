@@ -260,38 +260,47 @@ both.
 ### Diagrams
 
 `MermaidDiagram.parse` reads a fence into one of the diagrams below and returns
-nil for everything else: a diagram kind it does not know, a construct Mermaid
-itself refuses, and a source whose own parts disagree — a block left open, a name
-given twice, a reference to something nobody wrote. The rule is the same one the
-formula typesetter follows: a diagram is drawn whole or shown as source, because
-half a graph asserts something its author did not write. Where Mermaid draws
-something for a construct this cannot fully honour — a question mark for an icon
-name it cannot resolve, nothing at all for a radar curve short of a value — this
-draws the same thing, because matching what the author would see elsewhere is
-what the rule is for.
+nil only where Mermaid itself refuses: a kind it does not know, a block left
+open or closed twice, a keyword half written, a relation whose ends make no
+sense, a flow that returns to where it came from. What this viewer draws is what
+Mermaid draws, and that is the whole of the rule.
 
-What that rule covers was measured rather than assumed. Every source the tests
-refuse was run through Mermaid's own renderer, and the ones Mermaid draws were
-worked through one at a time. Half of them turned out to be refused for reasons
-the rule never supported, and they are drawn now: a name of a known kind with
-nothing under it draws an empty picture, since a picture with nothing in it can
-leave nothing out; a `MermaidDiagram.empty` carries the kind and the layout draws
-a blank the size of one line. A lone state, a journey step nobody was named for,
-a sequence band with no colour, a box with no name or nobody in it, a radar of
-two axes or none of its rings or no curve at all, a treemap branch that also
-carries a number, a series running past the names on its axis, a block arrow
-naming a box no row wrote out, and an architecture stranger standing where a
-group's frame would enclose it — all of these draw.
+It was not always. This used to refuse any source it could not honour in full —
+the reasoning being that half a graph asserts something its author did not
+write. Measuring settled it: every source the tests refused was run through
+Mermaid's own renderer, and 70 of the 127 came back as real pictures. Mermaid
+does not refuse a line it cannot use; it drops that line and draws the rest, and
+a viewer that stops instead is not showing the reader the same document.
 
-What still returns nil is what the rule is actually for: a line naming something
-nobody wrote (`class A missing`, `click Z`, `UpdateElementStyle` over an
-identifier that is not there), a value nobody can resolve (`fill:chartruse`,
-`opacity:2`, `<<wobble>>`, `theme: nightfall`), a source contradicting itself (a
-name given twice, a class in two namespaces, a title in the preamble and another
-in the body), and a chart whose every number is zero. Mermaid discards such a
-line and draws the rest; this shows the source instead, because the reader would
-otherwise have no way of knowing that something the author asked for is missing
-from the picture in front of them.
+So the refusals went, in two kinds. The first were refusals the old rule never
+supported anyway: a name of a known kind with nothing under it draws an empty
+picture, since a picture with nothing in it can leave nothing out — a
+`MermaidDiagram.empty` carries the kind and the layout draws a blank the size of
+one line. A lone state, a journey step nobody was named for, a band with no
+colour, a box with no name or nobody in it, a radar of two axes or none of its
+rings or no curve at all, a treemap branch that also carries a number, a series
+running past the names on its axis, a block arrow naming a box no row wrote out,
+and an architecture stranger standing where a group's frame would enclose it are
+all drawn now — the last by walking the stranger clear rather than by giving up.
+
+The second kind is the line Mermaid drops. A colour nobody can resolve, a share
+out of range, a property nobody knows, a class nobody defined, a `:::` naming
+one, a `linkStyle` past the last link, a `click` on a node nobody wrote, a
+`cssClass` or a C4 `Update…` naming nobody, an unknown `<<mark>>` on a state, a
+kanban key this cannot draw, a task told to follow one nobody wrote, a preamble
+`theme` or `displayMode` whose value is a word nobody knows: each is passed over
+and the diagram is drawn without it. Only the failing half of a line goes —
+`fill:chartruse,stroke:red` still gives its stroke. Where two things collide, the
+one Mermaid keeps is kept: a class named in a second namespace stays in the
+first, a diagram named in both its preamble and its body wears the name it wrote
+for itself, a `title` written twice keeps the last, and a box's members are
+gathered together so its frame holds nobody else.
+
+A few sources this draws are ones Mermaid answers with its own error graphic: a
+bare `classDiagram`, `sankey-beta`, `C4Context` or `block-beta`, a `linkStyle`
+numbered past the end, a preamble naming itself twice. Drawing an empty picture
+where Mermaid draws a picture of a crash is the one direction the difference is
+allowed to run.
 
 Mermaid's YAML preamble is read before the diagram is, for the keys that say
 what to draw. The title travels as `MermaidDiagram.titled`, a case wrapping any

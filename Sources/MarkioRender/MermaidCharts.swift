@@ -34,9 +34,9 @@ struct UserJourney {
             let parts = line.split(separator: ":", omittingEmptySubsequences: false)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
             // `Make tea: 5` is a step nobody was named for, which Mermaid puts
-            // on the line with no faces beside it.
-            guard (2...3).contains(parts.count), !parts[0].isEmpty, let score = Int(parts[1]),
-                (1...5).contains(score)
+            // on the line with no faces beside it. A score outside the scale is
+            // kept as written and drawn on the nearest line.
+            guard (2...3).contains(parts.count), !parts[0].isEmpty, let score = Int(parts[1])
             else { return nil }
             let actors = (parts.count == 3 ? parts[2] : "").split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }

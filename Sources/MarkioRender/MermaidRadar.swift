@@ -180,15 +180,15 @@ struct BlockDiagram {
                 // `a["Wide"]:2` does.
                 var span = 1
                 if let colon = id.lastIndex(of: ":") {
-                    guard let read = Int(id[id.index(after: colon)...]), read > 0 else {
-                        return nil
-                    }
-                    span = read
+                    guard let read = Int(id[id.index(after: colon)...]) else { return nil }
+                    // A cell always takes a place, however few it asks for.
+                    span = max(read, 1)
                     id = String(id[id.startIndex..<colon])
                 }
-                guard !id.isEmpty, rest.isEmpty, identifiers[id] == nil,
-                    !blocks.contains(where: { $0.id == id })
-                else { return nil }
+                // A name written twice makes a second block: an id is how an
+                // arrow finds a frame, and the first frame to take the name
+                // keeps it, which is what Mermaid draws.
+                guard !id.isEmpty, rest.isEmpty, identifiers[id] == nil else { return nil }
                 blocks.append(Block(id: id, columns: nil, cells: []))
                 add(Cell(node: nil, span: span, block: blocks.count - 1))
                 open.append(blocks.count - 1)
@@ -236,10 +236,9 @@ struct BlockDiagram {
                 var span = 1
                 // `a["Wide"]:2` takes two of the row's columns.
                 if let colon = text.lastIndex(of: ":"), text.last?.isNumber == true {
-                    guard let read = Int(text[text.index(after: colon)...]), read > 0 else {
-                        return nil
-                    }
-                    span = read
+                    guard let read = Int(text[text.index(after: colon)...]) else { return nil }
+                    // A cell always takes a place, however few it asks for.
+                    span = max(read, 1)
                     text = String(text[text.startIndex..<colon])
                 }
                 if text == "space" {

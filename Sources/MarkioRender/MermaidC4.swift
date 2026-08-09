@@ -136,8 +136,9 @@ enum C4Diagram {
     /// legend it writes, the tag or link it hangs off a box — is read and let
     /// go, for the same reason `Rel_U` is: this ranks and draws its own graph,
     /// so a hint about someone else's layout says nothing about this picture. A
-    /// key nobody knows, or a colour that is no colour, gives nil, because
-    /// either may be the thing the author cared about.
+    /// key nobody knows, or a colour that is no colour, is passed over the way
+    /// Mermaid passes over it: it paints nothing, and the rest of the line is
+    /// still read.
     private static func style(from settings: [String]) -> Flowchart.Style? {
         /// Which part of a thing each key paints, or nothing at all.
         enum Paint {
@@ -156,22 +157,22 @@ enum C4Diagram {
         ]
         var style = Flowchart.Style()
         for setting in settings {
-            guard let equals = setting.firstIndex(of: "=") else { return nil }
+            guard let equals = setting.firstIndex(of: "=") else { continue }
             let key = String(setting[setting.startIndex..<equals])
                 .trimmingCharacters(in: .whitespaces)
             let value = String(setting[setting.index(after: equals)...])
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
-            guard let paint = paints[key] else { return nil }
+            guard let paint = paints[key] else { continue }
             switch paint {
             case .ignored: continue
             case .fill:
-                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                guard let colour = Flowchart.Colour(css: value) else { continue }
                 style.fill = colour
             case .text:
-                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                guard let colour = Flowchart.Colour(css: value) else { continue }
                 style.text = colour
             case .border:
-                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                guard let colour = Flowchart.Colour(css: value) else { continue }
                 style.stroke = colour
             }
         }
@@ -183,8 +184,8 @@ enum C4Diagram {
     /// `UpdateElementStyle`, `UpdateBoundaryStyle` and `UpdateRelStyle` name
     /// something already written and give it colours; `UpdateLayoutConfig` says
     /// how many shapes Mermaid should pack into a row, which is a hint about a
-    /// layout this does not use. A line that names something nobody wrote is
-    /// refused rather than quietly ignored.
+    /// layout this does not use. A line naming something nobody wrote has
+    /// nothing to repaint, and Mermaid draws the diagram without it.
     private static func restyle(
         _ keyword: String, _ targets: [String], _ style: Flowchart.Style, in chart: inout Flowchart,
         named identifiers: [String: Int]
@@ -193,27 +194,25 @@ enum C4Diagram {
         case "UpdateLayoutConfig":
             return true
         case "UpdateElementStyle":
-            guard let first = targets.first, let node = identifiers[first] else { return false }
+            guard let first = targets.first, let node = identifiers[first] else { return true }
             chart.nodes[node].style.merge(style)
             return true
         case "UpdateBoundaryStyle":
             guard let first = targets.first,
                 let group = chart.groups.firstIndex(where: { $0.id == first })
-            else { return false }
+            else { return true }
             chart.groups[group].style.merge(style)
             return true
         case "UpdateRelStyle":
             guard targets.count >= 2, let from = identifiers[targets[0]],
                 let to = identifiers[targets[1]]
-            else { return false }
+            else { return true }
             // The line is named by its ends, and a pair may be joined twice.
-            var found = false
             for index in chart.edges.indices
             where chart.edges[index].from == .node(from) && chart.edges[index].to == .node(to) {
                 chart.edges[index].style.merge(style)
-                found = true
             }
-            return found
+            return true
         default:
             return false
         }

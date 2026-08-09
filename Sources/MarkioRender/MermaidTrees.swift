@@ -127,14 +127,21 @@ struct Timeline {
         for line in lines {
             // A keyword on its own is a half-written line, not a period whose
             // name happens to be `section`.
-            guard line != "section", line != "title" else { return nil }
+            // A keyword on its own names nothing: `title` says nothing, and
+            // `section` opens a band with no name over it, which is what
+            // Mermaid makes of them.
+            if line == "title" { continue }
+            if line == "section" {
+                timeline.sections.append("")
+                section = timeline.sections.count - 1
+                continue
+            }
             if line.hasPrefix("title ") {
                 timeline.title = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
                 continue
             }
             if line.hasPrefix("section ") {
                 let name = String(line.dropFirst(8)).trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty else { return nil }
                 timeline.sections.append(name)
                 section = timeline.sections.count - 1
                 continue
@@ -154,7 +161,7 @@ struct Timeline {
             timeline.periods.append(
                 Period(title: head, events: Array(events), section: section))
         }
-        guard !timeline.periods.isEmpty else { return nil }
+        guard !timeline.periods.isEmpty || !timeline.sections.isEmpty else { return nil }
         return timeline
     }
 }

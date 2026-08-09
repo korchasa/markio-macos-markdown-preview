@@ -87,13 +87,14 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `block-beta` with the blocks inside its blocks and its fat arrows, or a
   `zenuml` written as calls, replies and the blocks around them. A name of a
   kind it knows with nothing written under it is that diagram with nothing in
-  it, and draws an empty picture, because a picture with nothing in it can
-  leave nothing out. What is not read is what nobody could draw honestly: a
-  diagram kind this does not know, a construct Mermaid itself refuses, and a
-  source whose own parts disagree — a block left open or closed twice, a name
-  given twice, a reference to something nobody wrote, a value outside its
-  range, a keyword nobody knows, or a flow that returns to where it came from.
-  The fence then stays a fenced block.
+  it, and draws an empty picture. A line Mermaid cannot use — a colour nobody
+  can resolve, a value out of range, a class or a node nobody wrote, a mark or a
+  key nobody knows — is dropped and the rest of the diagram is drawn, the way
+  Mermaid drops it; only the failing half of such a line goes. What is not read
+  is what Mermaid itself refuses: a diagram kind this does not know, a block
+  left open or closed twice, a keyword half written, a relation whose ends make
+  no sense, or a flow that returns to where it came from. The fence then stays a
+  fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 - **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
@@ -107,10 +108,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `displayMode: compact`, alone or under `config.gantt`, packs a gantt's tasks
   onto shared rows, and `config.kanban.sectionWidth` says how wide a board's
   columns stand. A key written over a diagram of another kind is left unused,
-  the way Mermaid leaves it, and a `title` with nothing after it is no title. A
-  preamble or directive carrying anything else changes how Mermaid draws rather
-  than what it draws, and the fence stays a fenced block; so does a diagram
-  named twice, once in the preamble and once in a `title` line of its own.
+  the way Mermaid leaves it; a `title` with nothing after it is no title, and
+  one written twice keeps the last. A diagram that names itself in a `title`
+  line of its own wears that name and not the preamble's, which is the one
+  Mermaid shows. A key or a value the preamble cannot use is passed over and the
+  diagram is drawn without it.
 
 ## VIEW — What the reader sees
 

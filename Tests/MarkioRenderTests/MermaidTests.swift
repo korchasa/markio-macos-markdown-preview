@@ -392,6 +392,27 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.participants.map(\.id), ["A", "B", "C"])
     }
 
+    /// A band whose colour is a word nobody knows is still a band, and a box
+    /// gathers its members so the frame around them holds nobody else.
+    func testABoxGathersItsMembersAndABandKeepsItsPlace() throws {
+        let washed = try XCTUnwrap(sequence("sequenceDiagram\n rect wobble\n A->>B: hi\n end"))
+        XCTAssertEqual(washed.messages.count, 1)
+
+        let source =
+            "sequenceDiagram\n participant A\n participant B\n participant C\n"
+            + "box Team\n participant A\n participant C\n end\n A->>B: hi\n B->>C: on"
+        let boxed = try XCTUnwrap(sequence(source))
+        XCTAssertEqual(boxed.participants.map(\.id), ["A", "C", "B"])
+        XCTAssertEqual(boxed.groups[0].members.sorted(), [0, 1])
+        // Every message still names the participant it named before the move.
+        XCTAssertEqual(boxed.participants[boxed.messages[0].from].id, "A")
+        XCTAssertEqual(boxed.participants[boxed.messages[0].to].id, "B")
+        XCTAssertEqual(boxed.participants[boxed.messages[1].from].id, "B")
+        XCTAssertEqual(boxed.participants[boxed.messages[1].to].id, "C")
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+    }
+
     func testSequenceConstructsItCannotDraw() {
         for source in [
             "sequenceDiagram\n A B C",
@@ -399,11 +420,6 @@ final class MermaidTests: XCTestCase {
             "sequenceDiagram\n loop forever\n A->>B: hi",
             "sequenceDiagram\n A->>B: hi\n end",
             "sequenceDiagram\n A->>B: hi\n Note A: thinking",
-            // A band asking for a colour nobody has.
-            "sequenceDiagram\n rect wobble\n A->>B: hi\n end",
-            // A box around participants with a stranger standing between them.
-            "sequenceDiagram\n participant A\n participant B\n participant C\n"
-                + "box Team\n participant A\n participant C\n end\n A->>B: hi\n B->>C: on",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -548,10 +564,26 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(chart.total, 100)
     }
 
+    /// A chart of nothing but zeroes has no area to divide, and Mermaid draws
+    /// the labels the author wrote without any. So does this.
+    func testAChartOfZeroesKeepsItsLabelsAndDrawsNoArea() throws {
+        guard case .pie(let chart)? = MermaidDiagram.parse("pie\n \"Parsing\" : 0") else {
+            return XCTFail("a slice of nothing is still a slice")
+        }
+        XCTAssertEqual(chart.slices.map(\.label), ["Parsing"])
+        for source in [
+            "pie\n \"Parsing\" : 0", "sankey-beta\nA,B,0", "treemap-beta\n\"A\"\n    \"B\": 0",
+        ] {
+            XCTAssertNotNil(MermaidDiagram.parse(source), source)
+            XCTAssertNotNil(
+                DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700),
+                source)
+        }
+    }
+
     func testWhatAPieRefuses() {
         for source in [
             "pie\n \"Parsing\" : none",
-            "pie\n \"Parsing\" : 0",
             "pie something else\n \"Parsing\" : 1",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -972,7 +1004,6 @@ final class MermaidTests: XCTestCase {
             // An icon with no node over it belongs to nothing.
             "mindmap\n  ::icon(fa fa-book)",
             "mindmap\n  root\n    a\n  second root",
-            "timeline\n    section",
             "timeline\n    : an event with no period",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -1078,9 +1109,33 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    /// A keyword on its own, a score off the scale and a flow whose number is a
+    /// word: Mermaid draws all three, so the pictures are drawn too.
+    func testAHalfWrittenLineStillLeavesAPicture() throws {
+        for source in [
+            "timeline\n    section", "journey\n  Make tea: 9: Me", "sankey-beta\nA,B,none",
+        ] {
+            XCTAssertNotNil(MermaidDiagram.parse(source), source)
+            XCTAssertNotNil(
+                DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700),
+                source)
+        }
+        // A score off the scale is kept as written and drawn on the nearest
+        // line, so the step is neither dropped nor moved off the picture.
+        guard case .journey(let journey)? = MermaidDiagram.parse("journey\n  Make tea: 9: Me")
+        else { return XCTFail("a step scored past the scale is still a step") }
+        XCTAssertEqual(journey.tasks[0].score, 9)
+        let far = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "journey\n  Make tea: 9: Me", theme: Theme(isDark: false), width: 700))
+        let top = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "journey\n  Make tea: 5: Me", theme: Theme(isDark: false), width: 700))
+        XCTAssertEqual(far.height, top.height)
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
-            "journey\n  Make tea: 9: Me",
             // A day off nobody can name, and a tick as long as nothing.
             "gantt\n  excludes someday\n  Draft :3d",
             "gantt\n  includes weekends\n  Draft :3d",
@@ -1382,14 +1437,29 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.links[0].to, 0)
     }
 
+    /// A card key this cannot draw is passed over, and a card written above any
+    /// column opens a nameless one — both the way Mermaid draws them.
+    func testABoardKeepsTheCardsItCannotFullyHonour() throws {
+        guard
+            case .kanban(let board)? = MermaidDiagram.parse(
+                "kanban\n  Todo\n    t1[A]@{ colour: 'red' }")
+        else { return XCTFail("a card with an unknown key is still a card") }
+        XCTAssertEqual(board.columns.map(\.title), ["Todo"])
+        XCTAssertEqual(board.columns[0].cards.map(\.label), ["A"])
+
+        guard case .kanban(let early)? = MermaidDiagram.parse("kanban\n    t1[A]\n  Todo") else {
+            return XCTFail("a card above its column still stands somewhere")
+        }
+        XCTAssertEqual(early.columns.map(\.title), ["", "Todo"])
+        XCTAssertEqual(early.columns[0].cards.map(\.label), ["A"])
+    }
+
     func testWhatTheBoardsRefuse() {
         for source in [
             // Two fields over one bit.
             "packet-beta\n0-15: \"A\"\n8-31: \"B\"",
             "packet-beta\n0-15",
             // Metadata this does not draw, and a card with no column above it.
-            "kanban\n  Todo\n    t1[A]@{ colour: 'red' }",
-            "kanban\n    t1[A]\n  Todo",
             // A relation this does not know, and an unclosed block.
             "requirementDiagram\n requirement a {\n id: 1\n }\n a - invents -> a",
             "requirementDiagram\n requirement a {\n id: 1",
@@ -1517,11 +1587,8 @@ final class MermaidTests: XCTestCase {
             "sankey-beta\nA,B,1\nB,A,1",
             "sankey-beta\nA,A,1",
             "sankey-beta\nA,B",
-            "sankey-beta\nA,B,none",
-            "sankey-beta\nA,B,0",
             // A node cannot both carry a number and hold other nodes.
             "treemap-beta\n\"A\"\n    \"B\": none",
-            "treemap-beta\n\"A\"\n    \"B\": 0",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -1639,6 +1706,28 @@ final class MermaidTests: XCTestCase {
             DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
     }
 
+    /// A repaint naming nobody, a colour that is no colour and a key nobody
+    /// knows are each passed over, and the diagram is drawn without them.
+    func testAC4RepaintThatCannotLandIsPassedOver() throws {
+        for source in [
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(b, $bgColor=\"red\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartruse\")",
+            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
+        ] {
+            guard case .flowchart(let chart)? = MermaidDiagram.parse(source) else {
+                return XCTFail("the system is still on the page: \(source)")
+            }
+            XCTAssertEqual(chart.nodes.count, 1, source)
+            XCTAssertNil(chart.nodes[0].style.fill, source)
+        }
+        // A repaint that does land still lands.
+        guard
+            case .flowchart(let painted)? = MermaidDiagram.parse(
+                "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"red\")")
+        else { return XCTFail("a repaint that names somebody paints them") }
+        XCTAssertNotNil(painted.nodes[0].style.fill)
+    }
+
     func testWhatC4AndArchitectureRefuse() {
         for source in [
             // An element with no name, a boundary left open, and a restyling of
@@ -1647,9 +1736,6 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  System_Boundary(b, \"B\") {\n  System(a, \"A\")",
             // A restyling of something nobody wrote, a colour that is no colour,
             // and a setting nobody knows.
-            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(b, $bgColor=\"red\")",
-            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $bgColor=\"chartruse\")",
-            "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
             // A group written inside one nobody declared.
             "architecture-beta\n  group two(cloud)[Two] in one\n  service a(server)[A] in two",
@@ -1867,20 +1953,42 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.cells.count, 3)
     }
 
+    /// A frame named twice, a cell asking for no room, a reply with nobody
+    /// waiting and a brace on its own: Mermaid draws past all four, and so does
+    /// this.
+    func testABlockAndAZenUmlDrawPastWhatTheyCannotHonour() throws {
+        guard
+            case .blocks(let twice)? = MermaidDiagram.parse(
+                "block-beta\n  columns 2\n  block:g\n    a\n  end\n  block:g\n    b\n  end")
+        else { return XCTFail("a name written twice makes a second frame") }
+        XCTAssertEqual(twice.blocks.count, 2)
+
+        guard case .blocks(let narrow)? = MermaidDiagram.parse("block-beta\n  columns 2\n  a:0 b")
+        else { return XCTFail("a cell always takes a place") }
+        XCTAssertEqual(narrow.cells.map(\.span), [1, 1])
+
+        for source in [
+            "zenuml\n  @Starter(A)\n  return done",
+            "zenuml\n  @Starter(A)\n  B.open() {",
+            "zenuml\n  @Starter(A)\n  B.open()\n  }",
+        ] {
+            guard case .sequence(let diagram)? = MermaidDiagram.parse(source) else {
+                return XCTFail("the calls that can be drawn are drawn: \(source)")
+            }
+            XCTAssertNotNil(
+                DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700),
+                source)
+            XCTAssertFalse(diagram.participants.isEmpty, source)
+        }
+    }
+
     func testWhatRadarBlocksAndZenUmlRefuse() {
         for source in [
             // A web can only be drawn round or many-sided.
             "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}\n  graticule star",
-            // A block left open, one closed twice, and one named twice.
+            // A block left open, and one closed twice.
             "block-beta\n  columns 2\n  block:group\n    a b",
             "block-beta\n  columns 2\n  a b\n  end",
-            "block-beta\n  columns 2\n  block:g\n    a\n  end\n  block:g\n    b\n  end",
-            "block-beta\n  columns 2\n  a:0 b",
-            // A reply with nobody waiting, a call left open and one closed
-            // twice.
-            "zenuml\n  @Starter(A)\n  return done",
-            "zenuml\n  @Starter(A)\n  B.open() {",
-            "zenuml\n  @Starter(A)\n  B.open()\n  }",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -2101,21 +2209,39 @@ final class MermaidTests: XCTestCase {
         }
     }
 
-    func testWhatAPreambleRefuses() {
+    /// A setting whose value nobody can use is passed over, a diagram named
+    /// twice keeps the name it wrote for itself, and a preamble that writes
+    /// `title` twice keeps the last — all of it the way Mermaid reads them.
+    func testAPreamblePassesOverWhatItCannotUse() throws {
         for source in [
-            // A setting whose value names something nobody can draw.
             "---\nconfig:\n  theme: nightfall\n---\npie\n  \"A\" : 1",
-            "---\ndisplayMode: roomy\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d",
             "---\nconfig:\n  kanban:\n    sectionWidth: nine\n---\nkanban\n  a[A]",
-            // A name in the preamble and a name in the diagram: two names, and
-            // no way to know which one Mermaid would show.
-            "---\ntitle: One\n---\npie\n  title Two\n  \"A\" : 1",
-            // Opened and never closed, and named twice.
-            "---\ntitle: One\npie\n  \"A\" : 1",
-            "---\ntitle: One\ntitle: Two\n---\npie\n  \"A\" : 1",
         ] {
-            XCTAssertNil(MermaidDiagram.parse(source), source)
+            guard let diagram = MermaidDiagram.parse(source) else {
+                return XCTFail("the diagram is still a diagram: \(source)")
+            }
+            if case .themed = diagram { XCTFail("a theme nobody knows paints nothing: \(source)") }
         }
+        guard
+            case .gantt? = MermaidDiagram.parse(
+                "---\ndisplayMode: roomy\n---\ngantt\n  section S\n  A : a1, 2024-01-01, 3d")
+        else { return XCTFail("a mode nobody knows leaves the gantt as it is") }
+
+        // The diagram's own name is the one Mermaid shows, so the preamble's
+        // goes; written twice in the preamble, the last one stands.
+        guard
+            case .pie(let named)? = MermaidDiagram.parse(
+                "---\ntitle: One\n---\npie\n  title Two\n  \"A\" : 1")
+        else { return XCTFail("a pie named twice is still a pie") }
+        XCTAssertEqual(named.title, "Two")
+        guard
+            case .titled(let last, _)? = MermaidDiagram.parse(
+                "---\ntitle: One\ntitle: Two\n---\npie\n  \"A\" : 1")
+        else { return XCTFail("the last name written is the name") }
+        XCTAssertEqual(last, "Two")
+
+        // A preamble opened and never closed is not a preamble.
+        XCTAssertNil(MermaidDiagram.parse("---\ntitle: One\npie\n  \"A\" : 1"))
     }
 
     func testALabelIsBrokenWhereTheAuthorBrokeIt() throws {
