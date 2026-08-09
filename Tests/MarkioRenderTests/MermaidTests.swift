@@ -142,6 +142,36 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    /// A colour nobody can resolve, a share out of range, a property nobody
+    /// knows, a class nobody defined, a link that is not there and a click on a
+    /// node nobody wrote: Mermaid drops each of these lines and draws the rest,
+    /// so the graph underneath still comes through whole.
+    func testALineNobodyCanHonourIsDroppedAndTheRestIsDrawn() throws {
+        for source in [
+            "flowchart TD\n A --> B\n style A fill:chartruse",
+            "flowchart TD\n A --> B\n style A opacity:2",
+            "flowchart TD\n A --> B\n style A rotate:30deg",
+            "flowchart TD\n A --> B\n class A missing",
+            "flowchart TD\n A:::missing --> B",
+            "flowchart TD\n A --> B\n linkStyle 4 stroke:red",
+            "flowchart TD\n A --> B\n click Z \"https://example.com\"",
+        ] {
+            guard case .flowchart(let chart)? = MermaidDiagram.parse(source) else {
+                return XCTFail("the graph is still a graph: \(source)")
+            }
+            XCTAssertEqual(chart.nodes.map(\.id), ["A", "B"], source)
+            XCTAssertEqual(chart.edges.count, 1, source)
+            XCTAssertNil(chart.nodes[0].style.fill, source)
+        }
+        // What the line could honour is still honoured: only the bad half goes.
+        guard
+            case .flowchart(let half)? = MermaidDiagram.parse(
+                "flowchart TD\n A --> B\n style A fill:chartruse,stroke:red")
+        else { return XCTFail("half a style is still half a style") }
+        XCTAssertNil(half.nodes[0].style.fill)
+        XCTAssertNotNil(half.nodes[0].style.stroke)
+    }
+
     func testWhatItRefuses() {
         // Each of these has to come back nil, because drawing what is left after
         // ignoring the rest would be a different diagram.
@@ -151,15 +181,6 @@ final class MermaidTests: XCTestCase {
             "flowchart TD\n A --> B\n end",
             // A direction nobody knows.
             "flowchart TD\n subgraph a\n direction sideways\n A --> B\n end",
-            // A colour, a share and a property this cannot draw.
-            "flowchart TD\n A --> B\n style A fill:chartruse",
-            "flowchart TD\n A --> B\n style A opacity:2",
-            "flowchart TD\n A --> B\n style A rotate:30deg",
-            "flowchart TD\n A --> B\n class A missing",
-            "flowchart TD\n A:::missing --> B",
-            // A line, and a click, naming something nobody wrote.
-            "flowchart TD\n A --> B\n linkStyle 4 stroke:red",
-            "flowchart TD\n A --> B\n click Z \"https://example.com\"",
             "",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
@@ -654,6 +675,16 @@ final class MermaidTests: XCTestCase {
                 source: "journey\n  Make tea: 5", theme: Theme(isDark: false), width: 700))
     }
 
+    /// A mark nobody knows leaves an ordinary state, which is what Mermaid
+    /// draws for it.
+    func testAMarkNobodyKnowsLeavesAnOrdinaryState() throws {
+        guard
+            case .flowchart(let chart)? = MermaidDiagram.parse(
+                "stateDiagram-v2\n state pause <<wobble>>\n [*] --> pause")
+        else { return XCTFail("a state with an unknown mark is still a state") }
+        XCTAssertEqual(chart.nodes.first { $0.id == "pause" }?.shape, .rounded)
+    }
+
     func testWhatAStateMachineRefuses() {
         for source in [
             // A machine left open, and a note left open.
@@ -661,7 +692,6 @@ final class MermaidTests: XCTestCase {
             "stateDiagram-v2\n [*] --> A\n note right of A",
             // A note with no words, and a kind of state nobody knows.
             "stateDiagram-v2\n [*] --> A\n note right of A:",
-            "stateDiagram-v2\n state pause <<wobble>>\n [*] --> pause",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
@@ -751,20 +781,49 @@ final class MermaidTests: XCTestCase {
         XCTAssertGreaterThan(noted.width, plain.width)
     }
 
+    /// A class named in a second namespace, a click, a painting and a class of
+    /// styles naming nobody, and a line the grammar cannot read: Mermaid drops
+    /// each and draws what is left.
+    func testAClassDiagramDropsTheLinesMermaidDrops() throws {
+        guard
+            case .boxes(let twice)? = MermaidDiagram.parse(
+                "classDiagram\n namespace one {\n class A\n }\n"
+                    + "namespace two {\n class A\n }")
+        else { return XCTFail("one class is drawn once, in the frame that took it") }
+        XCTAssertEqual(twice.boxes.map(\.name), ["A"])
+        XCTAssertEqual(twice.boxes[0].namespace, 0)
+        XCTAssertEqual(twice.namespaces[1].members, [])
+
+        for source in [
+            "classDiagram\n class A\n click Z href \"x\"",
+            "classDiagram\n class A\n style Z fill:red",
+            "classDiagram\n class A\n cssClass \"A\" missing",
+        ] {
+            guard case .boxes(let diagram)? = MermaidDiagram.parse(source) else {
+                return XCTFail("the class is still a class: \(source)")
+            }
+            XCTAssertEqual(diagram.boxes.map(\.name), ["A"], source)
+            XCTAssertNil(diagram.boxes[0].style.fill, source)
+        }
+
+        // A line nothing can be made of leaves the diagram with nothing in it,
+        // which is the empty picture Mermaid draws for it.
+        guard case .boxes(let bare)? = MermaidDiagram.parse("classDiagram\n A B C") else {
+            return XCTFail("a line nobody can read declares nothing")
+        }
+        XCTAssertEqual(bare.boxes.count, 0)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "classDiagram\n A B C", theme: Theme(isDark: false), width: 700))
+    }
+
     func testWhatTheBoxDiagramsRefuse() {
         for source in [
             // A note with nothing written on it.
             "classDiagram\n class A\n note",
             "classDiagram\n class A\n note for A",
-            // A namespace left open, and a class written in two of them.
+            // A namespace left open.
             "classDiagram\n namespace one {\n class A",
-            "classDiagram\n namespace one {\n class A\n }\n"
-                + "namespace two {\n class A\n }",
-            // A click, a painting and a class of styles naming nobody.
-            "classDiagram\n class A\n click Z href \"x\"",
-            "classDiagram\n class A\n style Z fill:red",
-            "classDiagram\n class A\n cssClass \"A\" missing",
-            "classDiagram\n A B C",
             // A relation with an end this does not know, and an unclosed block.
             "erDiagram\n A |>--o{ B : x",
             "erDiagram\n A {\n string name",
@@ -910,8 +969,6 @@ final class MermaidTests: XCTestCase {
     func testWhatTheTreeDiagramsRefuse() {
         for source in [
             // A class of styles nobody defined, and one naming no node.
-            "mindmap\n  root\n    class root missing",
-            "mindmap\n  root\n    classDef pale fill:#eee\n    class nobody pale",
             // An icon with no node over it belongs to nothing.
             "mindmap\n  ::icon(fa fa-book)",
             "mindmap\n  root\n    a\n  second root",
@@ -997,6 +1054,30 @@ final class MermaidTests: XCTestCase {
         XCTAssertNil(chart.origin)
     }
 
+    /// A task told to follow one nobody wrote starts at the beginning of the
+    /// chart, and a mindmap drops a class line naming nobody — both the way
+    /// Mermaid does.
+    func testAnUnfollowableTaskStartsAtTheBeginning() throws {
+        guard case .gantt(let chart)? = MermaidDiagram.parse("gantt\n  Draft :after nothing, 3d")
+        else { return XCTFail("a task nobody can follow is still a task") }
+        XCTAssertEqual(chart.tasks.count, 1)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(
+                source: "gantt\n  Draft :after nothing, 3d", theme: Theme(isDark: false),
+                width: 700))
+
+        for source in [
+            "mindmap\n  root\n    class root missing",
+            "mindmap\n  root\n    classDef pale fill:#eee\n    class nobody pale",
+        ] {
+            guard case .mindmap(let map)? = MermaidDiagram.parse(source) else {
+                return XCTFail("the map is still a map: \(source)")
+            }
+            XCTAssertEqual(map.nodes.map(\.id), ["root"], source)
+            XCTAssertNil(map.nodes[0].style.fill, source)
+        }
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             "journey\n  Make tea: 9: Me",
@@ -1007,8 +1088,6 @@ final class MermaidTests: XCTestCase {
             "gantt\n  displayMode roomy\n  Draft :3d",
             // A date that does not fit the format the chart declared.
             "gantt\n  dateFormat DD-MM-YYYY\n  Draft :a1, 2026-01-01",
-            // A reference to a task that was never named.
-            "gantt\n  Draft :after nothing, 3d",
             // A unit this does not know.
             "gantt\n  Draft :3y",
         ] {

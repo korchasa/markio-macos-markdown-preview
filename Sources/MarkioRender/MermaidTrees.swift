@@ -41,11 +41,14 @@ struct Mindmap {
             }
             if word == "class" {
                 let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
-                guard parts.count == 2, let style = styles[String(parts[1])] else { return nil }
+                // A style nobody defined and a node nobody wrote both leave the
+                // line with nothing to paint, which is what Mermaid makes of it.
+                guard parts.count == 2 else { return nil }
+                guard let style = styles[String(parts[1])] else { continue }
                 for name in parts[0].split(separator: ",") {
                     let id = name.trimmingCharacters(in: .whitespaces)
                     guard let index = map.nodes.firstIndex(where: { $0.id == id }) else {
-                        return nil
+                        continue
                     }
                     map.nodes[index].style.merge(style)
                 }

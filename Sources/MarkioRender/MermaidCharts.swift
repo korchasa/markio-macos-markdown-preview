@@ -307,17 +307,15 @@ struct GanttChart {
     private static func moment(
         _ text: String, ends: [String: Double], starts: [String: Double], format: String
     ) -> Double? {
+        // A name nobody wrote leaves nothing to follow, and Mermaid puts such a
+        // task at the beginning of the chart rather than dropping it.
         if text.hasPrefix("after ") {
             let names = text.dropFirst(6).split(separator: " ").map(String.init)
-            let known = names.compactMap { ends[$0] }
-            guard known.count == names.count, let latest = known.max() else { return nil }
-            return latest
+            return names.compactMap { ends[$0] }.max() ?? starts.values.min() ?? 0
         }
         if text.hasPrefix("until ") {
             let names = text.dropFirst(6).split(separator: " ").map(String.init)
-            let known = names.compactMap { starts[$0] }
-            guard known.count == names.count, let earliest = known.min() else { return nil }
-            return earliest
+            return names.compactMap { starts[$0] }.min() ?? starts.values.min() ?? 0
         }
         return day(text, format: format).map(Double.init)
     }

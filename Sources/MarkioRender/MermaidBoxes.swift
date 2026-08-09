@@ -144,20 +144,23 @@ enum ClassDiagram {
             case "style":
                 let parts = rest.split(
                     separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])),
-                    let index = diagram.boxes.firstIndex(where: { $0.name == String(parts[0]) })
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
                 else { return nil }
-                diagram.boxes[index].style.merge(style)
+                // A class nobody wrote leaves the line with nothing to paint.
+                if let index = diagram.boxes.firstIndex(where: { $0.name == String(parts[0]) }) {
+                    diagram.boxes[index].style.merge(style)
+                }
                 continue
             case "cssClass":
                 // `cssClass "Duck,Fish" highlight`, the names always quoted.
                 let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
-                guard parts.count == 2, let style = styles[String(parts[1])] else { return nil }
+                guard parts.count == 2 else { return nil }
+                guard let style = styles[String(parts[1])] else { continue }
                 let named = parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
                 for name in named.split(separator: ",") {
                     let box = name.trimmingCharacters(in: .whitespaces)
                     guard let index = diagram.boxes.firstIndex(where: { $0.name == box }) else {
-                        return nil
+                        continue
                     }
                     diagram.boxes[index].style.merge(style)
                 }
@@ -167,9 +170,7 @@ enum ClassDiagram {
                 // clickable class like any other, so this changes nothing drawn.
                 let parts = rest.split(
                     separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-                guard parts.count == 2,
-                    diagram.boxes.contains(where: { $0.name == String(parts[0]) })
-                else { return nil }
+                guard parts.count == 2 else { return nil }
                 continue
             default:
                 break
@@ -196,9 +197,11 @@ enum ClassDiagram {
                 append(member, to: &diagram.boxes[index])
                 continue
             }
-            return nil
+            // A line the grammar cannot read declares nothing, which is what
+            // Mermaid makes of it: it draws the diagram without it.
+            continue
         }
-        guard open == nil, openNamespace == nil, !diagram.boxes.isEmpty else { return nil }
+        guard open == nil, openNamespace == nil else { return nil }
         return diagram
     }
 
@@ -244,9 +247,9 @@ enum ClassDiagram {
         let index = diagram.index(of: name)
         if let label { diagram.boxes[index].name = label }
         if opens { opening = index }
-        if let namespace {
-            // A class written in two namespaces belongs to neither.
-            guard diagram.boxes[index].namespace == nil else { return false }
+        // A class written in a second namespace stays where it was first put:
+        // one class is drawn once, inside one frame.
+        if let namespace, diagram.boxes[index].namespace == nil {
             diagram.boxes[index].namespace = namespace
             diagram.namespaces[namespace].members.append(index)
         }

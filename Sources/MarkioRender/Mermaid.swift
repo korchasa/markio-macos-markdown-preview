@@ -474,7 +474,9 @@ enum StateDiagram {
                     switch kind {
                     case "fork", "join": shapes[name] = .bar
                     case "choice": shapes[name] = .diamond
-                    default: return nil
+                    // A mark nobody knows leaves an ordinary state, which is
+                    // what Mermaid draws for it.
+                    default: break
                     }
                     continue
                 }
@@ -918,12 +920,15 @@ struct Flowchart {
         return true
     }
 
+    /// A class nobody defined and a node nobody wrote both leave the line with
+    /// nothing to do, which is how Mermaid treats them.
     private mutating func applyClass(_ rest: String) -> Bool {
         let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
-        guard parts.count == 2, let style = classes[String(parts[1])] else { return false }
+        guard parts.count == 2 else { return false }
+        guard let style = classes[String(parts[1])] else { return true }
         for name in parts[0].split(separator: ",") {
             let id = name.trimmingCharacters(in: .whitespaces)
-            guard let index = nodes.firstIndex(where: { $0.id == id }) else { return false }
+            guard let index = nodes.firstIndex(where: { $0.id == id }) else { continue }
             nodes[index].style.merge(style)
         }
         return true
@@ -935,8 +940,7 @@ struct Flowchart {
     /// read for the box it names and then changes nothing.
     private func noteClick(_ rest: String) -> Bool {
         let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-        guard parts.count == 2 else { return false }
-        return nodes.contains { $0.id == String(parts[0]) }
+        return parts.count == 2
     }
 
     /// `linkStyle 0,1 stroke:#f00,stroke-width:2px` or `linkStyle default …`.
@@ -951,9 +955,8 @@ struct Flowchart {
             return true
         }
         for number in parts[0].split(separator: ",") {
-            guard let index = Int(number.trimmingCharacters(in: .whitespaces)),
-                edges.indices.contains(index)
-            else { return false }
+            guard let index = Int(number.trimmingCharacters(in: .whitespaces)) else { return false }
+            guard edges.indices.contains(index) else { continue }
             edges[index].style.merge(style)
         }
         return true
@@ -961,9 +964,12 @@ struct Flowchart {
 
     private mutating func applyStyle(_ rest: String) -> Bool {
         let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-        guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])),
-            let index = nodes.firstIndex(where: { $0.id == String(parts[0]) })
-        else { return false }
+        guard parts.count == 2, let style = Flowchart.style(from: String(parts[1])) else {
+            return false
+        }
+        guard let index = nodes.firstIndex(where: { $0.id == String(parts[0]) }) else {
+            return true
+        }
         nodes[index].style.merge(style)
         return true
     }
@@ -988,9 +994,10 @@ struct Flowchart {
         return parts.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
-    /// `fill:#f9f,stroke:#333,stroke-width:2px,color:#fff`. A property this
-    /// cannot draw fails the whole diagram, because a node drawn without the
-    /// colour the author gave it is a node the author did not write.
+    /// `fill:#f9f,stroke:#333,stroke-width:2px,color:#fff`. A property or a
+    /// value this cannot resolve is skipped and the rest of the line is kept,
+    /// which is what a browser does with a declaration it does not understand
+    /// and so what Mermaid's own drawing comes to.
     static func style(from text: String) -> Style? {
         var style = Style()
         for declaration in declarations(in: text) {
@@ -1001,26 +1008,26 @@ struct Flowchart {
             if value.hasSuffix(";") { value = String(value.dropLast()) }
             switch key {
             case "fill":
-                guard let colour = Colour(css: value) else { return nil }
+                guard let colour = Colour(css: value) else { continue }
                 style.fill = colour
             case "stroke":
-                guard let colour = Colour(css: value) else { return nil }
+                guard let colour = Colour(css: value) else { continue }
                 style.stroke = colour
             case "color":
-                guard let colour = Colour(css: value) else { return nil }
+                guard let colour = Colour(css: value) else { continue }
                 style.text = colour
             case "stroke-width":
                 let number = value.prefix(while: { $0.isNumber || $0 == "." })
-                guard let width = Double(number), width > 0 else { return nil }
+                guard let width = Double(number), width > 0 else { continue }
                 style.strokeWidth = width
             case "opacity":
-                guard let share = Double(value), (0...1).contains(share) else { return nil }
+                guard let share = Double(value), (0...1).contains(share) else { continue }
                 style.opacity = share
             default:
-                return nil
+                continue
             }
         }
-        return style.isEmpty ? nil : style
+        return style
     }
 
     /// One line: a node, or a chain of nodes joined by edges.
@@ -1067,8 +1074,7 @@ struct Flowchart {
         if let group = openGroup, !groups.contains(where: { $0.members.contains(index) }) {
             groups[group].members.append(index)
         }
-        if let name {
-            guard let style = classes[name] else { return nil }
+        if let name, let style = classes[name] {
             nodes[index].style.merge(style)
         }
         return index
