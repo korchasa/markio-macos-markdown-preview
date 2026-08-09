@@ -93,6 +93,11 @@ enum MermaidLayout {
             return blocks(diagram, theme: theme, width: width, metrics: metrics)
         case .titled(let title, let inner):
             return titled(title, inner, theme: theme, width: width, metrics: metrics)
+        case .themed(let name, let inner):
+            // The parser only lets through a name this can paint in, so the
+            // fallback here is never the one that runs.
+            return draw(
+                inner, theme: theme.mermaidThemed(name) ?? theme, width: width, metrics: metrics)
         }
     }
 
@@ -715,17 +720,6 @@ enum MermaidLayout {
     /// Slice colours, written down rather than taken from the theme: a pie says
     /// which slice is which by colour, so the colours have to stay apart from
     /// each other and readable on either background.
-    private static let wheel: [CGColor] = [
-        CGColor(red: 0.30, green: 0.55, blue: 0.90, alpha: 1),
-        CGColor(red: 0.95, green: 0.60, blue: 0.25, alpha: 1),
-        CGColor(red: 0.35, green: 0.72, blue: 0.50, alpha: 1),
-        CGColor(red: 0.85, green: 0.40, blue: 0.45, alpha: 1),
-        CGColor(red: 0.60, green: 0.50, blue: 0.85, alpha: 1),
-        CGColor(red: 0.45, green: 0.75, blue: 0.80, alpha: 1),
-        CGColor(red: 0.90, green: 0.75, blue: 0.30, alpha: 1),
-        CGColor(red: 0.65, green: 0.55, blue: 0.45, alpha: 1),
-    ]
-
     private static func pie(
         _ chart: PieChart, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
@@ -793,7 +787,9 @@ enum MermaidLayout {
                 clockwise: false)
             wedge.closeSubpath()
             decorations.append(
-                .path(wedge, color: wheel[index % wheel.count], lineWidth: 0, filled: true))
+                .path(
+                    wedge, color: theme.diagramWheel[index % theme.diagramWheel.count],
+                    lineWidth: 0, filled: true))
             decorations.append(
                 .path(wedge, color: theme.palette.background, lineWidth: 1, filled: false))
             angle += sweep
@@ -808,7 +804,9 @@ enum MermaidLayout {
                 height: swatch
             )
             decorations.append(
-                .fill(rect: box, color: wheel[index % wheel.count], cornerRadius: 2))
+                .fill(
+                    rect: box, color: theme.diagramWheel[index % theme.diagramWheel.count],
+                    cornerRadius: 2))
             decorations.append(
                 .glyphs(
                     entry.line,
@@ -867,7 +865,8 @@ enum MermaidLayout {
                 box.height += size.height * 0.8
             }
             // The branch's colour is the outline unless the author painted one.
-            var style = Flowchart.Style(stroke: colour(wheel[branch[index] % wheel.count]))
+            var style = Flowchart.Style(
+                stroke: colour(theme.diagramWheel[branch[index] % theme.diagramWheel.count]))
             style.merge(node.style)
             boxes.append(
                 Placed(
@@ -937,7 +936,7 @@ enum MermaidLayout {
                 decorations.append(
                     .path(
                         path,
-                        color: wheel[branch[child] % wheel.count],
+                        color: theme.diagramWheel[branch[child] % theme.diagramWheel.count],
                         // A branch near the root is drawn thicker, the way a
                         // trunk is thicker than a twig.
                         lineWidth: max(1, 3 - CGFloat(map.nodes[child].depth)) * metrics.scale,
@@ -1003,7 +1002,7 @@ enum MermaidLayout {
                     frame: CGRect(
                         x: 0, y: 0, width: max(96 * metrics.scale, widest + pad * 2),
                         height: stack),
-                    tint: wheel[(period.section ?? index) % wheel.count]
+                    tint: theme.diagramWheel[(period.section ?? index) % theme.diagramWheel.count]
                 )
             )
         }
@@ -1058,7 +1057,9 @@ enum MermaidLayout {
             )
             decorations.append(
                 .fill(
-                    rect: band, color: wheel[index % wheel.count].copy(alpha: 0.22) ?? wheel[0],
+                    rect: band,
+                    color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.22)
+                        ?? theme.diagramWheel[0],
                     cornerRadius: 4 * metrics.scale))
             let line = text(name, font: font, color: theme.palette.text)
             let size = measure(line)
@@ -1180,7 +1181,7 @@ enum MermaidLayout {
                     column: 0,
                     columnWidth: max(
                         84 * metrics.scale, max(nameSize.width, actorsSize.width) + pad * 2),
-                    tint: wheel[(task.section ?? index) % wheel.count]
+                    tint: theme.diagramWheel[(task.section ?? index) % theme.diagramWheel.count]
                 )
             )
         }
@@ -1231,7 +1232,9 @@ enum MermaidLayout {
             )
             decorations.append(
                 .fill(
-                    rect: band, color: wheel[index % wheel.count].copy(alpha: 0.22) ?? wheel[0],
+                    rect: band,
+                    color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.22)
+                        ?? theme.diagramWheel[0],
                     cornerRadius: 4 * metrics.scale))
             let line = text(name, font: font, color: theme.palette.text)
             let size = measure(line)
@@ -1503,7 +1506,8 @@ enum MermaidLayout {
                     decorations.append(
                         .fill(
                             rect: band,
-                            color: wheel[section % wheel.count].copy(alpha: 0.16) ?? wheel[0],
+                            color: theme.diagramWheel[section % theme.diagramWheel.count].copy(
+                                alpha: 0.16) ?? theme.diagramWheel[0],
                             cornerRadius: 3 * metrics.scale))
                     decorations.append(
                         .glyphs(
@@ -1527,8 +1531,8 @@ enum MermaidLayout {
                 : task.done
                     ? theme.palette.secondaryText
                     : task.active
-                        ? wheel[0]
-                        : wheel[(task.section ?? 0) % wheel.count]
+                        ? theme.diagramWheel[0]
+                        : theme.diagramWheel[(task.section ?? 0) % theme.diagramWheel.count]
             let barTop = y + pad
             let barHeight = rowHeight - pad * 2
             if task.milestone {
@@ -1646,14 +1650,14 @@ enum MermaidLayout {
                 control1: CGPoint(x: waist, y: endTop + thickness),
                 control2: CGPoint(x: waist, y: startTop + thickness))
             ribbon.closeSubpath()
-            let colour = wheel[flow.from % wheel.count]
+            let colour = theme.diagramWheel[flow.from % theme.diagramWheel.count]
             decorations.append(
                 .path(ribbon, color: colour.copy(alpha: 0.4) ?? colour, lineWidth: 0, filled: true))
         }
         for (index, frame) in frames.enumerated() {
             decorations.append(
                 .fill(
-                    rect: frame, color: wheel[index % wheel.count],
+                    rect: frame, color: theme.diagramWheel[index % theme.diagramWheel.count],
                     cornerRadius: 2 * metrics.scale))
             let size = measure(labels[index])
             // The name goes to the right of its bar, except where there is
@@ -1778,7 +1782,7 @@ enum MermaidLayout {
         for (index, node) in map.nodes.enumerated() where index > 0 || !node.label.isEmpty {
             let frame = frames[index]
             guard frame.width > 2, frame.height > 2 else { continue }
-            let colour = wheel[index % wheel.count]
+            let colour = theme.diagramWheel[index % theme.diagramWheel.count]
             let branch = !node.children.isEmpty
             decorations.append(
                 .fill(
@@ -1905,7 +1909,8 @@ enum MermaidLayout {
             decorations.append(
                 .fill(
                     rect: frame.insetBy(dx: 0.5, dy: 0.5),
-                    color: wheel[piece.field % wheel.count].copy(alpha: 0.2)
+                    color: theme.diagramWheel[piece.field % theme.diagramWheel.count].copy(
+                        alpha: 0.2)
                         ?? theme.palette.tableHeaderBackground,
                     cornerRadius: 2 * metrics.scale))
             decorations.append(
@@ -2085,7 +2090,7 @@ enum MermaidLayout {
         var decorations: [BlockBox.Decoration] = []
         for (index, column) in columns.enumerated() {
             let x = left + CGFloat(index) * (columnWidth + gap)
-            let tint = wheel[index % wheel.count]
+            let tint = theme.diagramWheel[index % theme.diagramWheel.count]
             let head = CGRect(
                 x: x, y: metrics.padding, width: columnWidth, height: headHeight)
             decorations.append(
@@ -2267,7 +2272,8 @@ enum MermaidLayout {
             decorations.append(
                 .fill(
                     rect: corner.insetBy(dx: 1, dy: 1),
-                    color: wheel[index % wheel.count].copy(alpha: 0.14) ?? wheel[index],
+                    color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.14)
+                        ?? theme.diagramWheel[index],
                     cornerRadius: 0))
             let name = chart.quadrants[index]
             guard !name.isEmpty else { continue }
@@ -2309,7 +2315,8 @@ enum MermaidLayout {
             written.append(dot)
             decorations.append(
                 .path(
-                    CGPath(ellipseIn: dot, transform: nil), color: wheel[0], lineWidth: 0,
+                    CGPath(ellipseIn: dot, transform: nil), color: theme.diagramWheel[0],
+                    lineWidth: 0,
                     filled: true))
         }
         for (index, point) in chart.points.enumerated() {
@@ -2475,7 +2482,7 @@ enum MermaidLayout {
         let bars = chart.series.filter(\.isBar).count
         var barIndex = 0
         for (index, series) in chart.series.enumerated() {
-            let colour = wheel[index % wheel.count]
+            let colour = theme.diagramWheel[index % theme.diagramWheel.count]
             if series.isBar {
                 // Several bar series share a category, so each takes a slice of
                 // it rather than standing on top of the one before.
@@ -2583,7 +2590,7 @@ enum MermaidLayout {
         var decorations: [BlockBox.Decoration] = []
         for (index, name) in graph.branches.enumerated() {
             let side = across(index)
-            let colour = wheel[index % wheel.count]
+            let colour = theme.diagramWheel[index % theme.diagramWheel.count]
             let own = graph.commits.filter { $0.branch == index }
             guard let first = own.first, let last = own.last else { continue }
             let rail = CGMutablePath()
@@ -2653,12 +2660,12 @@ enum MermaidLayout {
             }
             decorations.append(
                 .path(
-                    drawn, color: wheel[commit.branch % wheel.count],
+                    drawn, color: theme.diagramWheel[commit.branch % theme.diagramWheel.count],
                     lineWidth: 2 * metrics.scale, filled: false))
         }
         for commit in graph.commits {
             let here = centre(of: commit)
-            let colour = wheel[commit.branch % wheel.count]
+            let colour = theme.diagramWheel[commit.branch % theme.diagramWheel.count]
             let dot = CGRect(
                 x: here.x - radius, y: here.y - radius, width: radius * 2, height: radius * 2)
             // A merge is drawn hollow: it is the one commit that belongs to two
@@ -4440,7 +4447,7 @@ enum MermaidLayout {
                 if axis == 0 { shape.move(to: at) } else { shape.addLine(to: at) }
             }
             shape.closeSubpath()
-            let colour = wheel[index % wheel.count]
+            let colour = theme.diagramWheel[index % theme.diagramWheel.count]
             decorations.append(
                 .path(shape, color: colour.copy(alpha: 0.22) ?? colour, lineWidth: 0, filled: true))
             decorations.append(
@@ -4479,7 +4486,9 @@ enum MermaidLayout {
                 let size = measure(line)
                 let box = CGRect(x: start, y: y, width: swatch, height: swatch)
                 decorations.append(
-                    .fill(rect: box, color: wheel[index % wheel.count], cornerRadius: 2))
+                    .fill(
+                        rect: box, color: theme.diagramWheel[index % theme.diagramWheel.count],
+                        cornerRadius: 2))
                 decorations.append(
                     .glyphs(
                         line,
@@ -4895,7 +4904,7 @@ enum MermaidLayout {
         let colours: [ArchitectureDiagram.Icon: Int] = [
             .cloud: 0, .database: 1, .disk: 2, .internet: 3, .server: 4,
         ]
-        let ink = wheel[(colours[kind] ?? 0) % wheel.count]
+        let ink = theme.diagramWheel[(colours[kind] ?? 0) % theme.diagramWheel.count]
         let cut = theme.palette.background
         let body = CGMutablePath()
         var detail: CGPath?

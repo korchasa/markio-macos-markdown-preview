@@ -31,6 +31,9 @@ enum MermaidDiagram {
     case blocks(BlockDiagram)
     /// A diagram with the name its YAML preamble gave it, set above it.
     indirect case titled(String, MermaidDiagram)
+    /// A diagram painted in one of Mermaid's own themes, which its preamble
+    /// asked for by name.
+    indirect case themed(String, MermaidDiagram)
 
     /// What a diagram's preamble said, beyond its name.
     struct Settings {
@@ -39,11 +42,21 @@ enum MermaidDiagram {
         /// `displayMode: compact`, which a gantt may say in its preamble
         /// instead of in its body.
         var ganttCompact = false
+        /// `theme: forest`: which of Mermaid's own colour sets to paint in.
+        var theme = ""
     }
 
     static func parse(_ source: String) -> MermaidDiagram? {
         guard let front = frontMatter(source) else { return nil }
-        guard let diagram = parse(body: front.body, settings: front.settings) else { return nil }
+        var settings = front.settings
+        // `%%{init: {'theme':'forest'}}%%` says the same thing the preamble
+        // does, on a line that otherwise looks like a comment. Reading it as
+        // one would draw the diagram in colours its author did not choose.
+        guard let body = directives(front.body, into: &settings) else { return nil }
+        guard var diagram = parse(body: body, settings: settings) else { return nil }
+        if !settings.theme.isEmpty {
+            diagram = .themed(settings.theme, diagram)
+        }
         guard !front.title.isEmpty else { return diagram }
         // A title in the preamble and a `title` line in the diagram are two
         // names for one picture, and which of them Mermaid shows is not
@@ -111,12 +124,49 @@ enum MermaidDiagram {
             case ["displayMode"], ["config", "gantt", "displayMode"]:
                 guard value == "compact" else { return nil }
                 settings.ganttCompact = true
+            case ["config", "theme"]:
+                // The name has to be one this can paint in; a theme nobody
+                // knows would be drawn in the reader's colours instead, which
+                // is not the picture the author asked for.
+                guard ["default", "base", "neutral", "forest", "dark"].contains(value) else {
+                    return nil
+                }
+                settings.theme = value
             default:
                 return nil
             }
         }
         // Opened and never closed, which is neither a preamble nor a diagram.
         return nil
+    }
+
+    /// Mermaid's `%%{ … }%%` directive lines, taken out of the body and read.
+    ///
+    /// Only `init.theme` says anything about what is drawn; every other
+    /// directive changes how Mermaid draws, and a diagram drawn to settings
+    /// other than its author's is the half-truth the whole reader avoids. So an
+    /// unknown one gives nil rather than being passed over as a comment.
+    private static func directives(_ body: String, into settings: inout Settings) -> String? {
+        var kept: [Substring] = []
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            guard text.hasPrefix("%%{"), text.hasSuffix("}%%") else {
+                kept.append(line)
+                continue
+            }
+            let inside = String(text.dropFirst(3).dropLast(3))
+            // `init: {'theme': 'forest'}` and `'init': { "theme": "forest" }`
+            // are the same line written two ways.
+            let words = inside.split(whereSeparator: { ":,{}".contains($0) })
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\"' ")) }
+                .filter { !$0.isEmpty }
+            guard words.count == 3, words[0] == "init" || words[0] == "initialize",
+                words[1] == "theme",
+                ["default", "base", "neutral", "forest", "dark"].contains(words[2])
+            else { return nil }
+            settings.theme = words[2]
+        }
+        return kept.joined(separator: "\n")
     }
 
     /// A YAML scalar as written on one line: the value, and its quotes taken off

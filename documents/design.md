@@ -275,9 +275,18 @@ what to draw. The title travels as `MermaidDiagram.titled`, a case wrapping any
 other, so the layout draws the diagram exactly as it would have without a name
 and then moves it down to make room — one place for a title rather than one per
 kind. `config.kanban.ticketBaseUrl` and `displayMode: compact` reach the reader
-that wants them. A key that sets the theme changes how Mermaid draws rather than
-what it draws, and drawing in colours other than the author's is exactly the
-half-truth the rule above forbids, so a themed fence stays source.
+that wants them. `config.theme` travels the same way as the title, as a
+`MermaidDiagram.themed` wrapping any other, and the layout draws the diagram
+underneath against a repainted `Theme`: Mermaid's five colour sets are a handful
+of values each — what a box is filled and outlined with, what its words are,
+what a line is, what shows behind them — and the wheel a diagram tells its
+series apart with moved out of the layout into the theme so a repaint carries it
+too. Only the diagram changes; the page around it stays the reader's, because
+the theme was written over a fence rather than over the document.
+`%%{init: {'theme':'forest'}}%%` says the same thing on a line that looks like a
+comment, so directive lines are taken out of the body and read before the
+diagram is — passing one over as a comment would draw the picture in colours its
+author did not choose, which is the half-truth everything else here avoids.
 
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle

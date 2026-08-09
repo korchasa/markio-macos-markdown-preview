@@ -1769,6 +1769,53 @@ final class MermaidTests: XCTestCase {
         }
     }
 
+    /// A theme is a picture drawn in the colours its author asked for, not in
+    /// the reader's.
+    func testAPreamblePaintsTheDiagramInItsOwnTheme() throws {
+        let source = """
+            ---
+            config:
+              theme: forest
+            ---
+            pie
+              "A" : 1
+              "B" : 2
+            """
+        guard case .themed(let name, let inner)? = MermaidDiagram.parse(source) else {
+            return XCTFail("the preamble's theme did not reach the diagram")
+        }
+        XCTAssertEqual(name, "forest")
+        guard case .pie = inner else { return XCTFail("the diagram under it is still a pie") }
+        // The picture is the same size and a different set of colours.
+        let painted = try XCTUnwrap(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 520))
+        let plain = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "pie\n  \"A\" : 1\n  \"B\" : 2", theme: Theme(isDark: false),
+                width: 520))
+        XCTAssertEqual(painted.width, plain.width)
+        XCTAssertEqual(painted.height, plain.height)
+        XCTAssertNotEqual(
+            Theme(isDark: false).mermaidThemed("forest")?.diagramWheel.first,
+            Theme(isDark: false).diagramWheel.first)
+        XCTAssertNil(Theme(isDark: false).mermaidThemed("nightfall"))
+
+        // The same thing said on a directive line, which looks like a comment
+        // and is not one.
+        guard
+            case .themed(let directed, _)? = MermaidDiagram.parse(
+                "%%{init: {'theme':'dark'}}%%\npie\n  \"A\" : 1")
+        else { return XCTFail("the init directive did not reach the diagram") }
+        XCTAssertEqual(directed, "dark")
+        // A directive that says anything else changes how Mermaid draws rather
+        // than what it draws, so the fence stays source.
+        XCTAssertNil(MermaidDiagram.parse("%%{init: {'theme':'nightfall'}}%%\npie\n  \"A\" : 1"))
+        XCTAssertNil(
+            MermaidDiagram.parse("%%{init: {'flowchart':{'curve':'basis'}}}%%\nflowchart TD\n A"))
+        // A plain comment is still a comment.
+        XCTAssertNotNil(MermaidDiagram.parse("%% a note to the reader\npie\n  \"A\" : 1"))
+    }
+
     func testAPreambleNamesTheDiagram() throws {
         let source = """
             ---
@@ -1824,7 +1871,7 @@ final class MermaidTests: XCTestCase {
         for source in [
             // `config` changes how Mermaid draws, and drawing it another way
             // would be answering a question the author did not ask.
-            "---\nconfig:\n  theme: forest\n---\npie\n  \"A\" : 1",
+            "---\nconfig:\n  theme: nightfall\n---\npie\n  \"A\" : 1",
             "---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\n  a[A]",
             // A board's setting over something that is not a board.
             "---\nconfig:\n  kanban:\n    ticketBaseUrl: 'x'\n---\npie\n  \"A\" : 1",

@@ -94,15 +94,18 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 - **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
-  is read for the keys that say what to draw. `title` names the picture and is
-  set above it whatever kind it is. `config.kanban.ticketBaseUrl` says where a
-  board's tickets live, and every ticket id on the board is then drawn as the
-  link it has become. `displayMode: compact`, alone or under `config.gantt`,
-  packs a gantt's tasks onto shared rows. A preamble carrying anything else — a
-  theme, any other `config` — changes how Mermaid draws rather than what it
-  draws, and the fence stays a fenced block; so does a diagram named twice, once
-  in the preamble and once in a `title` line of its own, and a setting written
-  over a diagram it does not belong to.
+  and its `%%{ … }%%` directive lines are read for the keys that say what to
+  draw. `title` names the picture and is set above it whatever kind it is.
+  `config.theme`, and the same name written as `%%{init: {'theme':'forest'}}%%`,
+  paints the diagram in that one of Mermaid's own colour sets — the diagram
+  only, since the theme was written over a fence and not over the document.
+  `config.kanban.ticketBaseUrl` says where a board's tickets live, and every
+  ticket id on the board is then drawn as the link it has become.
+  `displayMode: compact`, alone or under `config.gantt`, packs a gantt's tasks
+  onto shared rows. A preamble or directive carrying anything else changes how
+  Mermaid draws rather than what it draws, and the fence stays a fenced block;
+  so does a diagram named twice, once in the preamble and once in a `title` line
+  of its own, and a setting written over a diagram it does not belong to.
 
 ## VIEW — What the reader sees
 

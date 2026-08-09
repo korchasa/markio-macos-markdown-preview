@@ -55,6 +55,10 @@ public struct Theme {
     public var metrics: Metrics
     public var palette: Palette
     public var isDark: Bool
+    /// The colours a diagram tells one thing from another with — pie slices,
+    /// branches of a graph, sections of a chart. They live here rather than in
+    /// the layout because a Mermaid theme changes them along with the palette.
+    public var diagramWheel: [CGColor] = Theme.wheel(named: "default")
 
     /// Fonts are `CTFont` because that is what the typesetter wants; going
     /// through `NSFont` per run would bridge on every line.
@@ -88,6 +92,22 @@ public struct Theme {
         // Heading scale, largest first, tuned to stay readable next to 14 pt body.
         let scales: [CGFloat] = [1.9, 1.5, 1.25, 1.1, 1.0, 0.92]
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }
+    }
+
+    /// The same theme repainted in one of Mermaid's own — `default`, `neutral`,
+    /// `dark`, `forest` or `base`.
+    ///
+    /// A diagram that names a theme is asking for particular colours, and
+    /// drawing it in the reader's instead would be a picture its author did not
+    /// write. Only the diagram is repainted; the page around it stays the
+    /// reader's, because the theme was written over a fence, not over the
+    /// document. An unknown name gives nil, and the fence stays source.
+    public func mermaidThemed(_ name: String) -> Theme? {
+        guard let colours = Theme.mermaidPalette(named: name, isDark: isDark) else { return nil }
+        var copy = self
+        copy.palette = colours
+        copy.diagramWheel = Theme.wheel(named: name)
+        return copy
     }
 
     /// The width of a reading column measured in characters, in points.
@@ -144,6 +164,69 @@ public struct Theme {
 
     private static func italic(_ font: CTFont) -> CTFont {
         CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitItalic, .traitItalic) ?? font
+    }
+
+    /// Mermaid's five built-in themes, as the handful of colours a diagram is
+    /// actually drawn from: what a box is filled and outlined with, what its
+    /// words are, what a line is, and what shows behind them.
+    private static func mermaidPalette(named name: String, isDark: Bool) -> Palette? {
+        func color(_ hex: UInt32) -> CGColor {
+            CGColor(
+                srgbRed: Double((hex >> 16) & 0xff) / 255,
+                green: Double((hex >> 8) & 0xff) / 255,
+                blue: Double(hex & 0xff) / 255, alpha: 1)
+        }
+        /// fill, stroke, text, line, page.
+        let colours: [String: (UInt32, UInt32, UInt32, UInt32, UInt32)] = [
+            "default": (0xECEC_FF, 0x9370_DB, 0x1313_11, 0x3333_33, 0xFFFF_FF),
+            "base": (0xECEC_FF, 0x9370_DB, 0x1313_11, 0x3333_33, 0xFFFF_FF),
+            "neutral": (0xEEEE_EE, 0x9999_99, 0x0000_00, 0x6666_66, 0xFFFF_FF),
+            "forest": (0xCDE4_98, 0x1381_4D, 0x0000_00, 0x1381_4D, 0xF4F4_F4),
+            "dark": (0x1F20_20, 0x8181_81, 0xF9FF_FE, 0xCCCC_CC, 0x3333_33),
+        ]
+        guard let picked = colours[name] else { return nil }
+        var palette = Theme.palette(isDark: isDark)
+        palette.tableHeaderBackground = color(picked.0)
+        palette.tableBorder = color(picked.1)
+        palette.text = color(picked.2)
+        palette.codeText = color(picked.2)
+        palette.secondaryText = color(picked.3)
+        palette.background = color(picked.4)
+        palette.codeBackground = color(picked.4)
+        return palette
+    }
+
+    /// The wheel each Mermaid theme tells its series apart with.
+    private static func wheel(named name: String) -> [CGColor] {
+        func color(_ red: Double, _ green: Double, _ blue: Double) -> CGColor {
+            CGColor(srgbRed: red, green: green, blue: blue, alpha: 1)
+        }
+        switch name {
+        case "forest":
+            return [
+                color(0.07, 0.51, 0.30), color(0.55, 0.75, 0.40), color(0.31, 0.65, 0.45),
+                color(0.72, 0.80, 0.35), color(0.16, 0.42, 0.36), color(0.45, 0.68, 0.28),
+                color(0.10, 0.60, 0.52), color(0.62, 0.72, 0.22),
+            ]
+        case "dark":
+            return [
+                color(0.51, 0.62, 0.95), color(0.95, 0.65, 0.35), color(0.45, 0.80, 0.60),
+                color(0.92, 0.52, 0.58), color(0.72, 0.62, 0.95), color(0.55, 0.85, 0.88),
+                color(0.95, 0.83, 0.42), color(0.75, 0.66, 0.55),
+            ]
+        case "neutral":
+            return [
+                color(0.40, 0.40, 0.40), color(0.60, 0.60, 0.60), color(0.28, 0.28, 0.28),
+                color(0.72, 0.72, 0.72), color(0.50, 0.50, 0.50), color(0.35, 0.35, 0.35),
+                color(0.66, 0.66, 0.66), color(0.22, 0.22, 0.22),
+            ]
+        default:
+            return [
+                color(0.30, 0.55, 0.90), color(0.95, 0.60, 0.25), color(0.35, 0.72, 0.50),
+                color(0.85, 0.40, 0.45), color(0.60, 0.50, 0.85), color(0.45, 0.75, 0.80),
+                color(0.90, 0.75, 0.30), color(0.65, 0.55, 0.45),
+            ]
+        }
     }
 
     private static func palette(isDark: Bool) -> Palette {
