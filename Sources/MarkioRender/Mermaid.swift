@@ -1300,6 +1300,15 @@ struct SequenceDiagram {
     struct Block {
         var kind: String
         var sections: [Section]
+        /// What a `rect` tints the page behind its messages with.
+        var fill: Flowchart.Colour?
+    }
+
+    /// A `box`: a titled band above a run of neighbouring participants.
+    struct Group {
+        var label: String
+        var fill: Flowchart.Colour?
+        var members: [Int] = []
     }
 
     struct Section {
@@ -1317,6 +1326,7 @@ struct SequenceDiagram {
 
     var participants: [Participant]
     var items: [Item]
+    var groups: [Group] = []
     var autonumber = false
     /// Written above the participants. Mermaid's own `sequenceDiagram` has no
     /// title; a ZenUML one does, and it is read into this.
@@ -1346,11 +1356,31 @@ struct SequenceDiagram {
         var diagram = SequenceDiagram(participants: [], items: [])
         // A stack of half-built blocks: the innermost is what a message joins.
         var stack: [Block] = []
+        /// The `box` open above the participants, if any.
+        var openGroup: Int?
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
             if word == "participant" || word == "actor" {
-                guard diagram.declare(line.dropFirst(word.count)) else { return nil }
+                guard let index = diagram.declare(line.dropFirst(word.count)) else { return nil }
+                if let group = openGroup { diagram.groups[group].members.append(index) }
+                continue
+            }
+            if word == "box" {
+                // `box Aqua Team`, `box rgb(0,0,255) Team`, or just `box Team`.
+                guard openGroup == nil, stack.isEmpty else { return nil }
+                let (fill, label) = tint(rest)
+                guard !label.isEmpty else { return nil }
+                diagram.groups.append(Group(label: label, fill: fill))
+                openGroup = diagram.groups.count - 1
+                continue
+            }
+            if word == "rect" {
+                // A `rect` needs its colour: an untinted band tints nothing.
+                let (fill, label) = tint(rest)
+                guard let fill, label.isEmpty else { return nil }
+                stack.append(
+                    Block(kind: "rect", sections: [Section(title: "", items: [])], fill: fill))
                 continue
             }
             if word == "autonumber" {
@@ -1367,7 +1397,14 @@ struct SequenceDiagram {
                 continue
             }
             if word == "end" {
-                guard let block = stack.popLast(), rest.isEmpty else { return nil }
+                guard rest.isEmpty else { return nil }
+                if stack.isEmpty, let group = openGroup {
+                    // A box with nobody in it frames nothing.
+                    guard !diagram.groups[group].members.isEmpty else { return nil }
+                    openGroup = nil
+                    continue
+                }
+                guard let block = stack.popLast() else { return nil }
                 diagram.append(.block(block), to: &stack)
                 continue
             }
@@ -1383,14 +1420,38 @@ struct SequenceDiagram {
                 diagram.append(.note(note), to: &stack)
                 continue
             }
-            // A `rect` tints the page behind a run of messages, and a `box`
-            // frames participants; neither is drawn here, so neither is read.
-            guard !["rect", "box"].contains(word) else { return nil }
             guard let message = diagram.message(line) else { return nil }
             diagram.append(.message(message), to: &stack)
         }
-        guard stack.isEmpty, !diagram.messages.isEmpty else { return nil }
+        guard stack.isEmpty, openGroup == nil, !diagram.messages.isEmpty else { return nil }
+        // A box frames neighbours: one drawn around participants with a
+        // stranger standing between them would say they were in it too.
+        for group in diagram.groups {
+            let members = group.members.sorted()
+            guard members.last! - members.first! == members.count - 1 else { return nil }
+        }
         return diagram
+    }
+
+    /// A colour written before some words, as `rect` and `box` write one:
+    /// `rgb(0,0,255)`, `rgba(0,0,255,0.1)` or a name CSS knows.
+    private static func tint(_ text: String) -> (fill: Flowchart.Colour?, label: String) {
+        var rest = Substring(text)
+        var written = ""
+        while let char = rest.first, !char.isWhitespace {
+            written.append(char)
+            rest = rest.dropFirst()
+            // `rgb(0, 0, 255)` has spaces inside it, so the colour is not over
+            // until its bracket closes.
+            if written.contains("("), !written.hasSuffix(")") {
+                guard let close = rest.firstIndex(of: ")") else { return (nil, text) }
+                written += rest[rest.startIndex...close]
+                rest = rest[rest.index(after: close)...]
+                break
+            }
+        }
+        guard let colour = Flowchart.Colour(css: written) else { return (nil, text) }
+        return (colour, rest.trimmingCharacters(in: .whitespaces))
     }
 
     /// Items land in the innermost open block, or in the diagram itself.
@@ -1424,18 +1485,16 @@ struct SequenceDiagram {
         return Note(placement: match.placement, participants: indices, text: text)
     }
 
-    private mutating func declare(_ rest: Substring) -> Bool {
+    private mutating func declare(_ rest: Substring) -> Int? {
         let text = rest.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return false }
+        guard !text.isEmpty else { return nil }
         if let range = text.range(of: " as ") {
             let id = String(text[text.startIndex..<range.lowerBound])
                 .trimmingCharacters(in: .whitespaces)
             let label = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            _ = index(of: id, label: label)
-            return true
+            return index(of: id, label: label)
         }
-        _ = index(of: text, label: text)
-        return true
+        return index(of: text, label: text)
     }
 
     private mutating func message(_ line: Substring) -> Message? {

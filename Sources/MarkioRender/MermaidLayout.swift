@@ -3736,7 +3736,14 @@ enum MermaidLayout {
             titleLine = line
             titleRoom = measure(line).height + 12 * metrics.scale
         }
-        let top = metrics.padding + titleRoom
+        // A `box` stands above the participants it holds, and its name needs a
+        // line of its own there.
+        let groupRoom =
+            diagram.groups.isEmpty
+            ? 0
+            : measure(text("X", font: small, color: theme.palette.text)).height
+                + 14 * metrics.scale
+        let top = metrics.padding + titleRoom + groupRoom
         let firstMessage = top + boxHeight + metrics.messageGap
 
         // The body is walked before anything is drawn: a lifeline has to reach
@@ -3762,6 +3769,34 @@ enum MermaidLayout {
                         x: left + (content - size.width) / 2,
                         y: metrics.padding + size.height - descent(titleLine))))
         }
+        for group in diagram.groups {
+            let members = group.members.sorted()
+            guard let first = members.first, let last = members.last, last < centres.count else {
+                continue
+            }
+            let rect = CGRect(
+                x: centres[first] - boxWidth / 2 - 6 * metrics.scale, y: top - groupRoom,
+                width: centres[last] - centres[first] + boxWidth + 12 * metrics.scale,
+                height: groupRoom + boxHeight + 6 * metrics.scale)
+            decorations.append(
+                .path(
+                    CGPath(rect: rect, transform: nil),
+                    color: group.fill.map(cgColor) ?? theme.palette.codeBackground,
+                    lineWidth: 0, filled: true))
+            decorations.append(
+                .path(
+                    CGPath(rect: rect, transform: nil), color: theme.palette.tableBorder,
+                    lineWidth: 1, filled: false))
+            let line = text(group.label, font: small, color: theme.palette.secondaryText)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: rect.midX - size.width / 2,
+                        y: rect.minY + 4 * metrics.scale + size.height - descent(line))))
+        }
+        decorations += body.tints
         for (index, centre) in centres.enumerated() {
             let lifeline = dashed(
                 from: CGPoint(x: centre, y: top + boxHeight),
@@ -3808,9 +3843,10 @@ enum MermaidLayout {
         _ diagram: SequenceDiagram, centres: [CGFloat], boxWidth: CGFloat, from top: CGFloat,
         theme: Theme, font: CTFont, metrics: Metrics
     ) -> (
-        frames: [BlockBox.Decoration], bars: [BlockBox.Decoration],
+        tints: [BlockBox.Decoration], frames: [BlockBox.Decoration], bars: [BlockBox.Decoration],
         body: [BlockBox.Decoration], bottom: CGFloat, reach: CGFloat
     ) {
+        var tints: [BlockBox.Decoration] = []
         var frames: [BlockBox.Decoration] = []
         var body: [BlockBox.Decoration] = []
         var bars: [BlockBox.Decoration] = []
@@ -3878,11 +3914,13 @@ enum MermaidLayout {
                     y += 6 * metrics.scale
                     for (index, section) in block.sections.enumerated() {
                         if index == 0 {
-                            body += tag(
-                                block.kind, title: section.title,
-                                at: CGPoint(x: left - 10 + inset, y: frameTop), theme: theme,
-                                font: font, metrics: metrics)
-                            y += 12 * metrics.scale
+                            if block.fill == nil {
+                                body += tag(
+                                    block.kind, title: section.title,
+                                    at: CGPoint(x: left - 10 + inset, y: frameTop), theme: theme,
+                                    font: font, metrics: metrics)
+                                y += 12 * metrics.scale
+                            }
                         } else {
                             // An arm with no condition of its own is still an
                             // arm, and without a word on it the two halves of an
@@ -3899,6 +3937,16 @@ enum MermaidLayout {
                     let rect = CGRect(
                         x: left - 10 + inset, y: frameTop,
                         width: right - left + 20 - inset * 2, height: frameBottom - frameTop)
+                    if let fill = block.fill {
+                        // A `rect` is a wash of colour behind its messages and
+                        // nothing else: no outline, and no word on it.
+                        tints.append(
+                            .path(
+                                CGPath(rect: rect, transform: nil), color: cgColor(fill),
+                                lineWidth: 0, filled: true))
+                        y += 6 * metrics.scale
+                        continue
+                    }
                     frames.append(
                         .path(
                             CGPath(
@@ -3925,7 +3973,7 @@ enum MermaidLayout {
         for participant in open.keys.sorted() {
             while !(open[participant]?.isEmpty ?? true) { finish(participant, at: y) }
         }
-        return (frames, bars, body, y, reach)
+        return (tints, frames, bars, body, y, reach)
     }
 
     /// The corner tag that names a block: `loop`, `alt`, `opt`.

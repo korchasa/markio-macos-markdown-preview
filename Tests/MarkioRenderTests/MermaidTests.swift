@@ -355,12 +355,55 @@ final class MermaidTests: XCTestCase {
             "sequenceDiagram\n loop forever\n A->>B: hi",
             "sequenceDiagram\n A->>B: hi\n end",
             "sequenceDiagram\n A->>B: hi\n Note A: thinking",
-            // A tinted band and a participant box are frames this does not draw.
-            "sequenceDiagram\n rect rgb(0,0,0)\n A->>B: hi\n end",
-            "sequenceDiagram\n box Team\n participant A\n end\n A->>B: hi",
+            // A band with no colour tints nothing, and a box with no name and
+            // a box with nobody in it frame nothing.
+            "sequenceDiagram\n rect\n A->>B: hi\n end",
+            "sequenceDiagram\n rect wobble\n A->>B: hi\n end",
+            "sequenceDiagram\n box\n participant A\n end\n A->>B: hi",
+            "sequenceDiagram\n box Team\n end\n A->>B: hi",
+            // A box around participants with a stranger standing between them.
+            "sequenceDiagram\n participant A\n participant B\n participant C\n"
+                + "box Team\n participant A\n participant C\n end\n A->>B: hi\n B->>C: on",
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A wash of colour behind a run of messages, and a band above a team.
+    func testASequenceTintsABandAndBoxesATeam() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                sequenceDiagram
+                    box rgba(0, 0, 255, 0.1) Our side
+                        participant A
+                        participant B
+                    end
+                    participant C
+                    rect rgb(240, 240, 240)
+                        A->>B: hi
+                    end
+                    B->>C: on
+                """))
+        XCTAssertEqual(diagram.groups.map(\.label), ["Our side"])
+        XCTAssertEqual(diagram.groups[0].members, [0, 1])
+        XCTAssertEqual(diagram.groups[0].fill?.alpha, 0.1)
+        guard case .block(let band) = diagram.items.first else {
+            return XCTFail("the tinted band is a block of its own")
+        }
+        XCTAssertEqual(band.kind, "rect")
+        XCTAssertEqual(
+            band.fill, Flowchart.Colour(red: 240.0 / 255, green: 240.0 / 255, blue: 240.0 / 255))
+        // The band and the box are room the picture would not otherwise need.
+        let boxed = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "sequenceDiagram\n box Team\n participant A\n participant B\n end\n"
+                    + " A->>B: hi", theme: Theme(isDark: false), width: 700))
+        let plain = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "sequenceDiagram\n participant A\n participant B\n A->>B: hi",
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertGreaterThan(boxed.height, plain.height)
     }
 
     func testBlocksNestAndKeepTheirArms() throws {
