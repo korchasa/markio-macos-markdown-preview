@@ -251,9 +251,11 @@ enum C4Diagram {
 
 /// An architecture diagram: services in groups, joined at named sides.
 struct ArchitectureDiagram {
-    /// The five shapes Mermaid ships without an icon pack.
+    /// The five shapes Mermaid ships without an icon pack, and the question
+    /// mark it draws for one out of a pack nobody registered.
     enum Icon: String {
         case cloud, database, disk, internet, server
+        case unknown
     }
 
     struct Service {
@@ -270,6 +272,8 @@ struct ArchitectureDiagram {
         var identifier: String
         var label: String
         var icon: Icon
+        /// The group this one was written inside, if any.
+        var parent: Int?
     }
 
     enum Side: String {
@@ -299,22 +303,18 @@ struct ArchitectureDiagram {
             if keyword == "group" || keyword == "service" {
                 let rest = line.dropFirst(keyword.count).trimmingCharacters(in: .whitespaces)
                 guard let read = declaration(rest) else { return nil }
+                var group: Int?
+                if let parent = read.parent {
+                    guard let found = diagram.groups.firstIndex(where: { $0.identifier == parent })
+                    else { return nil }
+                    group = found
+                }
                 if keyword == "group" {
-                    // A group inside a group needs a frame inside a frame,
-                    // which this layout has not got.
-                    guard read.parent == nil else { return nil }
                     diagram.groups.append(
-                        Group(identifier: read.identifier, label: read.label, icon: read.icon))
+                        Group(
+                            identifier: read.identifier, label: read.label, icon: read.icon,
+                            parent: group))
                 } else {
-                    var group: Int?
-                    if let parent = read.parent {
-                        guard
-                            let found = diagram.groups.firstIndex(where: {
-                                $0.identifier == parent
-                            })
-                        else { return nil }
-                        group = found
-                    }
                     diagram.services.append(
                         Service(
                             identifier: read.identifier, label: read.label, icon: read.icon,
@@ -381,8 +381,8 @@ struct ArchitectureDiagram {
         var taken = [Cell: Int]()
         var nextRow = 0
         for start in services.indices where cells[start] == nil {
-            let root = Cell(column: 0, row: nextRow)
-            guard taken[root] == nil else { return false }
+            var root = Cell(column: 0, row: nextRow)
+            while taken[root] != nil { root = Cell(column: root.column, row: root.row + 1) }
             cells[start] = root
             taken[root] = start
             var queue = [start]
@@ -391,13 +391,21 @@ struct ArchitectureDiagram {
                 for link in links[current] {
                     let spot = Cell(
                         column: here.column + link.step.column, row: here.row + link.step.row)
-                    if let already = cells[link.neighbour] {
-                        guard already == spot else { return false }
-                        continue
+                    // A service already placed keeps where it stands: the
+                    // first edge that named it is the one that settled it.
+                    if cells[link.neighbour] != nil { continue }
+                    // Two services sent to one cell cannot both stand there, so
+                    // the second walks on in the same direction until a cell is
+                    // free — which is what makes the picture drawable at all.
+                    var free = spot
+                    let step =
+                        link.step.column == 0 && link.step.row == 0
+                        ? Cell(column: 1, row: 0) : link.step
+                    while taken[free] != nil {
+                        free = Cell(column: free.column + step.column, row: free.row + step.row)
                     }
-                    guard taken[spot] == nil else { return false }
-                    cells[link.neighbour] = spot
-                    taken[spot] = link.neighbour
+                    cells[link.neighbour] = free
+                    taken[free] = link.neighbour
                     queue.append(link.neighbour)
                 }
             }
@@ -413,19 +421,46 @@ struct ArchitectureDiagram {
             services[index].row = cell.row - topmost
         }
         // A frame is drawn around the block its members occupy, so a stranger
-        // standing inside that block would look like a member.
+        // standing inside that block would look like a member. A group inside a
+        // group counts as a member of the one that holds it.
         for group in groups.indices {
-            let members = services.indices.filter { services[$0].group == group }
+            let members = self.members(of: group)
             guard let columns = extent(members, \.column), let rows = extent(members, \.row) else {
                 continue
             }
-            for other in services.indices where services[other].group != group {
+            for other in services.indices where !members.contains(other) {
                 if columns.contains(services[other].column), rows.contains(services[other].row) {
                     return false
                 }
             }
         }
         return true
+    }
+
+    /// Every service inside a group, including the ones inside the groups
+    /// inside it.
+    func members(of group: Int) -> [Int] {
+        var wanted = [group]
+        var inside: Set<Int> = []
+        while let next = wanted.popLast() {
+            inside.insert(next)
+            wanted += groups.indices.filter { groups[$0].parent == next }
+        }
+        return services.indices.filter { service in
+            services[service].group.map { inside.contains($0) } ?? false
+        }
+    }
+
+    /// How many groups a group stands inside, so the outer frames can be drawn
+    /// first and given room for the inner ones.
+    func depth(of group: Int) -> Int {
+        var steps = 0
+        var walk = groups[group].parent
+        while let parent = walk, steps < groups.count {
+            steps += 1
+            walk = groups[parent].parent
+        }
+        return steps
     }
 
     private func extent(_ members: [Int], _ axis: KeyPath<Service, Int>) -> ClosedRange<Int>? {
@@ -451,9 +486,15 @@ struct ArchitectureDiagram {
         if let open = body.firstIndex(of: "("), let close = body.firstIndex(of: ")"), open < close {
             let name = String(body[body.index(after: open)..<close])
             // An icon from a pack has to be fetched, and this app fetches
-            // nothing; only the five Mermaid ships are drawn.
-            guard let known = Icon(rawValue: name) else { return nil }
-            icon = known
+            // nothing. Mermaid on a page that never registered the pack draws a
+            // question mark, and so does this; a name that is neither one of
+            // the five nor `pack:name` is a spelling nobody meant.
+            if let known = Icon(rawValue: name) {
+                icon = known
+            } else {
+                guard name.contains(":") else { return nil }
+                icon = .unknown
+            }
         }
         var label = identifier
         if let open = body.firstIndex(of: "["), body.hasSuffix("]") {

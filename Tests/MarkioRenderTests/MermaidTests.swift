@@ -1135,9 +1135,10 @@ final class MermaidTests: XCTestCase {
             "xychart-beta\n  x-axis [a, b]\n  bar [1, 2, 3]",
             "xychart-beta\n  bar [1, 2]\n  line [1, 2, 3]",
             "xychart-beta\n  x-axis [a, b]",
-            // A cherry-pick needs a commit this never recorded, and a merge of
-            // a branch nothing opened has nothing to point at.
+            // A cherry-pick of a commit nobody made, and one of a commit on
+            // the branch it is already standing on.
             "gitGraph\n  commit\n  cherry-pick id: \"x\"",
+            "gitGraph\n  commit id: \"A\"\n  cherry-pick id: \"A\"",
             "gitGraph\n  commit\n  merge nothing",
             "gitGraph\n  commit\n  checkout nothing",
             // Turning the lanes on their side is a layout this has not got.
@@ -1240,8 +1241,7 @@ final class MermaidTests: XCTestCase {
 
     func testWhatTheBoardsRefuse() {
         for source in [
-            // A hole in the packet, and two fields over one bit.
-            "packet-beta\n0-15: \"A\"\n20-31: \"B\"",
+            // Two fields over one bit.
             "packet-beta\n0-15: \"A\"\n8-31: \"B\"",
             "packet-beta\n0-15",
             "packet-beta",
@@ -1256,6 +1256,36 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A cherry-pick is the same work said twice, on a dotted line.
+    func testAGitGraphCherryPicksAcrossBranches() throws {
+        guard
+            case .git(let graph)? = MermaidDiagram.parse(
+                """
+                gitGraph
+                    commit id: "A"
+                    branch feature
+                    commit id: "B"
+                    checkout main
+                    cherry-pick id: "B"
+                """)
+        else { return XCTFail("a cherry-pick is read") }
+        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", "B"])
+        XCTAssertEqual(graph.commits[2].picks, 1)
+        XCTAssertEqual(graph.commits[2].branch, 0)
+        XCTAssertNil(graph.commits[2].merges)
+    }
+
+    /// A gap between fields is a run of bits the author left unspoken.
+    func testAPacketDrawsTheBitsNobodyNamed() throws {
+        guard
+            case .packet(let packet)? = MermaidDiagram.parse(
+                "packet-beta\n0-15: \"A\"\n20-31: \"B\"")
+        else { return XCTFail("a packet with a gap is read") }
+        XCTAssertEqual(packet.fields.map(\.label), ["A", "", "B"])
+        XCTAssertEqual(packet.fields.map(\.first), [0, 16, 20])
+        XCTAssertEqual(packet.fields.map(\.last), [15, 19, 31])
     }
 
     func testTheBoardsAreDrawnWhole() throws {
@@ -1426,14 +1456,10 @@ final class MermaidTests: XCTestCase {
             "C4Context\n  System(a, \"A\")\n  UpdateElementStyle(a, $wobble=\"3\")",
             "C4Context\n  Nonsense(a, \"A\")",
             "C4Context",
-            // An icon from a pack has to be fetched, and this fetches nothing.
-            "architecture-beta\n  service a(logos:aws)[A]\n  service b(server)[B]\n  a:R -- L:b",
-            // A group inside a group needs a frame inside a frame.
-            "architecture-beta\n  group one(cloud)[One]\n  group two(cloud)[Two] in one\n"
-                + "  service a(server)[A] in two",
-            // Edges that send two services to the same cell.
-            "architecture-beta\n  service a(server)[A]\n  service b(server)[B]\n"
-                + "  service c(server)[C]\n  a:R -- L:b\n  a:R -- L:c",
+            // A shape that is neither one of the five nor out of any pack.
+            "architecture-beta\n  service a(wobble)[A]\n  service b(server)[B]\n  a:R -- L:b",
+            // A group written inside one nobody declared.
+            "architecture-beta\n  group two(cloud)[Two] in one\n  service a(server)[A] in two",
             // A stranger standing inside a group's block would look like a member.
             "architecture-beta\n  group g(cloud)[G]\n  service a(server)[A] in g\n"
                 + "  service b(server)[B] in g\n  service c(server)[C]\n"
@@ -1443,6 +1469,31 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A group inside a group, an icon out of a pack, and two services sent to
+    /// one cell — which the second walks on from.
+    func testAnArchitectureNestsGroupsAndMakesRoom() throws {
+        guard
+            case .architecture(let diagram)? = MermaidDiagram.parse(
+                """
+                architecture-beta
+                  group one(cloud)[One]
+                  group two(cloud)[Two] in one
+                  service a(server)[A] in two
+                  service b(logos:aws)[B] in two
+                  service c(server)[C] in two
+                  a:R -- L:b
+                  a:R -- L:c
+                """)
+        else { return XCTFail("an architecture with nested groups is read") }
+        XCTAssertEqual(diagram.groups.map(\.parent), [nil, 0])
+        XCTAssertEqual(diagram.depth(of: 1), 1)
+        // The outer group holds everything the inner one holds.
+        XCTAssertEqual(diagram.members(of: 0), [0, 1, 2])
+        XCTAssertEqual(diagram.services[1].icon, .unknown)
+        // B took the cell to A's right, so C walked one further along.
+        XCTAssertEqual(diagram.services.map { [$0.column, $0.row] }, [[0, 0], [1, 0], [2, 0]])
     }
 
     /// The lines that repaint a C4 diagram after it has been written.

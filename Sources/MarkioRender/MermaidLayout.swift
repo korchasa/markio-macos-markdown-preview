@@ -2587,7 +2587,7 @@ enum MermaidLayout {
             let here = centre(of: commit)
             let opened = !graph.commits[..<index].contains { $0.branch == commit.branch }
             let source =
-                commit.merges
+                commit.merges ?? commit.picks
                 ?? (opened
                     ? graph.commits[..<index].lastIndex(where: { $0.branch != commit.branch })
                     : nil)
@@ -2599,9 +2599,27 @@ enum MermaidLayout {
                 to: here,
                 control1: CGPoint(x: (from.x + here.x) / 2, y: from.y),
                 control2: CGPoint(x: (from.x + here.x) / 2, y: here.y))
+            // A cherry-pick copies rather than joins, so its line is dotted:
+            // the two dots are the same work, not one line running on.
+            var drawn: CGPath = path
+            if commit.picks != nil {
+                let midX = (from.x + here.x) / 2
+                let points = (0...24).map { step -> CGPoint in
+                    let time = CGFloat(step) / 24
+                    let rest = 1 - time
+                    func at(_ a: CGFloat, _ b: CGFloat, _ c: CGFloat, _ d: CGFloat) -> CGFloat {
+                        rest * rest * rest * a + 3 * rest * rest * time * b
+                            + 3 * rest * time * time * c + time * time * time * d
+                    }
+                    return CGPoint(
+                        x: at(from.x, midX, midX, here.x),
+                        y: at(from.y, from.y, here.y, here.y))
+                }
+                drawn = dashed(along: points, dash: 3, gap: 3)
+            }
             decorations.append(
                 .path(
-                    path, color: wheel[commit.branch % wheel.count],
+                    drawn, color: wheel[commit.branch % wheel.count],
                     lineWidth: 2 * metrics.scale, filled: false))
         }
         for commit in graph.commits {
@@ -4638,14 +4656,18 @@ enum MermaidLayout {
         }
         // A group's frame stands outside its tiles and carries its name above
         // them. Without that room the frame — and the name with it — is drawn
-        // off the top of the picture.
-        let frameRoom = diagram.groups.isEmpty ? 0 : titleRoom + framePadding
+        // off the top of the picture, and a group inside a group needs a strip
+        // for every frame between it and the outside.
+        let levels =
+            diagram.groups.isEmpty
+            ? 0 : (diagram.groups.indices.map { diagram.depth(of: $0) }.max() ?? 0) + 1
+        let frameRoom = CGFloat(levels) * (titleRoom + framePadding)
         let content =
             columnWidths.reduce(0, +) + columnGap * CGFloat(columns - 1)
-            + (diagram.groups.isEmpty ? 0 : framePadding * 2)
+            + CGFloat(levels) * framePadding * 2
         let height =
             rowHeights.reduce(0, +) + rowGap * CGFloat(rows - 1) + metrics.padding * 2
-            + frameRoom + (diagram.groups.isEmpty ? 0 : framePadding)
+            + frameRoom + CGFloat(levels) * framePadding
         let left = max(metrics.padding, (width - content) / 2)
 
         var columnStarts = [CGFloat](repeating: 0, count: columns)
@@ -4668,15 +4690,21 @@ enum MermaidLayout {
         }
 
         var decorations: [BlockBox.Decoration] = []
-        // Frames first, so a tile is never drawn under its own group's fill.
-        for group in diagram.groups.indices {
-            let members = diagram.services.indices.filter { diagram.services[$0].group == group }
+        // Frames first, and the outermost first of all, so a group inside a
+        // group is drawn over the one that holds it rather than under it.
+        for group in diagram.groups.indices.sorted(by: {
+            diagram.depth(of: $0) < diagram.depth(of: $1)
+        }) {
+            let members = diagram.members(of: group)
             guard let first = members.first else { continue }
+            // A frame inside a frame stands in from the one around it, and its
+            // own name needs the room above its tiles that the outer one took.
+            let outward = CGFloat(levels - diagram.depth(of: group))
             var bounds = tiles[first]
             for member in members.dropFirst() { bounds = bounds.union(tiles[member]) }
-            bounds = bounds.insetBy(dx: -framePadding, dy: -framePadding)
-            bounds.origin.y -= titleRoom
-            bounds.size.height += titleRoom
+            bounds = bounds.insetBy(dx: -framePadding * outward, dy: -framePadding * outward)
+            bounds.origin.y -= titleRoom * outward
+            bounds.size.height += titleRoom * outward
             let path = CGPath(
                 roundedRect: bounds, cornerWidth: 6 * metrics.scale,
                 cornerHeight: 6 * metrics.scale, transform: nil)
@@ -4798,6 +4826,24 @@ enum MermaidLayout {
         let body = CGMutablePath()
         var detail: CGPath?
         switch kind {
+        case .unknown:
+            // An icon out of a pack nobody registered, which Mermaid draws as a
+            // question mark and so does this.
+            body.addRoundedRect(
+                in: rect, cornerWidth: rect.width * 0.12, cornerHeight: rect.width * 0.12)
+            let mark = text(
+                "?",
+                font: CTFontCreateWithName(
+                    "Helvetica-Bold" as CFString, rect.height * 0.7, nil), color: cut)
+            let size = measure(mark)
+            return [
+                .path(body, color: ink, lineWidth: 0, filled: true),
+                .glyphs(
+                    mark,
+                    origin: CGPoint(
+                        x: rect.midX - size.width / 2,
+                        y: rect.midY + size.height / 2 - descent(mark))),
+            ]
         case .server:
             body.addRoundedRect(
                 in: rect.insetBy(dx: rect.width * 0.08, dy: 0), cornerWidth: rect.width * 0.1,

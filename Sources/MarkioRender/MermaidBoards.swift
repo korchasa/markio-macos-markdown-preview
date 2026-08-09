@@ -48,9 +48,13 @@ struct PacketDiagram {
                 first = only
                 last = only
             }
-            // A packet with a hole in it, or with two fields over one bit, is
-            // not a packet this can draw honestly.
-            guard first == next else { return nil }
+            // Two fields over one bit is a packet nobody could read; a gap
+            // between them is a run of bits the author left unspoken, and it is
+            // drawn as the empty stretch it is.
+            guard first >= next else { return nil }
+            if first > next {
+                packet.fields.append(Field(label: "", first: next, last: first - 1))
+            }
             packet.fields.append(Field(label: label, first: first, last: last))
             next = last + 1
         }

@@ -186,6 +186,9 @@ struct GitGraph {
         var column: Int
         /// The commit this one merged in, when it is a merge.
         var merges: Int?
+        /// The commit this one copied, when it is a cherry-pick. Drawn like a
+        /// merge, with a dotted line, because it is the same thing said twice.
+        var picks: Int?
         var kind: Kind
     }
 
@@ -207,7 +210,19 @@ struct GitGraph {
                 graph.commits.append(
                     Commit(
                         label: options.id, tag: options.tag, branch: current, column: column,
-                        merges: nil, kind: options.kind))
+                        merges: nil, picks: nil, kind: options.kind))
+                tips[current] = graph.commits.count - 1
+                column += 1
+            case "cherry-pick":
+                // `cherry-pick id: "Alpha"` copies a commit onto this branch.
+                guard let options = options(rest), !options.id.isEmpty,
+                    let source = graph.commits.firstIndex(where: { $0.label == options.id }),
+                    graph.commits[source].branch != current
+                else { return nil }
+                graph.commits.append(
+                    Commit(
+                        label: options.id, tag: options.tag, branch: current, column: column,
+                        merges: nil, picks: source, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
             case "branch":
@@ -229,11 +244,10 @@ struct GitGraph {
                 graph.commits.append(
                     Commit(
                         label: options.id, tag: options.tag, branch: current, column: column,
-                        merges: tip, kind: options.kind))
+                        merges: tip, picks: nil, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
             default:
-                // Cherry-picks and `%%{init}` configuration are not drawn.
                 return nil
             }
         }
