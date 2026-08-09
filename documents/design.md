@@ -266,16 +266,41 @@ given twice, a reference to something nobody wrote. The rule is the same one the
 formula typesetter follows: a diagram is drawn whole or shown as source, because
 half a graph asserts something its author did not write. Where Mermaid draws
 something for a construct this cannot fully honour — a question mark for an icon
-out of a pack nobody registered, nothing at all for a radar curve short of a
-value — this draws the same thing, because matching what the author would see
-elsewhere is what the rule is for.
+name it cannot resolve, nothing at all for a radar curve short of a value — this
+draws the same thing, because matching what the author would see elsewhere is
+what the rule is for.
+
+What that rule covers was measured rather than assumed. Every source the tests
+refuse was run through Mermaid's own renderer, and the ones Mermaid draws were
+worked through one at a time. Half of them turned out to be refused for reasons
+the rule never supported, and they are drawn now: a name of a known kind with
+nothing under it draws an empty picture, since a picture with nothing in it can
+leave nothing out; a `MermaidDiagram.empty` carries the kind and the layout draws
+a blank the size of one line. A lone state, a journey step nobody was named for,
+a sequence band with no colour, a box with no name or nobody in it, a radar of
+two axes or none of its rings or no curve at all, a treemap branch that also
+carries a number, a series running past the names on its axis, a block arrow
+naming a box no row wrote out, and an architecture stranger standing where a
+group's frame would enclose it — all of these draw.
+
+What still returns nil is what the rule is actually for: a line naming something
+nobody wrote (`class A missing`, `click Z`, `UpdateElementStyle` over an
+identifier that is not there), a value nobody can resolve (`fill:chartruse`,
+`opacity:2`, `<<wobble>>`, `theme: nightfall`), a source contradicting itself (a
+name given twice, a class in two namespaces, a title in the preamble and another
+in the body), and a chart whose every number is zero. Mermaid discards such a
+line and draws the rest; this shows the source instead, because the reader would
+otherwise have no way of knowing that something the author asked for is missing
+from the picture in front of them.
 
 Mermaid's YAML preamble is read before the diagram is, for the keys that say
 what to draw. The title travels as `MermaidDiagram.titled`, a case wrapping any
 other, so the layout draws the diagram exactly as it would have without a name
 and then moves it down to make room — one place for a title rather than one per
-kind. `config.kanban.ticketBaseUrl` and `displayMode: compact` reach the reader
-that wants them. `config.theme` travels the same way as the title, as a
+kind; a `title` with nothing after it is no title at all. `config.kanban`'s
+`ticketBaseUrl` and `sectionWidth`, and `displayMode: compact`, reach the reader
+that wants them, and a key written over a diagram of another kind is left unused
+rather than read as a mistake — which is what Mermaid does with it. `config.theme` travels the same way as the title, as a
 `MermaidDiagram.themed` wrapping any other, and the layout draws the diagram
 underneath against a repainted `Theme`: Mermaid's five colour sets are a handful
 of values each — what a box is filled and outlined with, what its words are,
@@ -505,21 +530,26 @@ by side; any other pair puts the second over one and along one, which is why suc
 an edge is drawn with a bend. When two services are sent to one cell the second
 walks on in the same direction until a cell is free, and a service already placed
 keeps where it stands — the first edge that named it is the one that settled it.
-A stranger left standing inside a group's block is still refused, because a frame
-drawn around somebody who is not in the group says something the source does not.
-A group written inside a group is a frame inside a frame, each with a strip of
-its own for its name. The five icons Mermaid ships are drawn as filled
-silhouettes with their detail cut back out in the page's own colour; an icon from
-a downloadable pack would have to be fetched, and this app fetches nothing, so it
-is drawn as the question mark Mermaid itself draws when the pack was never
-registered.
+A service belonging to no group may be placed where a group's frame would enclose
+it, and a frame drawn around somebody who is not in the group says something the
+source does not; so the stranger is walked to the right of the block until it
+stands clear, which is where Mermaid keeps it too. Moving one can push it into
+the next group, so the sweep repeats until nothing moves. A group written inside
+a group is a frame inside a frame, each with a strip of its own for its name. The
+five icons Mermaid ships are drawn as filled silhouettes with their detail cut
+back out in the page's own colour; an icon from a downloadable pack would have to
+be fetched, and this app fetches nothing, so any name that is not one of the five
+is drawn as the question mark Mermaid itself draws for a name it cannot
+resolve.
 
 A radar chart is a spoke per axis and a closed shape per curve, with the rings
 drawn either as circles or as polygons through the spokes, whichever the source
 asked for. A curve short of a value has no shape to close, so it is dropped and
-the rest of the chart is drawn — which is what Mermaid does with one; with no
-`max` written the outer ring is the largest value there
-is, which is what fills the circle.
+the rest of the chart is drawn — which is what Mermaid does with one. A chart
+left with no curve at all is a bare web, and a bare web is what its axes say it
+is, so it is drawn. Two axes make a line rather than a shape, and `ticks 0`
+leaves the web without rings; both are what Mermaid draws. With no `max` written
+the outer ring is the largest value there is, which is what fills the circle.
 
 A block diagram fills a grid of a stated width, cell by cell in reading order,
 wrapping when the next cell would not fit and again when the row is full. Every

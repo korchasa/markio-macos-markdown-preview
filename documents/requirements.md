@@ -85,12 +85,15 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   (`C4Context` and its four siblings, with the `Update…` lines that repaint it),
   an `architecture-beta` with groups inside groups, a `radar-beta`, a
   `block-beta` with the blocks inside its blocks and its fat arrows, or a
-  `zenuml` written as calls, replies and the blocks around them. What is not
-  read is what nobody could draw honestly: a diagram kind this does not know, a
-  construct Mermaid itself refuses, and a source whose own parts disagree — a
-  block left open or closed twice, a name given twice, a reference to something
-  nobody wrote, a value outside its range, a keyword nobody knows, or a flow
-  that returns to where it came from. The fence then stays a fenced block.
+  `zenuml` written as calls, replies and the blocks around them. A name of a
+  kind it knows with nothing written under it is that diagram with nothing in
+  it, and draws an empty picture, because a picture with nothing in it can
+  leave nothing out. What is not read is what nobody could draw honestly: a
+  diagram kind this does not know, a construct Mermaid itself refuses, and a
+  source whose own parts disagree — a block left open or closed twice, a name
+  given twice, a reference to something nobody wrote, a value outside its
+  range, a keyword nobody knows, or a flow that returns to where it came from.
+  The fence then stays a fenced block.
 - **PARSE-13** A node's label is broken where its author broke it: `<br/>` and
   its spellings start a new line rather than becoming a space.
 - **PARSE-14** A diagram's YAML preamble — `---`, keys, `---`, then the diagram —
@@ -102,10 +105,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   `config.kanban.ticketBaseUrl` says where a board's tickets live, and every
   ticket id on the board is then drawn as the link it has become.
   `displayMode: compact`, alone or under `config.gantt`, packs a gantt's tasks
-  onto shared rows. A preamble or directive carrying anything else changes how
-  Mermaid draws rather than what it draws, and the fence stays a fenced block;
-  so does a diagram named twice, once in the preamble and once in a `title` line
-  of its own, and a setting written over a diagram it does not belong to.
+  onto shared rows, and `config.kanban.sectionWidth` says how wide a board's
+  columns stand. A key written over a diagram of another kind is left unused,
+  the way Mermaid leaves it, and a `title` with nothing after it is no title. A
+  preamble or directive carrying anything else changes how Mermaid draws rather
+  than what it draws, and the fence stays a fenced block; so does a diagram
+  named twice, once in the preamble and once in a `title` line of its own.
 
 ## VIEW — What the reader sees
 
