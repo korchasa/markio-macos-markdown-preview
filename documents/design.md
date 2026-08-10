@@ -385,7 +385,20 @@ A sweep is a cubic with both handles half way along it, so the bend is even from
 end to end, and it is spread over the gap between two ranks at the least however
 little the line has to move sideways — a bend as short as that movement turns
 hard and then runs straight, which reads as a kink rather than a curve — and
-over no more than a share of the run, or it eats the lane it is joining. The lanes are handed out for the
+over no more than a share of the run, or it eats the lane it is joining. Which
+lane that is, on which side, is settled for the picture as a whole rather than by
+each line for itself, and by two rules. A line takes the side where fewer of the
+lines already there are ones it would have to cross; only lines whose runs
+interleave count, because two nested runs never cross — the longer stands outside
+the shorter the way brackets do — and where the two sides come out equal the
+nearer wins. Then, on one side, a line that runs past another stands further out
+than the one it passes, so runs that share a stretch nest and runs that share
+nothing sit in the same lane and cost no room at all. The shortest run is settled
+first: a lane goes outside whatever it already runs alongside, so settling the
+longest first would leave it innermost with everything it passes crossing over
+it. The lane itself is then walked outward past one box at a time until nothing
+is left standing in it — clearing only the box that first blocked the straight
+line leaves the lane inside whatever stands beyond. The lanes are handed out for the
 picture as a whole rather than by each line for itself, so two lines passing the
 same box take lanes of their own instead of one. Two boxes joined both ways are
 joined by two lines bowed to opposite sides, and which side is which is read in
@@ -394,8 +407,12 @@ read in the line's own would put both on the same side. Every curve is flattened
 into a run of points, which is what lets a dashed edge keep an even rhythm round
 a bend and an arrowhead sit square on the line's real direction.
 
-*Where it arrives.* By the same two rules the exit follows. The line stops at
-the border and never crosses it; the mark on the end is drawn in the room the
+*Where it arrives.* By the same two rules the exit follows. A frame is its
+border and nothing more: its name is written above it and to the left, so
+counting the whole strip as the frame's own would stop every line a whole line's
+height short with nothing under its head. The name stands in the way as a box
+does instead, and only a line that would really cross a name goes round one. The
+line stops at the border and never crosses it; the mark on the end is drawn in the room the
 line gives up for it and faces along the last stretch of line. A box that is not
 a rectangle — a diamond, a circle, a cylinder — has a rectangle standing well
 clear of it, so a line stopped at the rectangle would end in mid-air beside the
