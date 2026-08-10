@@ -2053,6 +2053,98 @@ final class MermaidTests: XCTestCase {
         XCTAssertFalse(diagram.edges[0].toArrow)
     }
 
+    /// A junction is a service with no name and no picture: it exists so that
+    /// four edges can meet at one point. `align` is the other way of saying
+    /// where things stand — it puts the named services in one row or one
+    /// column without drawing anything between them.
+    func testAnArchitectureJoinsAtAJunctionAndAlignsARow() throws {
+        guard
+            case .architecture(let diagram)? = MermaidDiagram.parse(
+                """
+                architecture-beta
+                  service left(server)[Left]
+                  junction mid
+                  service right(server)[Right]
+                  service under(database)[Under]
+                  align row left right
+                  left:R -- L:mid
+                  mid:R -- L:right
+                  mid:B -- T:under
+                """
+            )
+        else { return XCTFail("expected an architecture diagram") }
+        XCTAssertEqual(diagram.services.map(\.icon), [.server, .junction, .server, .database])
+        XCTAssertEqual(diagram.services[1].label, "")
+        // The alignment and the edges agree: the three stand in one row, and
+        // the database hangs below the junction.
+        XCTAssertEqual(diagram.services.map(\.row), [0, 0, 0, 1])
+        XCTAssertEqual(diagram.services[3].column, diagram.services[1].column)
+    }
+
+    /// An alignment naming somebody nobody declared is passed over and the
+    /// picture is drawn, which is what Mermaid does. An alignment with only one
+    /// name, or one asking for an axis that is neither a row nor a column, is
+    /// refused — Mermaid refuses those too.
+    func testAnAlignmentIsPassedOverOrRefusedTheWayMermaidDoes() throws {
+        guard
+            case .architecture(let diagram)? = MermaidDiagram.parse(
+                "architecture-beta\n  service a(server)[A]\n  align row a ghost")
+        else { return XCTFail("a name nobody declared does not stop the picture") }
+        XCTAssertEqual(diagram.services.count, 1)
+        XCTAssertTrue(diagram.alignments.isEmpty)
+        for source in [
+            "architecture-beta\n  service a(server)[A]\n  align row a",
+            "architecture-beta\n  service a(server)[A]\n  align sideways a a",
+        ] {
+            XCTAssertNil(MermaidDiagram.parse(source), source)
+        }
+    }
+
+    /// Somebody made partway through a sequence has their box on the message
+    /// that makes them rather than at the top, and somebody destroyed has a
+    /// second box where their lifeline stops.
+    func testASequenceMakesAndEndsParticipantsPartWayThrough() throws {
+        let source = """
+            sequenceDiagram
+                Alice->>Bob: Hello
+                create participant Carl
+                Alice->>Carl: Hi Carl!
+                destroy Carl
+                Alice-xCarl: We are too many
+            """
+        guard case .sequence(let diagram)? = MermaidDiagram.parse(source) else {
+            return XCTFail("expected a sequence diagram")
+        }
+        XCTAssertEqual(diagram.participants.map(\.label), ["Alice", "Bob", "Carl"])
+        var made = 0
+        var ended = 0
+        for item in diagram.items {
+            if case .create = item { made += 1 }
+            if case .destroy = item { ended += 1 }
+        }
+        XCTAssertEqual(made, 1)
+        XCTAssertEqual(ended, 1)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+    }
+
+    /// `link` and `links` hang a menu off a participant's box, which a still
+    /// picture cannot show. Mermaid draws the diagram unchanged, and so does
+    /// this — the lines are read and put aside rather than refused.
+    func testASequenceReadsLinksAndDrawsTheSamePicture() throws {
+        let plain = "sequenceDiagram\n  participant Alice\n  Alice->>Alice: Hello"
+        let linked =
+            "sequenceDiagram\n  participant Alice\n"
+            + "  link Alice: Dashboard @ https://example.com/alice\n"
+            + "  links Alice: {\"Wiki\": \"https://example.com/wiki\"}\n"
+            + "  Alice->>Alice: Hello"
+        guard case .sequence(let one)? = MermaidDiagram.parse(plain),
+            case .sequence(let two)? = MermaidDiagram.parse(linked)
+        else { return XCTFail("expected two sequence diagrams") }
+        XCTAssertEqual(one.participants.count, two.participants.count)
+        XCTAssertEqual(one.items.count, two.items.count)
+    }
+
     /// Mermaid draws a question mark for any icon name it cannot resolve, and
     /// a misspelt name is no different to it than one from a pack nobody
     /// registered.

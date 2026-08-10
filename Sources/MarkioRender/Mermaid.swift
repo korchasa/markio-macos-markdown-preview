@@ -1800,6 +1800,10 @@ struct SequenceDiagram {
         case deactivate(Int)
         /// A run of ZenUML `//` lines, written above the message they belong to.
         case comment([String])
+        /// `create participant X`: the box appears here rather than at the top.
+        case create(Int)
+        /// `destroy X`: the lifeline stops here.
+        case destroy(Int)
     }
 
     var participants: [Participant]
@@ -1859,6 +1863,8 @@ struct SequenceDiagram {
             case .activate(let who): return .activate(moved[who])
             case .deactivate(let who): return .deactivate(moved[who])
             case .comment(let lines): return .comment(lines)
+            case .create(let who): return .create(moved[who])
+            case .destroy(let who): return .destroy(moved[who])
             }
         }
     }
@@ -1874,7 +1880,7 @@ struct SequenceDiagram {
             switch item {
             case .message(let message): return [message]
             case .block(let block): return block.sections.flatMap { messages(in: $0.items) }
-            case .note, .activate, .deactivate, .comment: return []
+            case .note, .activate, .deactivate, .comment, .create, .destroy: return []
             }
         }
     }
@@ -1937,6 +1943,35 @@ struct SequenceDiagram {
                 }
                 guard let block = stack.popLast() else { return nil }
                 diagram.append(.block(block), to: &stack)
+                continue
+            }
+            if word == "create" {
+                // `create participant Carl`, `create actor D as Donald`: the
+                // same declaration, and a note of where the box belongs.
+                let kind = String(rest.prefix(while: { !$0.isWhitespace }))
+                guard kind == "participant" || kind == "actor" else { return nil }
+                guard let index = diagram.declare(Substring(rest.dropFirst(kind.count)))
+                else { return nil }
+                if kind == "actor" { diagram.participants[index].isActor = true }
+                if let group = openGroup { diagram.groups[group].members.append(index) }
+                diagram.append(.create(index), to: &stack)
+                continue
+            }
+            if word == "destroy" {
+                guard !rest.isEmpty else { return nil }
+                diagram.append(.destroy(diagram.index(of: rest, label: rest)), to: &stack)
+                continue
+            }
+            if word == "link" || word == "links" {
+                // A menu hung off a participant, which a picture cannot open.
+                // Mermaid draws the participant exactly as it would without one,
+                // so the line is read for the name it carries and changes
+                // nothing drawn.
+                guard let colon = rest.firstIndex(of: ":") else { return nil }
+                let name = rest[rest.startIndex..<colon].trimmingCharacters(in: .whitespaces)
+                let body = rest[rest.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !body.isEmpty else { return nil }
+                _ = diagram.index(of: name, label: name)
                 continue
             }
             if word == "activate" || word == "deactivate" {

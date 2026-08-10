@@ -4491,7 +4491,7 @@ enum MermaidLayout {
             switch item {
             case .message(let message): return [message]
             case .block(let block): return block.sections.flatMap { messages($0.items) }
-            case .note, .activate, .deactivate, .comment: return []
+            case .note, .activate, .deactivate, .comment, .create, .destroy: return []
             }
         }
     }
@@ -4551,8 +4551,8 @@ enum MermaidLayout {
             left + boxWidth / 2 + step * CGFloat($0)
         }
         let body = script(
-            diagram, centres: centres, boxWidth: boxWidth, from: firstMessage, theme: theme,
-            font: small, metrics: metrics)
+            diagram, centres: centres, boxWidth: boxWidth, boxHeight: boxHeight,
+            from: firstMessage, theme: theme, font: small, metrics: metrics)
         let height = body.bottom + metrics.padding
 
         var decorations: [BlockBox.Decoration] = []
@@ -4594,42 +4594,31 @@ enum MermaidLayout {
         }
         decorations += body.tints
         for (index, centre) in centres.enumerated() {
+            // Somebody made partway through the picture has a box where they
+            // were made rather than at the top, and somebody destroyed has a
+            // second box where their lifeline ends.
+            let bornAt = body.born[index] ?? top
+            let diedAt = body.died[index]
             let lifeline = dashed(
-                from: CGPoint(x: centre, y: top + boxHeight),
-                to: CGPoint(x: centre, y: height - metrics.padding),
+                from: CGPoint(x: centre, y: bornAt + boxHeight),
+                to: CGPoint(x: centre, y: diedAt ?? (height - metrics.padding)),
                 dash: 4,
                 gap: 4
             )
             decorations.append(
                 .path(lifeline, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
-            let frame = CGRect(
-                x: centre - boxWidth / 2, y: top, width: boxWidth, height: boxHeight)
-            if diagram.participants[index].isActor {
-                // A stick figure, which is how Mermaid draws somebody rather
-                // than something.
-                decorations += figure(in: frame, theme: theme, metrics: metrics)
-            } else {
-                let path = CGPath(
-                    roundedRect: frame, cornerWidth: 4, cornerHeight: 4, transform: nil)
-                decorations.append(
-                    .path(
-                        path, color: theme.palette.tableHeaderBackground, lineWidth: 0,
-                        filled: true))
-                decorations.append(
-                    .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            decorations += participant(
+                diagram.participants[index], label: labels[index], size: sizes[index],
+                in: CGRect(
+                    x: centre - boxWidth / 2, y: bornAt, width: boxWidth, height: boxHeight),
+                theme: theme, metrics: metrics)
+            if let diedAt {
+                decorations += participant(
+                    diagram.participants[index], label: labels[index], size: sizes[index],
+                    in: CGRect(
+                        x: centre - boxWidth / 2, y: diedAt, width: boxWidth, height: boxHeight),
+                    theme: theme, metrics: metrics)
             }
-            guard !diagram.participants[index].label.isEmpty else { continue }
-            decorations.append(
-                .glyphs(
-                    labels[index],
-                    origin: CGPoint(
-                        x: centre - sizes[index].width / 2,
-                        y: diagram.participants[index].isActor
-                            ? frame.maxY + sizes[index].height - descent(labels[index])
-                            : frame.midY + sizes[index].height / 2 - descent(labels[index])
-                    )
-                )
-            )
         }
 
         decorations += body.frames
@@ -4640,6 +4629,41 @@ enum MermaidLayout {
             size: CGSize(width: width, height: height),
             contentWidth: content + body.reach * 2
         )
+    }
+
+    /// One participant's box, or the stick figure that stands in for it, with
+    /// the name written where that kind of picture writes it. Somebody made or
+    /// destroyed partway through a diagram has two of these, so it is drawn from
+    /// a rectangle rather than from where they stand.
+    private static func participant(
+        _ participant: SequenceDiagram.Participant, label: CTLine, size: CGSize, in frame: CGRect,
+        theme: Theme, metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        var decorations: [BlockBox.Decoration] = []
+        if participant.isActor {
+            // A stick figure, which is how Mermaid draws somebody rather than
+            // something.
+            decorations += figure(in: frame, theme: theme, metrics: metrics)
+        } else {
+            let path = CGPath(roundedRect: frame, cornerWidth: 4, cornerHeight: 4, transform: nil)
+            decorations.append(
+                .path(path, color: theme.palette.tableHeaderBackground, lineWidth: 0, filled: true))
+            decorations.append(
+                .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+        }
+        guard !participant.label.isEmpty else { return decorations }
+        decorations.append(
+            .glyphs(
+                label,
+                origin: CGPoint(
+                    x: frame.midX - size.width / 2,
+                    y: participant.isActor
+                        ? frame.maxY + size.height - descent(label)
+                        : frame.midY + size.height / 2 - descent(label)
+                )
+            )
+        )
+        return decorations
     }
 
     /// A stick figure standing in the room a participant box would take.
@@ -4676,17 +4700,22 @@ enum MermaidLayout {
     /// painted in that order: a frame is behind its contents, and a bar is
     /// behind the arrows that start and end it.
     private static func script(
-        _ diagram: SequenceDiagram, centres: [CGFloat], boxWidth: CGFloat, from top: CGFloat,
-        theme: Theme, font: CTFont, metrics: Metrics
+        _ diagram: SequenceDiagram, centres: [CGFloat], boxWidth: CGFloat, boxHeight: CGFloat,
+        from top: CGFloat, theme: Theme, font: CTFont, metrics: Metrics
     ) -> (
         tints: [BlockBox.Decoration], frames: [BlockBox.Decoration], bars: [BlockBox.Decoration],
-        body: [BlockBox.Decoration], bottom: CGFloat, reach: CGFloat
+        body: [BlockBox.Decoration], bottom: CGFloat, reach: CGFloat,
+        born: [Int: CGFloat], died: [Int: CGFloat]
     ) {
         var tints: [BlockBox.Decoration] = []
         var frames: [BlockBox.Decoration] = []
         var body: [BlockBox.Decoration] = []
         var bars: [BlockBox.Decoration] = []
         var open: [Int: [CGFloat]] = [:]
+        /// Where a participant's box stands when it is not at the top of the
+        /// picture, and where its lifeline stops when somebody ends it.
+        var born: [Int: CGFloat] = [:]
+        var died: [Int: CGFloat] = [:]
         var number = 1
         var y = top
         var reach: CGFloat = 10
@@ -4729,11 +4758,24 @@ enum MermaidLayout {
                     let words =
                         diagram.autonumber ? "\(number). \(message.text)" : message.text
                     number += 1
+                    // A box drawn on this row belongs to somebody made or ended
+                    // here: its middle is exactly where the message runs.
+                    let row = y - boxHeight / 2
+                    let boxed = Set(born.filter { $0.value == row }.map(\.key))
+                        .union(died.filter { $0.value == row }.map(\.key))
                     body += arrow(
-                        message, words: words, centres: centres, y: y, theme: theme, font: font,
-                        metrics: metrics)
+                        message, words: words, centres: centres, y: y, boxed: boxed,
+                        boxWidth: boxWidth, theme: theme, font: font, metrics: metrics)
                     if message.deactivates { finish(message.from, at: y) }
                     y += message.from == message.to ? metrics.messageGap * 1.5 : metrics.messageGap
+                case .create(let who):
+                    // The box is drawn on the message that makes it, so half of
+                    // it stands above that message and needs the room.
+                    y += boxHeight / 2
+                    born[who] = y - boxHeight / 2
+                case .destroy(let who):
+                    y += boxHeight / 2
+                    died[who] = y - boxHeight / 2
                 case .comment(let lines):
                     // A comment is written over the picture in the faint ink a
                     // note's words use, not in a box: it belongs to the message
@@ -4850,7 +4892,7 @@ enum MermaidLayout {
         for participant in open.keys.sorted() {
             while !(open[participant]?.isEmpty ?? true) { finish(participant, at: y) }
         }
-        return (tints, frames, bars, body, y, reach)
+        return (tints, frames, bars, body, y, reach, born, died)
     }
 
     /// The corner tag that names a block: `loop`, `alt`, `opt`.
@@ -4909,15 +4951,20 @@ enum MermaidLayout {
 
     private static func arrow(
         _ message: SequenceDiagram.Message, words: String, centres: [CGFloat], y: CGFloat,
-        theme: Theme, font: CTFont, metrics: Metrics
+        boxed: Set<Int> = [], boxWidth: CGFloat = 0, theme: Theme, font: CTFont, metrics: Metrics
     ) -> [BlockBox.Decoration] {
         guard message.from < centres.count, message.to < centres.count else { return [] }
         var decorations: [BlockBox.Decoration] = []
         let color = theme.palette.secondaryText
         let line = text(words, font: font, color: color)
         let size = measure(line)
-        let start = centres[message.from]
-        let end = centres[message.to]
+        // Somebody made or ended by this very message has their box sitting on
+        // the line, so the arrow stops at its edge instead of running through
+        // the name written inside it.
+        let towards: CGFloat = centres[message.to] > centres[message.from] ? 1 : -1
+        let start =
+            centres[message.from] + (boxed.contains(message.from) ? towards * boxWidth / 2 : 0)
+        let end = centres[message.to] - (boxed.contains(message.to) ? towards * boxWidth / 2 : 0)
         if message.from == message.to {
             // A message to itself turns round beside its own lifeline.
             let loop = CGMutablePath()
@@ -5478,8 +5525,13 @@ enum MermaidLayout {
 
         let labels = diagram.services.map { text($0.label, font: font, color: theme.palette.text) }
         let sizes = labels.map(measure)
-        var tiles = diagram.services.indices.map { index in
-            CGRect(
+        var tiles = diagram.services.indices.map { index -> CGRect in
+            // A junction is a corner rather than a thing: it takes a cell so the
+            // lines meeting there have somewhere to meet, and nothing is drawn.
+            guard diagram.services[index].icon != .junction else {
+                return CGRect(x: 0, y: 0, width: 2 * metrics.scale, height: 2 * metrics.scale)
+            }
+            return CGRect(
                 x: 0, y: 0,
                 width: max(iconSide, sizes[index].width) + tilePadding * 2,
                 height: iconSide + 5 * metrics.scale + sizes[index].height + tilePadding * 2)
@@ -5569,7 +5621,7 @@ enum MermaidLayout {
                         x: badge.maxX + 5 * metrics.scale, y: badge.maxY - descent(title))))
         }
 
-        for (index, service) in diagram.services.enumerated() {
+        for (index, service) in diagram.services.enumerated() where service.icon != .junction {
             let tile = tiles[index]
             let path = CGPath(
                 roundedRect: tile, cornerWidth: 6 * metrics.scale,
@@ -5676,6 +5728,10 @@ enum MermaidLayout {
         /// rack's shelves, the spindle of a disk.
         var cutouts: CGPath?
         switch kind {
+        case .junction:
+            // A junction is a corner where lines meet; the picture of it is the
+            // lines themselves.
+            return []
         case .unknown:
             // An icon out of a pack nobody registered, which Mermaid draws as a
             // question mark and so does this.

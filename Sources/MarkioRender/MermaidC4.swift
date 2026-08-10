@@ -255,6 +255,8 @@ struct ArchitectureDiagram {
     enum Icon: String {
         case cloud, database, disk, internet, server
         case unknown
+        /// A `junction`: a place where lines meet and nothing is drawn.
+        case junction
     }
 
     struct Service {
@@ -294,6 +296,9 @@ struct ArchitectureDiagram {
     var groups: [Group]
     var services: [Service]
     var edges: [Edge]
+    /// `align row a b c` and `align column a b c`: which services stand in one
+    /// row, or in one column, whether or not a line joins them.
+    var alignments: [(down: Bool, members: [Int])] = []
 
     static func parse(_ lines: [Substring]) -> ArchitectureDiagram? {
         var diagram = ArchitectureDiagram(groups: [], services: [], edges: [])
@@ -318,6 +323,33 @@ struct ArchitectureDiagram {
                         Service(
                             identifier: read.identifier, label: read.label, icon: read.icon,
                             group: group))
+                }
+                continue
+            }
+            // `junction one`: a corner where lines meet, taking a cell of its
+            // own and drawing nothing in it.
+            if keyword == "junction" {
+                let name = line.dropFirst(keyword.count).trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains(" ") else { return nil }
+                diagram.services.append(
+                    Service(identifier: name, label: "", icon: .junction, group: nil))
+                continue
+            }
+            // `align row a b c` and `align column a b c` stand the services side
+            // by side or one under the other, without a line between them.
+            if keyword == "align" {
+                let words = line.dropFirst(keyword.count)
+                    .split(separator: " ", omittingEmptySubsequences: true)
+                guard let axis = words.first, axis == "row" || axis == "column",
+                    words.count >= 3
+                else { return nil }
+                // A name nobody declared is passed over rather than refused:
+                // Mermaid draws the picture and simply stands nothing there.
+                let members = words.dropFirst().compactMap { name in
+                    diagram.services.firstIndex { $0.identifier == name }
+                }
+                if members.count >= 2 {
+                    diagram.alignments.append((down: axis == "column", members: members))
                 }
                 continue
             }
@@ -374,6 +406,16 @@ struct ArchitectureDiagram {
                 : Cell(column: out.column - back.column, row: out.row - back.row)
             links[edge.from].append((edge.to, step))
             links[edge.to].append((edge.from, Cell(column: -step.column, row: -step.row)))
+        }
+        // An alignment binds its services as firmly as an edge does — the next
+        // one along stands beside the one before it — but draws no line.
+        for alignment in alignments {
+            for (before, after) in zip(alignment.members, alignment.members.dropFirst()) {
+                let step =
+                    alignment.down ? Cell(column: 0, row: 1) : Cell(column: 1, row: 0)
+                links[before].append((after, step))
+                links[after].append((before, Cell(column: -step.column, row: -step.row)))
+            }
         }
 
         var cells = [Int: Cell]()
