@@ -11,12 +11,11 @@ Of the 36 examples shown here, Markio 2 draws all 36. The pictures are the
 measure, not the count: what a comparison like this is for is the difference
 between two drawings of one source, and that is what the notes below record.
 
-The pages these come from hold 408 examples in all. Run end to end, Mermaid draws
-403 of them and Markio 2 draws 363, and there is no example Markio 2 draws that
-Mermaid does not. Five of the 45 Markio 2 leaves as source are ones Mermaid itself
-refuses, so the real difference is 40 examples. ZenUML accounts for 11 of them and
-the rest are spread thin: five state machines, four class diagrams, four
-architecture diagrams, and ones and twos everywhere else.
+The pages these come from hold 408 examples in all. Run end to end, both draw 403
+of them: there is no example Markio 2 draws that Mermaid does not, and none
+Mermaid draws that Markio 2 leaves as source. The five neither of them draws are
+four ZenUML examples and one entity relationship diagram, all of which Mermaid
+itself refuses.
 
 The example chosen for each kind is that documentation page's headline one, and
 for several kinds a second, harder example is shown as well — the one that used to

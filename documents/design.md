@@ -302,8 +302,21 @@ numbered past the end, a preamble naming itself twice. Drawing an empty picture
 where Mermaid draws a picture of a crash is the one direction the difference is
 allowed to run.
 
+A label written between backticks is markdown, and it is the one place where a
+`**` means anything other than two stars on the page. Its newline is a break in
+the words rather than the end of the statement, so a line with a backtick string
+still open swallows the next one before anything is read — the joining happens
+where the source is cut into lines, once, rather than in each diagram's own
+reader. The emphasis is applied where a line of words is made, so it holds
+wherever such words stand: a node's name, an edge's, a frame's. The system face
+at a set weight will not be turned bold by a symbolic trait — it answers with the
+same face — so the copy is kept only when it really changed, and the bold face is
+asked for by weight otherwise.
+
 Mermaid's YAML preamble is read before the diagram is, for the keys that say
-what to draw. The title travels as `MermaidDiagram.titled`, a case wrapping any
+what to draw. A quoted value in it may run over several lines, as a stylesheet
+written into one does; those lines are swallowed up to the closing quote rather
+than read as YAML of their own. The title travels as `MermaidDiagram.titled`, a case wrapping any
 other, so the layout draws the diagram exactly as it would have without a name
 and then moves it down to make room — one place for a title rather than one per
 kind; a `title` with nothing after it is no title at all. `config.kanban`'s
@@ -389,7 +402,13 @@ A gantt chart is read twice. A task may point at one written below it —
 `until isadded` — and one pass cannot know where that one stands, so the first
 reading exists only to find out where every named task begins and ends and is
 allowed to be wrong about lengths, and the second reading, given those places,
-is the one whose answer is kept. An x–y chart names three things and draws two
+is the one whose answer is kept. Everything is counted in days, and a day is a
+fraction rather than a whole number, so a chart told in hours and minutes —
+`dateFormat HH:mm`, `Task A : 10m` — falls out of the same arithmetic; such a
+chart names no year at all, so its dates stand on the first day of the epoch and
+the axis opens at the first task rather than at the midnight before it. A `vert`
+is not a milestone with a different name: it is a heavy rule across the whole
+chart, named under the axis, and it takes no row among the bars. An x–y chart names three things and draws two
 of them: the axis's own name stands under its categories and a named point
 carries its words just above it, while a named series is read and left alone,
 because Mermaid draws no legend to put the name in.
@@ -482,14 +501,20 @@ A timeline is columns. A section is a band over the run of periods it owns, so
 its span says which columns belong to it without a line joining them; under the
 band each period is a tinted head with a dot on the axis, and what happened in
 it is a stack of cards below. The colour comes from the section where there is
-one and from the column where there is not.
+one and from the column where there is not. `timeline TD` turns the whole thing
+a quarter turn: the rule runs down the page, each period is a row with its name
+on the left and its cards on the right, and a section is a band across the rows
+it owns. It is a second drawing rather than a transposed one, because the words
+do not turn with the picture — a name reads left to right either way.
 
 A quadrant chart is a square cut in four, with each quarter's name along its own
 top edge rather than through the middle of it, which is where the points are.
 All four quarters carry the same faint tint. Giving each one a colour of its own
 was the obvious thing to do and the wrong one: on a chart cut this way a red
 quarter and a green quarter are a verdict, and the author wrote four names, not
-four verdicts. A
+four verdicts. A colour the author *did* write is drawn: a point may say how big
+it is and in what colours, on its own line or through a `classDef` it wears with
+`:::`, and what the point says wins over what its class says. A
 point's name goes to the right of its dot, and if that name would leave the
 square or land on something already drawn it is tried on the left and then a
 line up or down, in that order — every dot is placed before any name, so a name
@@ -599,10 +624,16 @@ already has every child after its parent. Every rectangle is labelled with its
 name and its value, branches included; a named root is given a head row across
 the top so its own total is visible above the parts it splits into. Several
 roots are given a parent that is never itself drawn, and that parent, having no
-name, gets no head row.
+name, gets no head row. A `classDef` paints the rectangle that asked for it and
+everything that rectangle holds, handed down in one forward pass over the same
+flat array, because a section's colour is what tells a reader the parts under it
+belong together.
 
 A C4 diagram has no layout of its own — it is read into a `Flowchart` whose
-shapes come from what each element is: a person is a stadium, a `*Db` a cylinder,
+shapes come from what each element is, and an element followed by a brace is a
+frame rather than a box: a deployment node holds what runs on it, and the brace
+at the end of the line is the only thing that says which of the two it is.
+Otherwise: a person is a stadium, a `*Db` a cylinder,
 a `*Queue` a subroutine, and anything `_Ext` is filled paler because it is
 outside the system under discussion. The kind, the name and the description are
 three lines of one label, which is what multi-line labels were added for and what
@@ -624,7 +655,12 @@ key nobody knows, a colour that is no colour, and an `Update…` line naming
 something nobody wrote are all refused, because any of them may be the thing the
 author cared about.
 
-An architecture diagram takes its grid from its edges. In that language
+An architecture diagram takes its grid from its edges, and `align` is an edge
+with nothing drawn on it: `align row a b c` stands the three side by side the
+same way an `a:R -- L:b` would, without a line between them. A `junction` is a
+service with no name and no picture, there so that four edges can meet at one
+point; it is given a two-point tile and no icon, so the lines run into each other
+rather than into a box. In that language
 `db:L -- R:server` is not decoration — it says the server stands to the left of
 the database — so the parser walks the edges from the first service outwards and
 gives every service a cell. Edges whose sides are opposite put two services side
@@ -666,7 +702,13 @@ the shapes, the `classDef` colouring and the arrow drawing are the ones a
 flowchart already has.
 
 `block:ID … end` is a grid inside a cell of the grid, and the same routine lays
-it out, which is why a block inside a block needs no case of its own. The grid
+it out, which is why a block inside a block needs no case of its own. The name is
+optional — a bare `block` opens a frame no arrow can reach, which is a way of
+grouping alone. A block arrow carries the sides it points at rather than one of
+four directions, so `(x)` points left and right at once and `(x, down)` all
+three; it is drawn as a bar with a point on every side it names, and each point's
+base spans whatever room the other axis left, so a cross of four never runs
+outside itself. The grid
 is measured in the narrowest column any framed block needs, and a plain cell
 takes several of those columns at once, so the author's own column count still
 says where a row wraps while what is written inside a frame still fits. A frame
@@ -708,6 +750,10 @@ line is drawn between the boxes themselves, since every box has an absolute plac
 once its namespace has one.
 
 A sequence diagram is columns with dashed lifelines, walked in document order.
+Somebody made part way through — `create participant Carl` — has their box on the
+message that makes them rather than at the top, and somebody destroyed has a
+second box where their lifeline stops; an arrow to either of those boxes ends at
+its edge instead of running through the name written inside it.
 A column is as wide as the longest message written across it — divided by how
 many columns that message spans, since a message reaching further has more of
 them to spread over — because the words go over the arrow, and a column sized to
