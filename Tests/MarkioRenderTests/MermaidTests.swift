@@ -1543,6 +1543,35 @@ final class MermaidTests: XCTestCase {
         XCTAssertGreaterThan(drawn.height, flat.height)
     }
 
+    /// A quadrant point may say how big it is and in what colours, on its own
+    /// line or through a `classDef`. What the point says wins over what its
+    /// class says, and a class nobody defined leaves the point plain.
+    func testAQuadrantPointWearsTheLookItAsksFor() throws {
+        guard
+            case .quadrant(let chart)? = MermaidDiagram.parse(
+                """
+                quadrantChart
+                  A: [0.9, 0.1] radius: 12
+                  B:::one: [0.8, 0.2] color: #ff3300
+                  C:::one: [0.7, 0.3]
+                  D:::missing: [0.6, 0.4]
+                  classDef one color: #109060, radius : 10, stroke-width: 5px
+                """)
+        else { return XCTFail("expected a quadrant chart") }
+        XCTAssertEqual(chart.points.map(\.label), ["A", "B", "C", "D"])
+        XCTAssertEqual(chart.points[0].radius, 12)
+        XCTAssertNil(chart.points[0].fill)
+        // The point's own colour wins, and the rest of the class still lands.
+        XCTAssertEqual(chart.points[1].fill, Flowchart.Colour(css: "#ff3300"))
+        XCTAssertEqual(chart.points[1].radius, 10)
+        XCTAssertEqual(chart.points[1].strokeWidth, 5)
+        XCTAssertEqual(chart.points[2].fill, Flowchart.Colour(css: "#109060"))
+        XCTAssertNil(chart.points[3].fill)
+        XCTAssertNil(chart.points[3].radius)
+        // A word nobody knows in a point's look is not a look at all.
+        XCTAssertNil(MermaidDiagram.parse("quadrantChart\n  A: [0.5, 0.5] wobble: 3"))
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             // A day off nobody can name.

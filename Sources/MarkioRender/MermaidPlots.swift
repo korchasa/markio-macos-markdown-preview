@@ -7,6 +7,19 @@ struct QuadrantChart {
         /// Both in 0…1, the square's own coordinates.
         var x: Double
         var y: Double
+        /// What a point may be told about itself, on its own line or through a
+        /// `classDef`: how big to be drawn and in what colours.
+        var radius: Double?
+        var fill: Flowchart.Colour?
+        var stroke: Flowchart.Colour?
+        var strokeWidth: Double?
+
+        mutating func merge(_ other: Point) {
+            if let radius = other.radius { self.radius = radius }
+            if let fill = other.fill { self.fill = fill }
+            if let stroke = other.stroke { self.stroke = stroke }
+            if let width = other.strokeWidth { strokeWidth = width }
+        }
     }
 
     var title: String
@@ -21,6 +34,9 @@ struct QuadrantChart {
         var chart = QuadrantChart(
             title: "", xAxis: ("", ""), yAxis: ("", ""),
             quadrants: ["", "", "", ""], points: [])
+        /// The looks `classDef` named, and which point asked for each of them.
+        var styles: [String: Point] = [:]
+        var wearing: [(index: Int, name: String)] = []
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
@@ -37,20 +53,58 @@ struct QuadrantChart {
                 guard let number = Int(word.dropFirst(9)), !rest.isEmpty else { return nil }
                 chart.quadrants[number - 1] = rest
                 continue
+            case "classDef":
+                // `classDef class1 color: #109060, radius: 10`
+                let parts = rest.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = look(String(parts[1])) else { return nil }
+                styles[String(parts[0])] = style
+                continue
             default:
                 break
             }
-            // `Campaign A: [0.3, 0.6]`
-            guard let colon = line.firstIndex(of: ":") else { return nil }
-            let label = line[line.startIndex..<colon]
+            // `Campaign A: [0.3, 0.6]`, with `:::name` and a look of its own
+            // both allowed: `Campaign B:::class1: [0.8, 0.1] color: #ff3300`.
+            var head = Substring(line)
+            var asked: String?
+            if let mark = head.range(of: ":::") {
+                guard let colon = head[mark.upperBound...].firstIndex(of: ":") else { return nil }
+                asked = head[mark.upperBound..<colon].trimmingCharacters(in: .whitespaces)
+                head = head[head.startIndex..<mark.lowerBound]
+                guard let name = asked, !name.isEmpty, !name.contains(" ") else { return nil }
+            }
+            guard
+                let colon = line.range(of: asked == nil ? ":" : ": ", range: labelEnd(line, asked))
+            else { return nil }
+            let label = head.prefix(while: { $0 != ":" })
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
-            let body = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            guard !label.isEmpty, body.hasPrefix("["), body.hasSuffix("]") else { return nil }
-            let numbers = body.dropFirst().dropLast().split(separator: ",")
+            var body = line[colon.upperBound...].trimmingCharacters(in: .whitespaces)
+            guard !label.isEmpty, body.hasPrefix("["), let close = body.firstIndex(of: "]")
+            else { return nil }
+            let numbers = body[body.index(after: body.startIndex)..<close].split(separator: ",")
                 .compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
             guard numbers.count == 2, (0...1).contains(numbers[0]), (0...1).contains(numbers[1])
             else { return nil }
-            chart.points.append(Point(label: label, x: numbers[0], y: numbers[1]))
+            body = String(body[body.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+            var point = Point(label: label, x: numbers[0], y: numbers[1])
+            if !body.isEmpty {
+                guard let look = look(body) else { return nil }
+                point.merge(look)
+            }
+            if let asked { wearing.append((chart.points.count, asked)) }
+            chart.points.append(point)
+        }
+        // A class is written under the points that wear it, so the looks are
+        // handed out once every line has been read. A class nobody defined
+        // leaves the point drawn the way every other point is drawn.
+        for (index, name) in wearing {
+            guard let style = styles[name] else { continue }
+            var worn = style
+            worn.merge(chart.points[index])
+            worn.label = chart.points[index].label
+            worn.x = chart.points[index].x
+            worn.y = chart.points[index].y
+            chart.points[index] = worn
         }
         // A chart with no points is still a chart: the axes and the four names
         // are the picture, and Mermaid draws it. An empty fence is not.
@@ -59,6 +113,45 @@ struct QuadrantChart {
                 || chart.quadrants.contains(where: { !$0.isEmpty })
         else { return nil }
         return chart
+    }
+
+    /// Where the colon that introduces a point's place may stand: after the
+    /// class name when one was written, and anywhere otherwise.
+    private static func labelEnd(_ line: Substring, _ asked: String?) -> Range<Substring.Index> {
+        guard let asked, let mark = line.range(of: ":::\(asked)") else {
+            return line.startIndex..<line.endIndex
+        }
+        return mark.upperBound..<line.endIndex
+    }
+
+    /// `color: #ff3300, radius: 10, stroke-color: #10f0f0, stroke-width: 5px`.
+    private static func look(_ text: String) -> Point? {
+        var point = Point(label: "", x: 0, y: 0)
+        for declaration in text.split(separator: ",") {
+            let pair = declaration.split(separator: ":", maxSplits: 1)
+            guard pair.count == 2 else { return nil }
+            let key = pair[0].trimmingCharacters(in: .whitespaces)
+            var value = pair[1].trimmingCharacters(in: .whitespaces)
+            if value.hasSuffix(";") { value = String(value.dropLast()) }
+            switch key {
+            case "radius":
+                guard let size = Double(value), size > 0 else { return nil }
+                point.radius = size
+            case "color":
+                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                point.fill = colour
+            case "stroke-color":
+                guard let colour = Flowchart.Colour(css: value) else { return nil }
+                point.stroke = colour
+            case "stroke-width":
+                let number = value.prefix(while: { $0.isNumber || $0 == "." })
+                guard let width = Double(number), width > 0 else { return nil }
+                point.strokeWidth = width
+            default:
+                return nil
+            }
+        }
+        return point
     }
 
     /// `Low Reach --> High Reach`, or just the one end.

@@ -2620,15 +2620,24 @@ enum MermaidLayout {
                 y: plot.maxY - CGFloat(point.y) * side
             )
             centres.append(centre)
+            // A point told how big to be, and in what colours, is drawn that
+            // way: a colour on a quadrant chart is the author saying something,
+            // not decoration.
+            let radius = CGFloat(point.radius ?? 5) * metrics.scale
             let dot = CGRect(
-                x: centre.x - 5 * metrics.scale, y: centre.y - 5 * metrics.scale,
-                width: 10 * metrics.scale, height: 10 * metrics.scale)
+                x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)
             written.append(dot)
+            let disc = CGPath(ellipseIn: dot, transform: nil)
             decorations.append(
                 .path(
-                    CGPath(ellipseIn: dot, transform: nil), color: theme.diagramWheel[0],
-                    lineWidth: 0,
+                    disc, color: point.fill.map(cgColor) ?? theme.diagramWheel[0], lineWidth: 0,
                     filled: true))
+            if let stroke = point.stroke {
+                decorations.append(
+                    .path(
+                        disc, color: cgColor(stroke),
+                        lineWidth: CGFloat(point.strokeWidth ?? 1) * metrics.scale, filled: false))
+            }
         }
         for (index, point) in chart.points.enumerated() {
             let centre = centres[index]
