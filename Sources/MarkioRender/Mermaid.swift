@@ -50,6 +50,9 @@ enum MermaidDiagram {
         var ganttCompact = false
         /// `theme: forest`: which of Mermaid's own colour sets to paint in.
         var theme = ""
+        /// `config.gitGraph.mainBranchName`: what the branch every graph starts
+        /// on is called, which `checkout` has to be able to name.
+        var gitMainBranch = "main"
     }
 
     static func parse(_ source: String) -> MermaidDiagram? {
@@ -155,6 +158,9 @@ enum MermaidDiagram {
             case ["displayMode"], ["config", "gantt", "displayMode"]:
                 // A mode nobody knows leaves the gantt drawn as it always is.
                 settings.ganttCompact = value == "compact"
+            case ["config", "gitGraph", "mainBranchName"]:
+                guard !value.contains(" ") else { continue }
+                settings.gitMainBranch = value
             case ["config", "theme"]:
                 // A theme nobody knows leaves the reader's own colours, which
                 // is what Mermaid falls back to for one.
@@ -337,8 +343,11 @@ enum MermaidDiagram {
             let turn = header.dropFirst("gitGraph".count)
                 .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
             guard ["", "LR", "TB", "BT"].contains(turn) else { return nil }
-            return GitGraph.parse(rest, vertical: turn == "TB" || turn == "BT")
-                .map(MermaidDiagram.git)
+            return GitGraph.parse(
+                rest, vertical: turn == "TB" || turn == "BT",
+                mainBranch: settings.gitMainBranch
+            )
+            .map(MermaidDiagram.git)
         }
         if header == "packet-beta" || header == "packet" {
             return PacketDiagram.parse(rest).map(MermaidDiagram.packet)

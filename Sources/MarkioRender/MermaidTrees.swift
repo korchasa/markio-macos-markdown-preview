@@ -63,6 +63,20 @@ struct Mindmap {
                 guard !stack.isEmpty else { return nil }
                 continue
             }
+            // `:::urgent large` on a line of its own paints the node above it,
+            // one class or several. A class nobody defined paints nothing,
+            // which is what Mermaid makes of it.
+            if line.text.hasPrefix(":::") {
+                guard let last = stack.last else { return nil }
+                let names = line.text.dropFirst(3)
+                    .split(separator: " ", omittingEmptySubsequences: true)
+                guard !names.isEmpty else { return nil }
+                for name in names {
+                    guard let style = styles[String(name)] else { continue }
+                    map.nodes[last.index].style.merge(style)
+                }
+                continue
+            }
             guard !line.text.hasPrefix("::") else { return nil }
             guard let read = node(line.text) else { return nil }
             while let last = stack.last, last.indent >= line.indent { stack.removeLast() }

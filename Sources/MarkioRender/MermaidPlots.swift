@@ -329,8 +329,10 @@ struct GitGraph {
     /// `gitGraph TB:`: the lanes run down the page rather than across it.
     var vertical = false
 
-    static func parse(_ lines: [Substring], vertical: Bool = false) -> GitGraph? {
-        var graph = GitGraph(branches: ["main"], commits: [], vertical: vertical)
+    static func parse(_ lines: [Substring], vertical: Bool = false, mainBranch: String = "main")
+        -> GitGraph?
+    {
+        var graph = GitGraph(branches: [mainBranch], commits: [], vertical: vertical)
         var current = 0
         var column = 0
         /// The last commit on each branch, which is what a merge line points at.
@@ -351,7 +353,9 @@ struct GitGraph {
                 // `cherry-pick id: "Alpha"` copies a commit onto this branch.
                 guard let options = options(rest), !options.id.isEmpty,
                     let source = graph.commits.firstIndex(where: { $0.label == options.id }),
-                    graph.commits[source].branch != current
+                    graph.commits[source].branch != current,
+                    options.parent.isEmpty
+                        || graph.commits.contains(where: { $0.label == options.parent })
                 else { return nil }
                 graph.commits.append(
                     Commit(
@@ -389,12 +393,13 @@ struct GitGraph {
         return graph
     }
 
-    /// `id: "Alpha" tag: "v1.0" type: HIGHLIGHT`
+    /// `id: "Alpha" tag: "v1.0" type: HIGHLIGHT parent: "B"`
     private static func options(_ text: String)
-        -> (id: String, tag: String, kind: Kind)?
+        -> (id: String, tag: String, kind: Kind, parent: String)?
     {
         var id = ""
         var tag = ""
+        var parent = ""
         var kind = Kind.normal
         var rest = Substring(text)
         while !rest.isEmpty {
@@ -416,6 +421,10 @@ struct GitGraph {
             switch key {
             case "id": id = value
             case "tag": tag = value
+            // Which of a merge commit's two parents the copy is taken from.
+            // The dotted line is drawn to the commit that was picked either
+            // way, so the name is checked and nothing more is made of it.
+            case "parent": parent = value
             case "type":
                 // A type nobody here draws is refused rather than quietly read
                 // as an ordinary commit.
@@ -428,6 +437,6 @@ struct GitGraph {
             default: return nil
             }
         }
-        return (id, tag, kind)
+        return (id, tag, kind, parent)
     }
 }

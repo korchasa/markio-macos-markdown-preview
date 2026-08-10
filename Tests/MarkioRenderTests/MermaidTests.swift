@@ -1602,6 +1602,59 @@ final class MermaidTests: XCTestCase {
         XCTAssertGreaterThan(tall.height, flat.height)
     }
 
+    /// The branch a graph starts on may be renamed in the preamble, and a
+    /// `checkout` has to be able to name it. A cherry-pick of a merge commit
+    /// says which parent it is taken from; the copy is drawn either way, so the
+    /// name is checked and nothing more is made of it.
+    func testAGitGraphRenamesItsMainBranchAndPicksFromAParent() throws {
+        guard
+            case .git(let graph)? = MermaidDiagram.parse(
+                """
+                ---
+                config:
+                  gitGraph:
+                    mainBranchName: 'MetroLine1'
+                ---
+                gitGraph
+                  commit id:"A"
+                  branch dev
+                  commit id:"B"
+                  checkout MetroLine1
+                  merge dev id:"MERGE"
+                  checkout dev
+                  cherry-pick id:"MERGE" parent:"B"
+                """)
+        else { return XCTFail("expected a git graph") }
+        XCTAssertEqual(graph.branches, ["MetroLine1", "dev"])
+        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", "MERGE", "MERGE"])
+        XCTAssertEqual(graph.commits[3].picks, 2)
+        // A parent nobody committed is not a parent.
+        XCTAssertNil(
+            MermaidDiagram.parse(
+                "gitGraph\n  commit id:\"A\"\n  branch dev\n  commit id:\"B\"\n"
+                    + "  checkout main\n  merge dev id:\"M\"\n  checkout dev\n"
+                    + "  cherry-pick id:\"M\" parent:\"ghost\""))
+    }
+
+    /// A mindmap may paint the node above with `:::name` on a line of its own,
+    /// one class or several. A class nobody defined paints nothing.
+    func testAMindmapPaintsANodeFromTheLineBelowIt() throws {
+        guard
+            case .mindmap(let map)? = MermaidDiagram.parse(
+                """
+                mindmap
+                    Root
+                        A[A]
+                        :::urgent large
+                        B(B)
+                """)
+        else { return XCTFail("expected a mindmap") }
+        XCTAssertEqual(map.nodes.map(\.label), ["Root", "A", "B"])
+        XCTAssertTrue(map.nodes[1].style.isEmpty)
+        // Standing under nothing, it paints nothing and is not a mindmap.
+        XCTAssertNil(MermaidDiagram.parse("mindmap\n:::urgent"))
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             // A day off nobody can name.
