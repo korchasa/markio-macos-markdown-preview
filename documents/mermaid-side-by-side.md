@@ -7,7 +7,7 @@ every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2
 on the right, drawing the same source with CoreText and `CGPath`: no web view, no
 diagram library.
 
-Of the 36 examples shown here, Markio 2 draws all 36. The pictures are the
+Of the 47 examples shown here, Markio 2 draws all 47. The pictures are the
 measure, not the count: what a comparison like this is for is the difference
 between two drawings of one source, and that is what the notes below record.
 
@@ -17,16 +17,18 @@ Mermaid draws that Markio 2 leaves as source. The five neither of them draws are
 four ZenUML examples and one entity relationship diagram, all of which Mermaid
 itself refuses.
 
-The example chosen for each kind is that documentation page's headline one, and
-for several kinds a second, harder example is shown as well — the one that used to
-be refused. The C4 diagram written here is kept for the same reason: it was added
-when no example on that page could be drawn.
+The example chosen for each kind is that documentation page's headline one. For
+many kinds a second example is shown as well, and it is chosen the same way every
+time: the hardest one on that page — the one that was refused longest, and in most
+cases the last of its kind to be drawn at all. The C4 diagram written here is kept
+for a different reason: every C4 example in the documentation ends in an `Update…`
+restyling, so one without it was written to show the plain case.
 
 ## What this comparison turned up
 
 Putting the two pictures side by side found faults that looking at ours alone
 never did: a reader who has only one drawing cannot see what is missing from it.
-Four rounds of comparison went through every example here, and every defect they
+Five rounds of comparison went through every example here, and every defect they
 found is closed. They fell into five kinds.
 
 **A picture that said something its source did not.** `--->` lost its arrowhead.
@@ -62,24 +64,40 @@ source says type first, a requirement's rows carried the source's keywords inste
 of words a person would say, and a relation between two boxes standing one over the
 other was drawn leaning.
 
-**A construct not drawn at all.** Eight examples here used to be shown as source,
-and the reason was almost always the same one: something written inside something
-else. A subgraph now holds a subgraph, a composite state holds its own machine, a
-C4 boundary holds a boundary and a block holds a block, because each of them is
-laid out as a picture of its own and then placed as if it were a single box. A
-frame is a place an edge can end, so `outside --> subgraph1` stops on its border;
-a `direction` line turns the frame it stands in; a `note` is a slip of paper laid
-beside a class; C4's `Update…` lines repaint what has already been written; and a
-board's preamble may say where its tickets live, which draws every ticket id as
-the link it has become.
+**A construct not drawn at all.** Nineteen examples here used to be shown as
+source. For the first eight the reason was almost always the same one: something
+written inside something else. A subgraph now holds a subgraph, a composite state
+holds its own machine, a C4 boundary holds a boundary and a block holds a block,
+because each of them is laid out as a picture of its own and then placed as if it
+were a single box. A frame is a place an edge can end, so `outside --> subgraph1`
+stops on its border; a `direction` line turns the frame it stands in; a `note` is a
+slip of paper laid beside a class; C4's `Update…` lines repaint what has already
+been written; and a board's preamble may say where its tickets live, which draws
+every ticket id as the link it has become.
+
+The rest were constructs with nothing standing in for them at all, and closing them
+is what took the last of the documentation's examples. A label between backticks is
+markdown: it may run over several lines of the source, and `**` and `_` inside it
+are written in those faces rather than printed. A gantt may be told in hours and
+minutes, and its `vert` is a rule across the whole chart rather than a milestone
+with another name. `timeline TD` runs the line of travel down the page, each period
+a row of its own. A quadrant point says how big it is and in what colours, and a
+treemap section hands its colour down to everything it holds. A block arrow carries
+the sides it points at, so `(x, down)` points three ways at once. An architecture
+diagram meets four edges at a `junction` and stands services in a row with `align`.
+A sequence makes and ends participants part way through, giving each a box where it
+began and where it stopped. A C4 deployment node is a frame when something stands
+in it. A git graph renames the branch it starts on and cherry-picks from a named
+parent.
 
 Mermaid's YAML preamble — `---` / `title:` / `---` — was not read at all, and it
 accounted for a run of the refusals. Its `title` is read now and set above the
-drawing, whatever kind the drawing is. `config` carries one setting this
-understands, a board's ticket URL; a preamble carrying anything else still leaves
-the fence as source, because those keys change how Mermaid draws, and a picture
-drawn to settings other than the ones its author wrote is not the picture they
-asked for.
+drawing, whatever kind the drawing is. `config` carries the handful of settings
+that say what to draw rather than how — a board's ticket URL and column width, a
+gantt's compact mode, the colour set, the name of a git graph's first branch — and
+a key this does not read is left unused rather than treated as a mistake, which is
+what Mermaid does with it. A quoted value in the preamble may run over several
+lines, as a stylesheet written into one does.
 
 ## Flowchart
 
@@ -163,6 +181,25 @@ flowchart LR
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-direction.png)
 
+## Flowchart with markdown labels
+
+From [`flowchart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/flowchart.md), example 4.
+
+```text
+---
+config:
+  htmlLabels: false
+---
+flowchart LR
+    markdown["`This **is** _Markdown_`"]
+    newLines["`Line1
+    Line 2
+    Line 3`"]
+    markdown --> newLines
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-markdown.png)
+
 ## Sequence diagram
 
 From [`sequenceDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/sequenceDiagram.md), example 25.
@@ -181,6 +218,26 @@ sequenceDiagram
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/sequence.png)
+
+## Sequence diagram that makes and ends participants
+
+From [`sequenceDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/sequenceDiagram.md), example 14.
+
+```text
+sequenceDiagram
+    Alice->>Bob: Hello Bob, how are you ?
+    Bob->>Alice: Fine, thank you. And you?
+    create participant Carl
+    Alice->>Carl: Hi Carl!
+    create actor D as Donald
+    Carl->>D: Hi!
+    destroy Carl
+    Alice-xCarl: We are too many
+    destroy Bob
+    Bob->>Alice: I agree
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/sequence-create.png)
 
 ## Class diagram
 
@@ -353,6 +410,22 @@ gantt
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/gantt.png)
 
+## Gantt chart told in minutes
+
+From [`gantt.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/gantt.md), example 6.
+
+```text
+gantt
+    dateFormat HH:mm
+    axisFormat %H:%M
+    Initial vert : vert, v1, 17:30, 2m
+    Task A : 3m
+    Task B : 8m
+    Final vert : vert, v2, 17:58, 4m
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/gantt-minutes.png)
+
 ## Pie chart
 
 From [`pie.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/pie.md), example 1.
@@ -388,6 +461,32 @@ quadrantChart
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/quadrant.png)
+
+## Quadrant chart with points of its own colour
+
+From [`quadrantChart.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/quadrantChart.md), example 3.
+
+```text
+quadrantChart
+  title Reach and engagement of campaigns
+  x-axis Low Reach --> High Reach
+  y-axis Low Engagement --> High Engagement
+  quadrant-1 We should expand
+  quadrant-2 Need to promote
+  quadrant-3 Re-evaluate
+  quadrant-4 May be improved
+  Campaign A: [0.9, 0.0] radius: 12
+  Campaign B:::class1: [0.8, 0.1] color: #ff3300, radius: 10
+  Campaign C: [0.7, 0.2] radius: 25, color: #00ff33, stroke-color: #10f0f0
+  Campaign D: [0.6, 0.3] radius: 15, stroke-color: #00ff0f, stroke-width: 5px ,color: #ff33f0
+  Campaign E:::class2: [0.5, 0.4]
+  Campaign F:::class3: [0.4, 0.5] color: #0000ff
+  classDef class1 color: #109060
+  classDef class2 color: #908342, radius : 10, stroke-color: #310085, stroke-width: 10px
+  classDef class3 color: #f00fff, radius : 10
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/quadrant-styled.png)
 
 ## Requirement diagram
 
@@ -452,6 +551,32 @@ gitGraph
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/git-title.png)
 
+## Git graph with a cherry-pick
+
+From [`gitgraph.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/gitgraph.md), example 10.
+
+```text
+    gitGraph
+        commit id: "ZERO"
+        branch develop
+        branch release
+        commit id:"A"
+        checkout main
+        commit id:"ONE"
+        checkout develop
+        commit id:"B"
+        checkout main
+        merge develop id:"MERGE"
+        commit id:"TWO"
+        checkout release
+        cherry-pick id:"MERGE" parent:"B"
+        commit id:"THREE"
+        checkout develop
+        commit id:"C"
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/git-cherry-pick.png)
+
 ## Mindmap
 
 From [`mindmap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/mindmap.md), example 12.
@@ -492,6 +617,21 @@ mindmap
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap-icons.png)
 
+## Mindmap with markdown labels
+
+From [`mindmap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/mindmap.md), example 13.
+
+```text
+mindmap
+    id1["`**Root** with
+a second line
+Unicode works too: 🤓`"]
+      id2["`The dog in **the** hog... a *very long text* that wraps to a new line`"]
+      id3[Regular labels still works]
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap-markdown.png)
+
 ## Timeline
 
 From [`timeline.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/timeline.md), example 1.
@@ -507,6 +647,23 @@ timeline
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/timeline.png)
+
+## Timeline running down the page
+
+From [`timeline.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/timeline.md), example 6.
+
+```text
+timeline TD
+  title MermaidChart 2023 Timeline
+    section 2023 Q1 <br> Release Personal Tier
+      Bullet 1 : sub-point 1a : sub-point 1b
+      Bullet 2 : sub-point 2a : sub-point 2b
+    section 2023 Q2 <br> Release XYZ Tier
+      Bullet 3 : sub-point <br> 3a : sub-point 3b
+      Bullet 4 : sub-point 4a : sub-point 4b
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/timeline-down.png)
 
 ## ZenUML
 
@@ -589,6 +746,23 @@ columns 1
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/block-nested.png)
+
+## Block diagram of fat arrows
+
+From [`block.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/block.md), example 18.
+
+```text
+block
+  blockArrowId<["Label"]>(right)
+  blockArrowId2<["Label"]>(left)
+  blockArrowId3<["Label"]>(up)
+  blockArrowId4<["Label"]>(down)
+  blockArrowId5<["Label"]>(x)
+  blockArrowId6<["Label"]>(y)
+  blockArrowId7<["Label"]>(x, down)
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/block-arrows.png)
 
 ## Packet diagram
 
@@ -700,6 +874,30 @@ architecture-beta
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/architecture.png)
 
+## Architecture diagram with junctions
+
+From [`architecture.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/architecture.md), example 5.
+
+```text
+architecture-beta
+    service left_disk(disk)[Disk]
+    service top_disk(disk)[Disk]
+    service bottom_disk(disk)[Disk]
+    service top_gateway(internet)[Gateway]
+    service bottom_gateway(internet)[Gateway]
+    junction junctionCenter
+    junction junctionRight
+
+    left_disk:R -- L:junctionCenter
+    top_disk:B -- T:junctionCenter
+    bottom_disk:T -- B:junctionCenter
+    junctionCenter:R -- L:junctionRight
+    top_gateway:B -- T:junctionRight
+    bottom_gateway:T -- B:junctionRight
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/architecture-junction.png)
+
 ## C4 diagram
 
 From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/c4.md), example 5.
@@ -724,6 +922,63 @@ From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/c4.png)
+
+## C4 deployment diagram
+
+From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/c4.md), example 6.
+
+```text
+    C4Deployment
+    title Deployment Diagram for Internet Banking System - Live
+
+    Deployment_Node(mob, "Customer's mobile device", "Apple IOS or Android"){
+        Container(mobile, "Mobile App", "Xamarin", "Provides a limited subset of the Internet Banking functionality to customers via their mobile device.")
+    }
+
+    Deployment_Node(comp, "Customer's computer", "Microsoft Windows or Apple macOS"){
+        Deployment_Node(browser, "Web Browser", "Google Chrome, Mozilla Firefox,<br/> Apple Safari or Microsoft Edge"){
+            Container(spa, "Single Page Application", "JavaScript and Angular", "Provides all of the Internet Banking functionality to customers via their web browser.")
+        }
+    }
+
+    Deployment_Node(plc, "Big Bank plc", "Big Bank plc data center"){
+        Deployment_Node(dn, "bigbank-api*** x8", "Ubuntu 16.04 LTS"){
+            Deployment_Node(apache, "Apache Tomcat", "Apache Tomcat 8.x"){
+                Container(api, "API Application", "Java and Spring MVC", "Provides Internet Banking functionality via a JSON/HTTPS API.")
+            }
+        }
+        Deployment_Node(bb2, "bigbank-web*** x4", "Ubuntu 16.04 LTS"){
+            Deployment_Node(apache2, "Apache Tomcat", "Apache Tomcat 8.x"){
+                Container(web, "Web Application", "Java and Spring MVC", "Delivers the static content and the Internet Banking single page application.")
+            }
+        }
+        Deployment_Node(bigbankdb01, "bigbank-db01", "Ubuntu 16.04 LTS"){
+            Deployment_Node(oracle, "Oracle - Primary", "Oracle 12c"){
+                ContainerDb(db, "Database", "Relational Database Schema", "Stores user registration information, hashed authentication credentials, access logs, etc.")
+            }
+        }
+        Deployment_Node(bigbankdb02, "bigbank-db02", "Ubuntu 16.04 LTS") {
+            Deployment_Node(oracle2, "Oracle - Secondary", "Oracle 12c") {
+                ContainerDb(db2, "Database", "Relational Database Schema", "Stores user registration information, hashed authentication credentials, access logs, etc.")
+            }
+        }
+    }
+
+    Rel(mobile, api, "Makes API calls to", "json/HTTPS")
+    Rel(spa, api, "Makes API calls to", "json/HTTPS")
+    Rel_U(web, spa, "Delivers to the customer's web browser")
+    Rel(api, db, "Reads from and writes to", "JDBC")
+    Rel(api, db2, "Reads from and writes to", "JDBC")
+    Rel_R(db, db2, "Replicates data to")
+
+    UpdateRelStyle(spa, api, $offsetY="-40")
+    UpdateRelStyle(web, spa, $offsetY="-40")
+    UpdateRelStyle(api, db, $offsetY="-20", $offsetX="5")
+    UpdateRelStyle(api, db2, $offsetX="-40", $offsetY="-20")
+    UpdateRelStyle(db, db2, $offsetY="-10")
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/c4-deployment.png)
 
 ## C4 diagram, written here
 
@@ -804,3 +1059,21 @@ treemap-beta
 ```
 
 ![Mermaid on the left, Markio 2 on the right](images/mermaid/treemap.png)
+
+## Treemap painted by a class
+
+From [`treemap.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/mermaid/src/docs/syntax/treemap.md), example 4.
+
+```text
+treemap-beta
+"Main"
+    "A": 20
+    "B":::important
+        "B1": 10
+        "B2": 15
+    "C": 5
+
+classDef important fill:#f96,stroke:#333,stroke-width:2px;
+```
+
+![Mermaid on the left, Markio 2 on the right](images/mermaid/treemap-class.png)
