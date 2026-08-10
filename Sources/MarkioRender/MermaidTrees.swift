@@ -120,9 +120,12 @@ struct Timeline {
     var title: String
     var sections: [String]
     var periods: [Period]
+    /// `timeline TD`: the line of travel runs down the page rather than across
+    /// it, with each period a row of its own.
+    var downward = false
 
-    static func parse(_ lines: [Substring]) -> Timeline? {
-        var timeline = Timeline(title: "", sections: [], periods: [])
+    static func parse(_ lines: [Substring], downward: Bool = false) -> Timeline? {
+        var timeline = Timeline(title: "", sections: [], periods: [], downward: downward)
         var section: Int?
         for line in lines {
             // A keyword on its own is a half-written line, not a period whose

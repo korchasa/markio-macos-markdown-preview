@@ -1048,6 +1048,9 @@ enum MermaidLayout {
     private static func timeline(
         _ timeline: Timeline, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
+        if timeline.downward {
+            return timelineDown(timeline, theme: theme, width: width, metrics: metrics)
+        }
         let font = scaled(theme.body, by: metrics.scale * 0.94)
         let periodFont = scaled(theme.bodyBold, by: metrics.scale)
         let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
@@ -1055,29 +1058,28 @@ enum MermaidLayout {
         let gap = 12 * metrics.scale
 
         struct Column {
-            var head: CTLine
+            var head: [CTLine]
             var headSize: CGSize
-            var events: [(line: CTLine, size: CGSize)]
+            var events: [(lines: [CTLine], size: CGSize)]
             var frame: CGRect
             var tint: CGColor
         }
         var columns: [Column] = []
         for (index, period) in timeline.periods.enumerated() {
-            let head = text(period.title, font: periodFont, color: theme.palette.text)
-            var widest = measure(head).width
-            var events: [(line: CTLine, size: CGSize)] = []
+            let head = labelLines(period.title, font: periodFont, color: theme.palette.text)
+            var widest = head.size.width
+            var events: [(lines: [CTLine], size: CGSize)] = []
             var stack: CGFloat = 0
             for event in period.events {
-                let line = text(event, font: font, color: theme.palette.text)
-                let size = measure(line)
+                let (lines, size) = labelLines(event, font: font, color: theme.palette.text)
                 widest = max(widest, size.width)
                 stack += size.height + pad * 2 + 6 * metrics.scale
-                events.append((line, size))
+                events.append((lines, size))
             }
             columns.append(
                 Column(
-                    head: head,
-                    headSize: measure(head),
+                    head: head.lines,
+                    headSize: head.size,
                     events: events,
                     frame: CGRect(
                         x: 0, y: 0, width: max(96 * metrics.scale, widest + pad * 2),
@@ -1103,7 +1105,11 @@ enum MermaidLayout {
         let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
         let headHeight = (columns.map(\.headSize.height).max() ?? 0) + pad * 2
         let sectionHeight =
-            timeline.sections.isEmpty ? 0 : headHeight * 0.9 + 8 * metrics.scale
+            timeline.sections.isEmpty
+            ? 0
+            : (timeline.sections.map {
+                labelLines($0, font: font, color: theme.palette.text).size.height
+            }.max() ?? 0) + pad * 2 + 8 * metrics.scale
         let bodyHeight = columns.map(\.frame.height).max() ?? 0
         let height =
             metrics.padding * 2 + titleRoom + sectionHeight + headHeight + 18 * metrics.scale
@@ -1141,17 +1147,8 @@ enum MermaidLayout {
                     color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.22)
                         ?? theme.diagramWheel[0],
                     cornerRadius: 4 * metrics.scale))
-            let line = text(name, font: font, color: theme.palette.text)
-            let size = measure(line)
-            decorations.append(
-                .glyphs(
-                    line,
-                    origin: CGPoint(
-                        x: band.midX - size.width / 2,
-                        y: band.midY + size.height / 2 - descent(line)
-                    )
-                )
-            )
+            let (lines, size) = labelLines(name, font: font, color: theme.palette.text)
+            decorations += centred(lines, size: size, in: band)
         }
 
         let headTop = sectionTop + sectionHeight
@@ -1170,15 +1167,7 @@ enum MermaidLayout {
                 .fill(
                     rect: head, color: column.tint.copy(alpha: 0.3) ?? column.tint,
                     cornerRadius: 4 * metrics.scale))
-            decorations.append(
-                .glyphs(
-                    column.head,
-                    origin: CGPoint(
-                        x: head.midX - column.headSize.width / 2,
-                        y: head.midY + column.headSize.height / 2 - descent(column.head)
-                    )
-                )
-            )
+            decorations += centred(column.head, size: column.headSize, in: head)
             // The dot is what ties the column to the line under it.
             let dot = CGRect(
                 x: head.midX - 3 * metrics.scale, y: axis - 3 * metrics.scale,
@@ -1197,16 +1186,165 @@ enum MermaidLayout {
                     .fill(
                         rect: card, color: column.tint.copy(alpha: 0.14) ?? column.tint,
                         cornerRadius: 4 * metrics.scale))
-                decorations.append(
-                    .glyphs(
-                        event.line,
-                        origin: CGPoint(
-                            x: card.midX - event.size.width / 2,
-                            y: card.midY + event.size.height / 2 - descent(event.line)
-                        )
-                    )
-                )
+                decorations += centred(event.lines, size: event.size, in: card)
                 y = card.maxY + 6 * metrics.scale
+            }
+        }
+        return Drawing(
+            decorations: decorations,
+            size: CGSize(width: width, height: height),
+            contentWidth: content
+        )
+    }
+
+    /// `timeline TD`: the same timeline with the line of travel running down
+    /// the page. Each period is a row — its name on the left of the rule, what
+    /// happened in it on the right — and a section is a band across the rows it
+    /// owns.
+    private static func timelineDown(
+        _ timeline: Timeline, theme: Theme, width: CGFloat, metrics: Metrics
+    ) -> Drawing {
+        let font = scaled(theme.body, by: metrics.scale * 0.94)
+        let periodFont = scaled(theme.bodyBold, by: metrics.scale)
+        let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
+        let pad = 8 * metrics.scale
+        let gap = 8 * metrics.scale
+
+        struct Row {
+            var head: [CTLine]
+            var headSize: CGSize
+            var events: [(lines: [CTLine], size: CGSize)]
+            var height: CGFloat
+            var tint: CGColor
+        }
+        var rows: [Row] = []
+        var headWidth = 90 * metrics.scale
+        var eventWidth = 120 * metrics.scale
+        for (index, period) in timeline.periods.enumerated() {
+            let (head, headSize) = labelLines(
+                period.title, font: periodFont, color: theme.palette.text)
+            headWidth = max(headWidth, headSize.width + pad * 2)
+            var events: [(lines: [CTLine], size: CGSize)] = []
+            var stack: CGFloat = 0
+            for event in period.events {
+                let (lines, size) = labelLines(event, font: font, color: theme.palette.text)
+                eventWidth = max(eventWidth, size.width + pad * 2)
+                stack += size.height + pad * 2 + gap
+                events.append((lines, size))
+            }
+            let rowHeight = max(headSize.height + pad * 2, max(stack - gap, 0))
+            rows.append(
+                Row(
+                    head: head, headSize: headSize, events: events, height: rowHeight,
+                    tint: theme.diagramWheel[(period.section ?? index) % theme.diagramWheel.count]
+                ))
+        }
+        // The rule stands between the two columns, so the picture is as wide as
+        // both of them and the room the rule takes between.
+        let rail = 24 * metrics.scale
+        let content = headWidth + rail + eventWidth
+
+        var titleLine: CTLine?
+        var titleSize = CGSize.zero
+        if !timeline.title.isEmpty {
+            let line = text(timeline.title, font: titleFont, color: theme.palette.text)
+            titleLine = line
+            titleSize = measure(line)
+        }
+        let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
+        // A section's name may be written over several lines, and every band is
+        // drawn the same depth, so the deepest name decides it.
+        let bandHeight =
+            (timeline.sections.map {
+                labelLines($0, font: font, color: theme.palette.text).size.height
+            }.max() ?? 0) + (timeline.sections.isEmpty ? 0 : pad * 2)
+
+        var decorations: [BlockBox.Decoration] = []
+        let left = max(metrics.padding, (width - content) / 2)
+        if let titleLine {
+            decorations.append(
+                .glyphs(
+                    titleLine,
+                    origin: CGPoint(
+                        x: max(metrics.padding, (width - titleSize.width) / 2),
+                        y: metrics.padding + titleSize.height - descent(titleLine))))
+        }
+
+        // Where each row stands, with a band opened above the first row of every
+        // section. The rule runs from the first row to the last, so it is drawn
+        // once the whole run is measured.
+        var y = metrics.padding + titleRoom
+        var placed: [(row: Int, top: CGFloat)] = []
+        var lastSection: Int?
+        var railTop = y
+        var railBottom = y
+        for (index, row) in rows.enumerated() {
+            let section = timeline.periods[index].section
+            if section != lastSection {
+                lastSection = section
+                if let section, section < timeline.sections.count {
+                    let band = CGRect(
+                        x: left, y: y, width: content, height: bandHeight - 4 * metrics.scale)
+                    decorations.append(
+                        .fill(
+                            rect: band,
+                            color: theme.diagramWheel[section % theme.diagramWheel.count].copy(
+                                alpha: 0.22) ?? theme.diagramWheel[0],
+                            cornerRadius: 4 * metrics.scale))
+                    let (lines, size) = labelLines(
+                        timeline.sections[section], font: font, color: theme.palette.text)
+                    decorations += centred(lines, size: size, in: band)
+                    y += bandHeight
+                }
+            }
+            if placed.isEmpty { railTop = y }
+            placed.append((index, y))
+            y += row.height + gap * 2
+            railBottom = y - gap * 2
+        }
+        let height = y - gap * 2 + metrics.padding
+
+        let rule = CGMutablePath()
+        let railX = left + headWidth + rail / 2
+        rule.move(to: CGPoint(x: railX, y: railTop))
+        rule.addLine(to: CGPoint(x: railX, y: railBottom))
+        decorations.append(
+            .path(rule, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+
+        for (index, top) in placed {
+            let row = rows[index]
+            let head = CGRect(
+                x: left, y: top, width: headWidth, height: row.headSize.height + pad * 2)
+            decorations.append(
+                .fill(
+                    rect: head, color: row.tint.copy(alpha: 0.3) ?? row.tint,
+                    cornerRadius: 4 * metrics.scale))
+            decorations += centred(row.head, size: row.headSize, in: head)
+            // The dot is what ties the row to the rule beside it.
+            let dot = CGRect(
+                x: railX - 3 * metrics.scale, y: head.midY - 3 * metrics.scale,
+                width: 6 * metrics.scale, height: 6 * metrics.scale)
+            decorations.append(
+                .path(
+                    CGPath(ellipseIn: dot, transform: nil), color: row.tint, lineWidth: 0,
+                    filled: true))
+            var cardTop = top
+            for event in row.events {
+                let card = CGRect(
+                    x: left + headWidth + rail, y: cardTop, width: eventWidth,
+                    height: event.size.height + pad * 2)
+                decorations.append(
+                    .fill(
+                        rect: card, color: row.tint.copy(alpha: 0.14) ?? row.tint,
+                        cornerRadius: 4 * metrics.scale))
+                decorations += centred(event.lines, size: event.size, in: card)
+                decorations.append(
+                    .path(
+                        dashed(
+                            from: CGPoint(x: railX, y: card.midY),
+                            to: CGPoint(x: card.minX, y: card.midY), dash: 3, gap: 3),
+                        color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+                cardTop = card.maxY + gap
             }
         }
         return Drawing(
@@ -2956,6 +3094,26 @@ enum MermaidLayout {
         var labelSize: CGSize
         var shape: Flowchart.Shape
         var style: Flowchart.Style
+    }
+
+    /// A run of words, already broken, written in the middle of the room it is
+    /// given.
+    private static func centred(_ lines: [CTLine], size: CGSize, in rect: CGRect)
+        -> [BlockBox.Decoration]
+    {
+        var decorations: [BlockBox.Decoration] = []
+        var y = rect.midY - size.height / 2
+        for line in lines {
+            let one = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(x: rect.midX - one.width / 2, y: y + one.height - descent(line))
+                )
+            )
+            y += one.height
+        }
+        return decorations
     }
 
     /// A node's words, broken where the author broke them.

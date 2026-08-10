@@ -1510,6 +1510,39 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(far.height, top.height)
     }
 
+    /// `timeline TD` turns the line of travel down the page: each period is a
+    /// row of its own rather than a column. A word after `timeline` that is not
+    /// a direction is not a timeline at all.
+    func testATimelineMayRunDownThePage() throws {
+        let source = """
+            timeline TD
+              title A year
+              section 2023 Q1 <br> Personal
+                Bullet 1 : one : two
+                Bullet 2 : three
+            """
+        guard case .timeline(let down)? = MermaidDiagram.parse(source) else {
+            return XCTFail("expected a timeline")
+        }
+        XCTAssertTrue(down.downward)
+        XCTAssertEqual(down.periods.map(\.title), ["Bullet 1", "Bullet 2"])
+        XCTAssertEqual(down.periods[0].events, ["one", "two"])
+        guard case .timeline(let across)? = MermaidDiagram.parse("timeline\n  A : one") else {
+            return XCTFail("a timeline with no direction still runs across")
+        }
+        XCTAssertFalse(across.downward)
+        XCTAssertNil(MermaidDiagram.parse("timeline sideways\n  A : one"))
+        // The section's name is broken where the author broke it, so the band
+        // it stands in is deep enough to hold both lines.
+        let drawn = try XCTUnwrap(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+        let flat = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: source.replacingOccurrences(of: " <br> ", with: " "),
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertGreaterThan(drawn.height, flat.height)
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             // A day off nobody can name.

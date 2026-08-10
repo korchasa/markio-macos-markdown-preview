@@ -255,7 +255,8 @@ enum MermaidDiagram {
         } else {
             guard
                 kinds.contains(name) || C4Diagram.headers.contains(name)
-                    || name.hasPrefix("gitGraph") || Flowchart.direction(header: header) != nil
+                    || name.hasPrefix("gitGraph") || name.hasPrefix("timeline ")
+                    || Flowchart.direction(header: header) != nil
             else { return nil }
         }
         let blank = MermaidDiagram.empty(name)
@@ -302,8 +303,13 @@ enum MermaidDiagram {
         if header == "sankey-beta" || header == "sankey" {
             return SankeyDiagram.parse(rest).map(MermaidDiagram.sankey)
         }
-        if header == "timeline" {
-            return Timeline.parse(rest).map(MermaidDiagram.timeline)
+        if header == "timeline" || header.hasPrefix("timeline ") {
+            // A direction after the word turns the line of travel down the page.
+            // Anything else after it is not a timeline at all.
+            let turn = header.dropFirst("timeline".count).trimmingCharacters(in: .whitespaces)
+            guard turn.isEmpty || ["TD", "TB", "LR"].contains(turn) else { return nil }
+            return Timeline.parse(rest, downward: turn == "TD" || turn == "TB")
+                .map(MermaidDiagram.timeline)
         }
         if header == "journey" {
             return UserJourney.parse(rest).map(MermaidDiagram.journey)
