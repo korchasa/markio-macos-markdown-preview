@@ -346,38 +346,70 @@ them; the edges themselves are still drawn. All four directions are the same
 routine: `TD` and `LR` swap the axes, `BT` and `RL` turn the rank axis over once
 every box is placed.
 
-Edges are drawn between box centres and clipped to the boxes, so an edge across
-a rank or back up the graph needs no special case. Clipping to the rectangle is
-not enough on its own, in three ways a reader notices. A line aimed at a corner
-leaves the box at that corner, which reads as a line that missed, so the exit is
-held three tenths of a side in from either end and comes off the flat of the box
-instead. Two boxes standing corner to corner have no facing sides at all, and
-between them even a held-in exit still leaves on the slant: such a line leaves by
-the side across the wider of the two gaps — the way the graph is flowing — runs
-straight out of it, turns once half way, and comes in straight at the other end,
-which is the shape Mermaid draws for the same pair. And a box that is not a
-rectangle — a diamond, a circle, a cylinder —
-has a rectangle standing well clear of it, so a line clipped to the rectangle
-stops in the white space beside the shape rather than on it. Where a node has an
-outline of its own, the point where the line crosses that outline is found by
-halving the run between the centre and the rectangle a dozen times, which needs
-nothing from the shape but the path it is already drawn with. Two straight lines between
-the same pair of boxes would land on top of each other, and a line drawn to a
-box three ranks away would cut through everything in between, so an edge is
-bowed: it is given a lane — the pairs are counted, and the *n*th edge between
-the same two boxes is offset by its place in that count — and then pushed
-sideways until it clears the box frames it would otherwise cross. The curve is
-flattened into a path, which is what lets a dashed edge keep an even rhythm
-around the bend and an arrowhead sit square on the line's real direction. An
-edge with no bow to make and two boxes standing one over the other is drawn
-straight down the middle of what they share, rather than from centre to centre:
-aiming at the centres leans the line whenever the two boxes are not the same
-width, and one leaning line in a column of upright ones reads as a mistake.
-Their words are written last, over the nodes, because an edge that skips a rank
-passes over whatever stands between, and the line is broken around each word so
-the two never overlap. The gap between ranks is sized from those words plus an
-arrowhead plus a visible run of line on either side — a gap sized to the words
-alone leaves a labelled edge looking like a chip with a stub beside it.
+#### Joining two boxes
+
+Wherever a line joins two rectangles, it is drawn by `connection`, and the rules
+below are the whole of what it does. They hold for a flowchart and for
+everything read into one — a state machine, a C4 model, a block diagram — and
+equally for a class diagram, an entity diagram and a requirement diagram, which
+have their own layout but the same lines. Mermaid works the same way: one
+`insertEdge` serves every one of these, and the diagram decides only the marks
+on the ends. They do not hold where the kind of diagram fixes the geometry
+itself: a sequence message runs between two lifelines, an architecture edge
+leaves by the side its author wrote (`db:R -- L:server`), a git graph runs on
+the rails of its branches. Mermaid keeps those apart too, in renderers of their
+own.
+
+*Where a line leaves.* By the side facing the box at the other end, which the
+direction of the layout settles: down the page, a line leaves the bottom and
+arrives at the top. The point on that side is where the line crosses it, held
+three tenths of a side in from either end — a line leaving at a corner reads as
+a line that missed the box. Where two boxes overlap by so little that no such
+point exists, they are treated as standing corner to corner. A line from a box
+to itself has no facing side at all: it leaves the right-hand side and comes
+back to it lower down.
+
+*How it runs.* Straight, where the two sides face each other and nothing stands
+between — down the middle of what the two boxes share, rather than from centre
+to centre, because aiming at the centres leans the line whenever the boxes are
+not the same width, and one leaning line in a column of upright ones reads as a
+mistake. Corner to corner, it runs straight out of the side it leaves by, turns
+once half way, and comes in straight at the far end. Past a box that stands
+between, it runs straight out, turns into a lane beside that box, runs down the
+lane, turns again and comes in straight; the turns are rounded by a B-spline,
+the same curve Mermaid smooths an edge with. The lanes are handed out for the
+picture as a whole rather than by each line for itself, so two lines passing the
+same box take lanes of their own instead of one. Two boxes joined both ways are
+joined by two lines bowed to opposite sides, and which side is which is read in
+a fixed direction — the across-direction turns over with the line, so a lane
+read in the line's own would put both on the same side. Every curve is flattened
+into a run of points, which is what lets a dashed edge keep an even rhythm round
+a bend and an arrowhead sit square on the line's real direction.
+
+*Where it arrives.* By the same two rules the exit follows. The line stops at
+the border and never crosses it; the mark on the end is drawn in the room the
+line gives up for it and faces along the last stretch of line. A box that is not
+a rectangle — a diamond, a circle, a cylinder — has a rectangle standing well
+clear of it, so a line stopped at the rectangle would end in mid-air beside the
+shape: where a node has an outline of its own, the crossing is found by halving
+the run between the centre and the rectangle a dozen times, which needs nothing
+from the shape but the path it is already drawn with. Words go beside the line,
+clear of both boxes and of each other: in the middle of a short line, in the
+first free gap of one that skips a rank, and past the furthest point of a loop.
+They are written last, over the nodes, because a line that skips a rank passes
+over whatever stands between, and the line is broken around each word so the two
+never overlap. The gap between ranks is sized from those words plus an arrowhead
+plus a visible run of line on either side — a gap sized to the words alone
+leaves a labelled edge looking like a chip with a stub beside it.
+
+One of these is a stand-in rather than a rule. Mermaid holds nothing back from
+its corners: the exit is simply where the first stretch of the routed line
+crosses the border, and it comes out well placed because the router has already
+put that stretch somewhere sensible. This has a router only for the lane case;
+everywhere else it joins the two boxes directly, and without the three-tenths
+hold the point slides into a corner. When there is a routed line under every
+edge, the hold has nothing left to do and should go rather than sit beside the
+rule it stands in for.
 
 A subgraph is laid out as a picture of its own and then placed as if it were a
 single box. `placed(chart:…)` calls itself once per frame: the boxes and frames
