@@ -34,27 +34,32 @@ final class DiagramInteractionTests: XCTestCase {
     }
 
     func testNothingInAPictureIsCutOffByItsOwnEdge() throws {
-        // A machine that returns to its start bows one edge around the boxes,
-        // which used to reach past the width the drawing claimed and be clipped
-        // by the bitmap, so the check is that the picture grew rather than that
-        // it looks a certain way. The same five states either way, so the only
-        // difference between the two pictures is the one edge that has to bow
-        // around three boxes.
-        let straightOnly = """
+        // A machine that returns to its start sends one edge past three boxes,
+        // and that edge used to reach outside the width the drawing claimed and
+        // be cut off by the bitmap. The check is the property itself rather than
+        // any one route to it: every line drawn stands inside the picture that
+        // says how big it is.
+        let source = """
             stateDiagram-v2
                 [*] --> Still
                 Still --> Moving
                 Moving --> Crash
                 Crash --> [*]
+                Still --> [*]
             """
-        let straight = try XCTUnwrap(
-            DocumentRenderer.diagram(source: straightOnly, theme: Theme(isDark: false), width: 700))
-        let bowed = try XCTUnwrap(
-            DocumentRenderer.diagram(
-                source: straightOnly + "\n    Still --> [*]", theme: Theme(isDark: false),
-                width: 700))
-        XCTAssertGreaterThan(bowed.width, straight.width)
-
+        let drawing = MermaidLayout.draw(
+            try XCTUnwrap(MermaidDiagram.parse(source)), theme: Theme(isDark: false), width: 700)
+        var drawn = CGRect.null
+        for decoration in drawing.decorations {
+            if case .path(let path, _, _, _) = decoration {
+                drawn = drawn.union(path.boundingBoxOfPath)
+            }
+        }
+        XCTAssertFalse(drawn.isNull)
+        XCTAssertGreaterThanOrEqual(drawn.minX, 0)
+        XCTAssertGreaterThanOrEqual(drawn.minY, 0)
+        XCTAssertLessThanOrEqual(drawn.maxX, drawing.size.width)
+        XCTAssertLessThanOrEqual(drawn.maxY, drawing.size.height)
     }
 
     /// A board is read by glancing across its columns, so a long title makes a
