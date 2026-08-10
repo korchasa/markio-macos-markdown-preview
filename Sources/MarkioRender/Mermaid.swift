@@ -53,6 +53,10 @@ enum MermaidDiagram {
         /// `config.gitGraph.mainBranchName`: what the branch every graph starts
         /// on is called, which `checkout` has to be able to name.
         var gitMainBranch = "main"
+        /// `config.gitGraph.showCommitLabel`: whether a commit is named under
+        /// its dot at all. Turned off, a graph is the shape of its branches
+        /// and nothing else.
+        var gitCommitLabels = true
     }
 
     static func parse(_ source: String) -> MermaidDiagram? {
@@ -161,6 +165,8 @@ enum MermaidDiagram {
             case ["config", "gitGraph", "mainBranchName"]:
                 guard !value.contains(" ") else { continue }
                 settings.gitMainBranch = value
+            case ["config", "gitGraph", "showCommitLabel"]:
+                settings.gitCommitLabels = value != "false"
             case ["config", "theme"]:
                 // A theme nobody knows leaves the reader's own colours, which
                 // is what Mermaid falls back to for one.
@@ -179,10 +185,14 @@ enum MermaidDiagram {
 
     /// Mermaid's `%%{ … }%%` directive lines, taken out of the body and read.
     ///
-    /// Only `init.theme` says anything about what is drawn; every other
-    /// directive changes how Mermaid draws, and a diagram drawn to settings
-    /// other than its author's is the half-truth the whole reader avoids. So an
-    /// unknown one gives nil rather than being passed over as a comment.
+    /// A directive says what a preamble says, on a line that otherwise looks
+    /// like a comment, so the settings it may carry are the same ones. A setting
+    /// that changes how Mermaid draws rather than what it draws, and that this
+    /// cannot follow, gives nil rather than being passed over as a comment: a
+    /// diagram drawn to settings other than its author's is the half-truth the
+    /// whole reader avoids. The few words that say nothing about the picture at
+    /// all — how loudly Mermaid logs, when it starts — are the exception, and
+    /// they are named one by one.
     private static func directives(_ body: String, into settings: inout Settings) -> String? {
         var kept: [Substring] = []
         for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -191,19 +201,108 @@ enum MermaidDiagram {
                 kept.append(line)
                 continue
             }
-            let inside = String(text.dropFirst(3).dropLast(3))
-            // `init: {'theme': 'forest'}` and `'init': { "theme": "forest" }`
-            // are the same line written two ways.
-            let words = inside.split(whereSeparator: { ":,{}".contains($0) })
-                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "\"' ")) }
-                .filter { !$0.isEmpty }
-            guard words.count == 3, words[0] == "init" || words[0] == "initialize",
-                words[1] == "theme",
-                ["default", "base", "neutral", "forest", "dark"].contains(words[2])
-            else { return nil }
-            settings.theme = words[2]
+            guard let said = written(String(text.dropFirst(3).dropLast(3))) else { return nil }
+            for (path, value) in said {
+                switch path {
+                case ["theme"]:
+                    guard ["default", "base", "neutral", "forest", "dark"].contains(value)
+                    else { return nil }
+                    settings.theme = value
+                case ["gitGraph", "mainBranchName"]:
+                    guard !value.contains(" ") else { return nil }
+                    settings.gitMainBranch = value
+                case ["gitGraph", "showCommitLabel"]:
+                    settings.gitCommitLabels = value != "false"
+                case ["kanban", "ticketBaseUrl"]:
+                    settings.ticketBaseUrl = value
+                case ["kanban", "sectionWidth"]:
+                    guard let width = Double(value), width >= 40, width <= 2000 else { return nil }
+                    settings.kanbanColumnWidth = width
+                case ["gantt", "displayMode"]:
+                    settings.ganttCompact = value == "compact"
+                case ["logLevel"], ["securityLevel"], ["startOnLoad"]:
+                    // How Mermaid runs, not what it draws.
+                    continue
+                default:
+                    return nil
+                }
+            }
         }
         return kept.joined(separator: "\n")
+    }
+
+    /// What an `init` directive holds: every value in it, with the keys it was
+    /// written under. `init: {'a': {'b': 1}, 'c': 2}` gives `(["a","b"], "1")`
+    /// and `(["c"], "2")`. Nil when the line is not an `init` directive or does
+    /// not close everything it opens.
+    private static func written(_ text: String) -> [(path: [String], value: String)]? {
+        let chars = Array(text)
+        var at = 0
+        var found: [(path: [String], value: String)] = []
+        func skip() {
+            while at < chars.count, chars[at].isWhitespace { at += 1 }
+        }
+        /// A key or a scalar, quoted or bare.
+        func word() -> String? {
+            skip()
+            guard at < chars.count else { return nil }
+            if chars[at] == "\"" || chars[at] == "'" {
+                let quote = chars[at]
+                at += 1
+                var out = ""
+                while at < chars.count, chars[at] != quote {
+                    out.append(chars[at])
+                    at += 1
+                }
+                guard at < chars.count else { return nil }
+                at += 1
+                return out
+            }
+            var out = ""
+            while at < chars.count, !":,{}".contains(chars[at]) {
+                out.append(chars[at])
+                at += 1
+            }
+            let clean = out.trimmingCharacters(in: .whitespaces)
+            return clean.isEmpty ? nil : clean
+        }
+        func object(_ under: [String]) -> Bool {
+            skip()
+            guard at < chars.count, chars[at] == "{" else { return false }
+            at += 1
+            while true {
+                skip()
+                guard at < chars.count else { return false }
+                if chars[at] == "}" {
+                    at += 1
+                    return true
+                }
+                if chars[at] == "," {
+                    at += 1
+                    continue
+                }
+                guard let key = word() else { return false }
+                skip()
+                guard at < chars.count, chars[at] == ":" else { return false }
+                at += 1
+                skip()
+                guard at < chars.count else { return false }
+                if chars[at] == "{" {
+                    guard object(under + [key]) else { return false }
+                } else {
+                    guard let value = word() else { return false }
+                    found.append((under + [key], value))
+                }
+            }
+        }
+        guard let head = word(), head == "init" || head == "initialize" else { return nil }
+        skip()
+        guard at < chars.count, chars[at] == ":" else { return nil }
+        at += 1
+        guard object([]) else { return nil }
+        skip()
+        guard at == chars.count else { return nil }
+        return found
     }
 
     /// A YAML scalar as written on one line: the value, and its quotes taken off
@@ -345,7 +444,7 @@ enum MermaidDiagram {
             guard ["", "LR", "TB", "BT"].contains(turn) else { return nil }
             return GitGraph.parse(
                 rest, vertical: turn == "TB" || turn == "BT",
-                mainBranch: settings.gitMainBranch
+                mainBranch: settings.gitMainBranch, names: settings.gitCommitLabels
             )
             .map(MermaidDiagram.git)
         }

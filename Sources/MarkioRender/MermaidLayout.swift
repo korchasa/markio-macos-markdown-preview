@@ -3019,10 +3019,12 @@ enum MermaidLayout {
         // stack instead and the dots need no more room than they take.
         let tagFont = scaled(theme.bodyBold, by: metrics.scale * 0.8)
         let widest =
-            graph.commits.map {
+            graph.commits.map { commit in
                 max(
-                    measure(text($0.label, font: font, color: theme.palette.text)).width,
-                    measure(text($0.tag, font: tagFont, color: theme.palette.text)).width)
+                    graph.names
+                        ? measure(text(commit.label, font: font, color: theme.palette.text)).width
+                        : 0,
+                    measure(text(commit.tag, font: tagFont, color: theme.palette.text)).width)
             }.max() ?? 0
         let step = down ? 56 * metrics.scale : max(56 * metrics.scale, widest + 8 * metrics.scale)
         let lane = 46 * metrics.scale
@@ -3186,8 +3188,9 @@ enum MermaidLayout {
             // unique & random ID", as its own documentation puts it — and a
             // string that is different every time the picture is drawn is not
             // a hash of anything. Writing one here would show the reader an
-            // identifier that refers to nothing.
-            let name = commit.label.isEmpty ? "\(order)" : commit.label
+            // identifier that refers to nothing. A graph whose author turned
+            // `showCommitLabel` off is drawn as its branches alone.
+            let name = graph.names ? (commit.label.isEmpty ? "\(order)" : commit.label) : ""
             for (words, above) in [(name, true), (commit.tag, false)] where !words.isEmpty {
                 let line = text(
                     words, font: above ? font : tagFont,

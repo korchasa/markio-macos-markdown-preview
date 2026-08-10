@@ -328,11 +328,17 @@ struct GitGraph {
     var commits: [Commit]
     /// `gitGraph TB:`: the lanes run down the page rather than across it.
     var vertical = false
+    /// `showCommitLabel`, which a preamble or a directive may turn off: then a
+    /// commit is a dot on its lane with nothing written under it. A tag is not
+    /// a name and stays where it is.
+    var names = true
 
-    static func parse(_ lines: [Substring], vertical: Bool = false, mainBranch: String = "main")
-        -> GitGraph?
-    {
-        var graph = GitGraph(branches: [mainBranch], commits: [], vertical: vertical)
+    static func parse(
+        _ lines: [Substring], vertical: Bool = false, mainBranch: String = "main",
+        names: Bool = true
+    ) -> GitGraph? {
+        var graph = GitGraph(
+            branches: [mainBranch], commits: [], vertical: vertical, names: names)
         var current = 0
         var column = 0
         /// The last commit on each branch, which is what a merge line points at.

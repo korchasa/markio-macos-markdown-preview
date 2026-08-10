@@ -1636,6 +1636,48 @@ final class MermaidTests: XCTestCase {
                     + "  cherry-pick id:\"M\" parent:\"ghost\""))
     }
 
+    /// `showCommitLabel: false` leaves a graph as the shape of its branches:
+    /// no commit is named under its dot. A tag is not a name and stays. The
+    /// setting is written either in the preamble or on a directive line, and
+    /// Mermaid's own documentation shows the directive with two words beside it
+    /// that say nothing about the picture — how loudly it logs, and a theme.
+    func testAGitGraphMayHideItsCommitNames() throws {
+        let preamble = """
+            ---
+            config:
+              gitGraph:
+                showCommitLabel: false
+            ---
+            gitGraph
+              commit
+              commit tag: "v1.0"
+            """
+        guard case .git(let quiet)? = MermaidDiagram.parse(preamble) else {
+            return XCTFail("expected a git graph")
+        }
+        XCTAssertFalse(quiet.names)
+        XCTAssertEqual(quiet.commits.map(\.tag), ["", "v1.0"])
+
+        let directive = """
+            %%{init: { 'logLevel': 'default', 'theme': 'base', 'gitGraph': {'showCommitLabel':false}} }%%
+            gitGraph
+              commit
+              commit
+            """
+        guard case .themed("base", .git(let told))? = MermaidDiagram.parse(directive) else {
+            return XCTFail("expected a git graph painted in a named theme")
+        }
+        XCTAssertFalse(told.names)
+
+        // Said by nobody, every commit is named.
+        guard case .git(let plain)? = MermaidDiagram.parse("gitGraph\n  commit\n  commit") else {
+            return XCTFail("expected a git graph")
+        }
+        XCTAssertTrue(plain.names)
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: preamble, theme: Theme(isDark: false), width: 700))
+    }
+
     /// A mindmap may paint the node above with `:::name` on a line of its own,
     /// one class or several. A class nobody defined paints nothing.
     func testAMindmapPaintsANodeFromTheLineBelowIt() throws {

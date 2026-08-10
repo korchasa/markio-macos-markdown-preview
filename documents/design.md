@@ -333,7 +333,13 @@ the theme was written over a fence rather than over the document.
 `%%{init: {'theme':'forest'}}%%` says the same thing on a line that looks like a
 comment, so directive lines are taken out of the body and read before the
 diagram is — passing one over as a comment would draw the picture in colours its
-author did not choose, which is the half-truth everything else here avoids.
+author did not choose, which is the half-truth everything else here avoids. A
+directive carries whatever a preamble carries, nested as deeply, so it is read
+into the same key paths rather than into a shape of its own: Mermaid's own
+documentation writes `showCommitLabel` this way and no other. A setting that
+would change the picture and that this cannot follow still refuses the whole
+diagram; the words that say nothing about the picture at all — how loudly
+Mermaid logs, when it starts — are named one by one and passed over.
 
 `MermaidLayout` places it. A flowchart is ranked by longest path — the edges
 relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
@@ -613,9 +619,11 @@ unique & random ID": seven hex characters drawn afresh every time the picture is
 drawn, so they are not a hash of anything and no reader can look them up. Writing
 a string of that shape here would put an identifier in front of the reader that
 refers to nothing, and working one out from the source instead would only make
-the invention repeatable. The names set how far apart the commits stand across
-the page: a name is far wider than the dot it belongs to, and Mermaid turns its
-names on their side to fit them where this one gives them the room. What a commit
+the invention repeatable. `showCommitLabel: false` takes the names away
+altogether, which is what an author who does not want them writes; a tag is not
+a name and stays. The names set how far apart the commits stand across the page:
+a name is far wider than the dot it belongs to, and Mermaid turns its names on
+their side to fit them where this one gives them the room. What a commit
 is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
