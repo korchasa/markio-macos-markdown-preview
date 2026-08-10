@@ -362,12 +362,16 @@ own.
 
 *Where a line leaves.* By the side facing the box at the other end, which the
 direction of the layout settles: down the page, a line leaves the bottom and
-arrives at the top. The point on that side is where the line crosses it, held
-three tenths of a side in from either end — a line leaving at a corner reads as
-a line that missed the box. Where two boxes overlap by so little that no such
-point exists, they are treated as standing corner to corner. A line from a box
-to itself has no facing side at all: it leaves the right-hand side and comes
-back to it lower down.
+arrives at the top. The point on that side is where the line crosses it. A line
+joining the two boxes directly is held three tenths of a side in from either end
+— left to itself the point slides into a corner, and a line leaving at a corner
+reads as a line that missed the box. A line with a lane is held off the corner
+itself and no further: the lane already stands beside the box, so the nearest
+point on the side is the one the reader would draw, and holding it in only makes
+the line swing back out to reach the lane. Where two boxes overlap by so little
+that no held-in point exists, they are treated as standing corner to corner. A
+line from a box to itself has no facing side at all: it leaves the right-hand
+side and comes back to it lower down.
 
 *How it runs.* Straight, where the two sides face each other and nothing stands
 between — down the middle of what the two boxes share, rather than from centre
@@ -375,9 +379,13 @@ to centre, because aiming at the centres leans the line whenever the boxes are
 not the same width, and one leaning line in a column of upright ones reads as a
 mistake. Corner to corner, it runs straight out of the side it leaves by, turns
 once half way, and comes in straight at the far end. Past a box that stands
-between, it runs straight out, turns into a lane beside that box, runs down the
-lane, turns again and comes in straight; the turns are rounded by a B-spline,
-the same curve Mermaid smooths an edge with. The lanes are handed out for the
+between, it runs out of its side, sweeps into a lane beside that box, runs
+straight down the lane, and sweeps out of it to come in square at the far end.
+A sweep is a cubic with both handles half way along it, so the bend is even from
+end to end, and it is spread over the gap between two ranks at the least however
+little the line has to move sideways — a bend as short as that movement turns
+hard and then runs straight, which reads as a kink rather than a curve — and
+over no more than a share of the run, or it eats the lane it is joining. The lanes are handed out for the
 picture as a whole rather than by each line for itself, so two lines passing the
 same box take lanes of their own instead of one. Two boxes joined both ways are
 joined by two lines bowed to opposite sides, and which side is which is read in
@@ -402,14 +410,15 @@ never overlap. The gap between ranks is sized from those words plus an arrowhead
 plus a visible run of line on either side — a gap sized to the words alone
 leaves a labelled edge looking like a chip with a stub beside it.
 
-One of these is a stand-in rather than a rule. Mermaid holds nothing back from
-its corners: the exit is simply where the first stretch of the routed line
-crosses the border, and it comes out well placed because the router has already
-put that stretch somewhere sensible. This has a router only for the lane case;
-everywhere else it joins the two boxes directly, and without the three-tenths
-hold the point slides into a corner. When there is a routed line under every
-edge, the hold has nothing left to do and should go rather than sit beside the
-rule it stands in for.
+The three-tenths hold is a stand-in rather than a rule. Mermaid holds nothing
+back from its corners: the exit is simply where the first stretch of the routed
+line crosses the border, and it comes out well placed because the router has
+already put that stretch somewhere sensible. This has a router only for the lane
+case — where, accordingly, the hold is already down to almost nothing — and
+everywhere else it joins the two boxes directly, where without the hold the point
+slides into a corner. When there is a routed line under every edge, the hold has
+nothing left to do and should go rather than sit beside the rule it stands in
+for.
 
 A subgraph is laid out as a picture of its own and then placed as if it were a
 single box. `placed(chart:…)` calls itself once per frame: the boxes and frames
