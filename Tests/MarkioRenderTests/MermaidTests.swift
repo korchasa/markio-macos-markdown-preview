@@ -1626,7 +1626,11 @@ final class MermaidTests: XCTestCase {
                 """)
         else { return XCTFail("expected a git graph") }
         XCTAssertEqual(graph.branches, ["MetroLine1", "dev"])
-        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", "MERGE", "MERGE"])
+        // The copy does not go by the name of the commit it copied. It says what
+        // it is instead, and names the parent it came through because a merge
+        // has two sides to pick from.
+        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", "MERGE", ""])
+        XCTAssertEqual(graph.commits.map(\.tag), ["", "", "", "cherry-pick:MERGE|parent:B"])
         XCTAssertEqual(graph.commits[3].picks, 2)
         // A parent nobody committed is not a parent.
         XCTAssertNil(
@@ -2131,7 +2135,10 @@ final class MermaidTests: XCTestCase {
                     cherry-pick id: "B"
                 """)
         else { return XCTFail("a cherry-pick is read") }
-        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", "B"])
+        XCTAssertEqual(graph.commits.map(\.label), ["A", "B", ""])
+        // Picked from an ordinary commit there is one side only, so the tag
+        // names the commit and stops there.
+        XCTAssertEqual(graph.commits[2].tag, "cherry-pick:B")
         XCTAssertEqual(graph.commits[2].picks, 1)
         XCTAssertEqual(graph.commits[2].branch, 0)
         XCTAssertNil(graph.commits[2].merges)

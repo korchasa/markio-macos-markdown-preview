@@ -3013,18 +3013,27 @@ enum MermaidLayout {
         // commits becomes a row of them, and the branch names sit above their
         // lanes rather than beside them.
         let down = graph.vertical
+        /// What is written under a commit's dot, and nothing when nothing is.
+        ///
+        /// A commit's own name is its place in the graph unless its author gave
+        /// it one. A merge is named only by its author: a merge is read from the
+        /// two lines meeting at it, and a number under it says nothing they do
+        /// not. A copy is not named at all — it goes by the tag saying what it
+        /// was picked from. Both are Mermaid's rules, in the one condition it
+        /// writes a commit label under.
+        func named(_ order: Int, _ commit: GitGraph.Commit) -> String {
+            guard graph.names, commit.picks == nil else { return "" }
+            if commit.merges != nil { return commit.label }
+            return commit.label.isEmpty ? "\(order)" : commit.label
+        }
         // A commit is named under its dot, and a name is far wider than a dot:
         // laid across the page the commits have to stand as far apart as their
-        // names, or a row of hashes runs into itself. Down the page the names
+        // names, or a row of names runs into itself. Down the page the names
         // stack instead and the dots need no more room than they take.
         let tagFont = scaled(theme.bodyBold, by: metrics.scale * 0.8)
         let widest =
-            graph.commits.map { commit in
-                max(
-                    graph.names
-                        ? measure(text(commit.label, font: font, color: theme.palette.text)).width
-                        : 0,
-                    measure(text(commit.tag, font: tagFont, color: theme.palette.text)).width)
+            graph.commits.enumerated().map { order, commit in
+                measure(text(named(order, commit), font: font, color: theme.palette.text)).width
             }.max() ?? 0
         let step = down ? 56 * metrics.scale : max(56 * metrics.scale, widest + 8 * metrics.scale)
         let lane = 46 * metrics.scale
@@ -3034,9 +3043,20 @@ enum MermaidLayout {
             (graph.branches.map {
                 measure(text($0, font: branchFont, color: theme.palette.text)).height
             }.max() ?? 0) + 10 * metrics.scale
+        // A tag may say a great deal more than a name — what a copy was picked
+        // from, and through which parent — and pushing the commits apart far
+        // enough to hold it would stretch the whole graph for one word. Mermaid
+        // lets a tag overlap whatever stands beside it, so the picture grows
+        // only by what hangs off either end of it.
+        let widestTag =
+            graph.commits.map {
+                measure(text($0.tag, font: tagFont, color: theme.palette.text)).width
+            }.max() ?? 0
+        let spill = max(0, (widestTag - step) / 2)
         let content =
-            down
-            ? CGFloat(graph.branches.count) * lane : gutter + CGFloat(columns) * step
+            spill * 2
+            + (down
+                ? CGFloat(graph.branches.count) * lane : gutter + CGFloat(columns) * step)
         let height =
             down
             ? metrics.padding * 2 + nameHeight + CGFloat(columns) * step
@@ -3045,10 +3065,11 @@ enum MermaidLayout {
         let left = max(metrics.padding, (width - content) / 2)
         /// How far along its lane a commit stands, and how far across the lanes.
         func along(_ column: Int) -> CGFloat {
-            (down ? metrics.padding + nameHeight : left + gutter) + step * (CGFloat(column) + 0.5)
+            (down ? metrics.padding + nameHeight : left + spill + gutter)
+                + step * (CGFloat(column) + 0.5)
         }
         func across(_ branch: Int) -> CGFloat {
-            (down ? left : metrics.padding) + lane * (CGFloat(branch) + 0.5)
+            (down ? left + spill : metrics.padding) + lane * (CGFloat(branch) + 0.5)
         }
         func centre(of commit: GitGraph.Commit) -> CGPoint {
             down
@@ -3082,7 +3103,7 @@ enum MermaidLayout {
                             x: side - size.width / 2,
                             y: metrics.padding + size.height - descent(line))
                         : CGPoint(
-                            x: left + gutter - 10 * metrics.scale - size.width,
+                            x: left + spill + gutter - 10 * metrics.scale - size.width,
                             y: side + size.height / 2 - descent(line))))
         }
         // A branch is drawn from where it left its parent and a merge back to
@@ -3181,17 +3202,16 @@ enum MermaidLayout {
             }
             // A name goes above the dot and a tag below, so the two never land
             // on each other.
-            // Every commit is named under the graph, whether its author named
-            // it or not: a row of unlabelled dots says nothing about which
-            // commit is which. What stands there is the commit's place in the
-            // graph. Mermaid writes that place and then a random string — "a
-            // unique & random ID", as its own documentation puts it — and a
-            // string that is different every time the picture is drawn is not
-            // a hash of anything. Writing one here would show the reader an
-            // identifier that refers to nothing. A graph whose author turned
-            // `showCommitLabel` off is drawn as its branches alone.
-            let name = graph.names ? (commit.label.isEmpty ? "\(order)" : commit.label) : ""
-            for (words, above) in [(name, true), (commit.tag, false)] where !words.isEmpty {
+            // A commit that has a name is named under the graph, whether its
+            // author named it or not: a row of unlabelled dots says nothing
+            // about which commit is which. What stands there is the commit's
+            // place in the graph. Mermaid writes that place and then a random
+            // string — "a unique & random ID", as its own documentation puts it
+            // — and a string that is different every time the picture is drawn
+            // is not a hash of anything. Writing one here would show the reader
+            // an identifier that refers to nothing.
+            for (words, above) in [(named(order, commit), true), (commit.tag, false)]
+            where !words.isEmpty {
                 let line = text(
                     words, font: above ? font : tagFont,
                     color: above ? theme.palette.secondaryText : colour)

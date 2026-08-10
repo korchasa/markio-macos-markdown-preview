@@ -363,9 +363,20 @@ struct GitGraph {
                     options.parent.isEmpty
                         || graph.commits.contains(where: { $0.label == options.parent })
                 else { return nil }
+                // The copy is not the commit it copied and does not go by its
+                // name. What it says for itself is what it is: a tag naming the
+                // commit it was picked from, and — when that commit was a merge,
+                // which has two sides to pick from — the parent it came through.
+                // The author may write a tag of their own instead.
+                let said =
+                    options.tag.isEmpty
+                    ? "cherry-pick:\(options.id)"
+                        + (graph.commits[source].merges == nil
+                            ? "" : "|parent:\(options.parent)")
+                    : options.tag
                 graph.commits.append(
                     Commit(
-                        label: options.id, tag: options.tag, branch: current, column: column,
+                        label: "", tag: said, branch: current, column: column,
                         merges: nil, picks: source, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1

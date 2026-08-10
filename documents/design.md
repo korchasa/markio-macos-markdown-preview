@@ -611,7 +611,12 @@ branch left its parent or merged back — so a lane is never a line floating on
 its own. `gitGraph TB:` turns the lanes down the page rather than across it:
 the same graph, with the two axes swapped and the branch names moved above their
 lanes. A `cherry-pick` is drawn as a dotted line back to the commit it copied,
-because a copy is the same work said twice rather than one line running on.
+because a copy is the same work said twice rather than one line running on, and
+it says so in a tag: `cherry-pick:MERGE|parent:B` — the commit it was picked
+from, and, when that commit was a merge and so had two sides to pick from, the
+parent it came through. Without that tag the copy is a dot on a lane with a
+dotted line running off it and nothing saying what it is. A tag the author wrote
+stands instead of it.
 A commit nobody named is written by its place in the graph — the first is `0`,
 the next `1` — because that is the half of Mermaid's own name for it that means
 anything. The other half is, in the words of Mermaid's own documentation, "a
@@ -621,9 +626,16 @@ a string of that shape here would put an identifier in front of the reader that
 refers to nothing, and working one out from the source instead would only make
 the invention repeatable. `showCommitLabel: false` takes the names away
 altogether, which is what an author who does not want them writes; a tag is not
-a name and stays. The names set how far apart the commits stand across the page:
-a name is far wider than the dot it belongs to, and Mermaid turns its names on
-their side to fit them where this one gives them the room. What a commit
+a name and stays. Two commits are never named: a copy, which goes by its tag,
+and a merge its author did not name, which is read from the two lines meeting at
+it and says nothing more for a number under it. Those are Mermaid's own three
+rules, written in the one condition it draws a commit label under. The names set
+how far apart the commits stand across the page: a name is far wider than the dot
+it belongs to, and Mermaid turns its names on their side to fit them where this
+one gives them the room. A tag is not allowed the same say — it may run to a
+sentence, and holding the commits that far apart would stretch the whole graph
+for one word — so a tag overlaps whatever stands beside it and the picture grows
+only by what hangs off either end. What a commit
 is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
