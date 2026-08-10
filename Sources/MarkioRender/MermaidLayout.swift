@@ -361,6 +361,15 @@ enum MermaidLayout {
             wanted[index] = choice
         }
         let beside = lanes(wanted, metrics: metrics)
+        // Three children of one parent would put three heads in the same place,
+        // so a crowd landing on one side is spread along it.
+        var straight: [(index: Int, from: CGRect, to: CGRect)] = []
+        for (index, link) in diagram.links.enumerated() where beside[index] == nil {
+            guard link.from < entities.count, link.to < entities.count, link.from != link.to
+            else { continue }
+            straight.append((index, entities[link.from].frame, entities[link.to].frame))
+        }
+        let pulled = spread(straight, metrics: metrics)
         for (index, link) in diagram.links.enumerated() {
             guard link.from < entities.count, link.to < entities.count else { continue }
             let key = Pair(link)
@@ -369,8 +378,8 @@ enum MermaidLayout {
             let lane = CGFloat(place) - CGFloat((pairs[key] ?? 1) - 1) / 2
             decorations += relation(
                 link, from: entities[link.from].frame, to: entities[link.to].frame, lane: lane,
-                obstacles: standing(between: link), beside: beside[index], theme: theme,
-                font: rowFont, metrics: metrics)
+                obstacles: standing(between: link), beside: beside[index],
+                pull: pulled[index] ?? (nil, nil), theme: theme, font: rowFont, metrics: metrics)
         }
         for (index, entity) in entities.enumerated() {
             decorations += self.entity(
@@ -657,14 +666,16 @@ enum MermaidLayout {
 
     private static func relation(
         _ link: BoxDiagram.Link, from: CGRect, to: CGRect, lane: CGFloat, obstacles: [CGRect],
-        beside: (vertical: Bool, at: CGFloat)?, theme: Theme, font: CTFont, metrics: Metrics
+        beside: (vertical: Bool, at: CGFloat)?, pull: (out: CGFloat?, into: CGFloat?),
+        theme: Theme, font: CTFont, metrics: Metrics
     ) -> [BlockBox.Decoration] {
         let colour = theme.palette.secondaryText
         // A relation is a line between two boxes like any other, so it leaves,
         // runs and arrives the way a flowchart edge does; only its end marks and
         // its counts belong to the diagram that wrote it.
         let points = connection(
-            from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside)
+            from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside,
+            pull: pull)
         let start = points[0]
         let end = points[points.count - 1]
         // Which way the line is going where it meets each box, which is where
@@ -3466,6 +3477,16 @@ enum MermaidLayout {
             wanted[index] = choice
         }
         let beside = lanes(wanted, metrics: metrics)
+        // Lines joining two boxes straight on share the sides they meet, so
+        // where several land on one side each is given its own place along it.
+        var straight: [(index: Int, from: CGRect, to: CGRect)] = []
+        for (index, edge) in chart.edges.enumerated() where beside[index] == nil {
+            guard edge.stroke != .invisible, let from = rect(edge.from), let to = rect(edge.to),
+                from != to
+            else { continue }
+            straight.append((index, from, to))
+        }
+        let pulled = spread(straight, metrics: metrics)
         for (index, edge) in chart.edges.enumerated() {
             guard let from = rect(edge.from), let to = rect(edge.to) else { continue }
             /// A frame is the rectangle it is drawn as, so only a box that is
@@ -3498,6 +3519,7 @@ enum MermaidLayout {
                 edge, from: from, to: to, theme: theme, metrics: metrics,
                 order: order, side: side, lane: lane,
                 obstacles: standing(between: edge, from, to), beside: beside[index],
+                pull: pulled[index] ?? (nil, nil),
                 fromOutline: outline(of: edge.from), toOutline: outline(of: edge.to))
             decorations += drawn.shaft
             labels += drawn.label
@@ -4664,6 +4686,71 @@ enum MermaidLayout {
             start: run.0, end: run.1)
     }
 
+    /// A side of a box, which is what a crowd of lines has to share.
+    private struct Landing: Hashable {
+        var box: CGRect
+        /// Whether it is a top or bottom side, so that a point on it moves in x.
+        var horizontal: Bool
+        /// -1 for the top or left side, 1 for the bottom or right one.
+        var side: CGFloat
+    }
+
+    /// Where each line meets its boxes once the crowd is taken into account.
+    ///
+    /// Every line joining two boxes straight on is drawn to the middle of the
+    /// side it arrives at, so three children of one parent put three heads in
+    /// the same place and the reader sees one mark rather than three. They are
+    /// spread along the side instead, in the order their other ends stand, which
+    /// is also what keeps them from crossing on the way in. A line with a lane
+    /// keeps out of it: where it meets the box was settled by the lane.
+    private static func spread(
+        _ wanted: [(index: Int, from: CGRect, to: CGRect)], metrics: Metrics
+    ) -> [Int: (out: CGFloat?, into: CGFloat?)] {
+        var crowds: [Landing: [(index: Int, leaving: Bool, other: CGFloat)]] = [:]
+        for line in wanted {
+            let joining = route(line.from, line.to)
+            let horizontal = !joining.sideways
+            func landing(_ box: CGRect, _ point: CGPoint) -> Landing {
+                Landing(
+                    box: box, horizontal: horizontal,
+                    side: horizontal
+                        ? (point.y > box.midY ? 1 : -1) : (point.x > box.midX ? 1 : -1))
+            }
+            let out = horizontal ? joining.end.x : joining.end.y
+            let into = horizontal ? joining.start.x : joining.start.y
+            crowds[landing(line.from, joining.start), default: []]
+                .append((line.index, true, out))
+            crowds[landing(line.to, joining.end), default: []].append((line.index, false, into))
+        }
+        var pulled: [Int: (out: CGFloat?, into: CGFloat?)] = [:]
+        for (landing, crowd) in crowds where crowd.count > 1 {
+            let box = landing.box
+            // A crowd is given more of the side than one line is held to. The
+            // hold keeps a single line off a corner it would look to have missed;
+            // a line in a crowd is plainly one of several, and the room matters
+            // more than the hold.
+            let room = corner / 2
+            let low =
+                landing.horizontal ? box.minX + box.width * room : box.minY + box.height * room
+            let high =
+                landing.horizontal ? box.maxX - box.width * room : box.maxY - box.height * room
+            // Room enough between two heads to tell them apart, and no more:
+            // spreading a pair to the ends of a wide side leans both lines for
+            // no reason a reader could name.
+            let step = min((high - low) / CGFloat(crowd.count), metrics.arrowWidth * 3.5)
+            let middle = (low + high) / 2
+            for (place, line) in crowd.sorted(by: { ($0.other, $0.index) < ($1.other, $1.index) })
+                .enumerated()
+            {
+                let at = middle + (CGFloat(place) - CGFloat(crowd.count - 1) / 2) * step
+                var already = pulled[line.index] ?? (nil, nil)
+                if line.leaving { already.out = at } else { already.into = at }
+                pulled[line.index] = already
+            }
+        }
+        return pulled
+    }
+
     /// Which lane each line takes, decided for the picture as a whole rather
     /// than by each line for itself.
     ///
@@ -4909,6 +4996,7 @@ enum MermaidLayout {
     private static func connection(
         from: CGRect, to: CGRect, lane: CGFloat, obstacles: [CGRect], metrics: Metrics,
         beside: (vertical: Bool, at: CGFloat)? = nil,
+        pull: (out: CGFloat?, into: CGFloat?) = (nil, nil),
         fromOutline: CGPath? = nil, toOutline: CGPath? = nil
     ) -> [CGPoint] {
         // A line from a box to itself has no two sides to cross between, so it
@@ -4927,6 +5015,14 @@ enum MermaidLayout {
         let joining = route(from, to)
         var start = joining.start
         var end = joining.end
+        // Where a crowd of lines shares a side, this line has been given its own
+        // place along it rather than the middle everything else would take.
+        if let out = pull.out {
+            if joining.sideways { start.y = out } else { start.x = out }
+        }
+        if let into = pull.into {
+            if joining.sideways { end.y = into } else { end.x = into }
+        }
         // Something stands between the two boxes and a lane beside it has been
         // set aside for this line: out of the side facing the way it is going,
         // straight down the lane, and in at the far end.
@@ -5016,6 +5112,7 @@ enum MermaidLayout {
         _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
         order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect],
         beside: (vertical: Bool, at: CGFloat)? = nil,
+        pull: (out: CGFloat?, into: CGFloat?) = (nil, nil),
         fromOutline: CGPath? = nil, toOutline: CGPath? = nil
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
         // `A ~~~ B` is written to hold one box under another and nothing more,
@@ -5023,7 +5120,7 @@ enum MermaidLayout {
         guard edge.stroke != .invisible else { return (shaft: [], label: []) }
         let path = connection(
             from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside,
-            fromOutline: fromOutline, toOutline: toOutline)
+            pull: pull, fromOutline: fromOutline, toOutline: toOutline)
         let start = path[0]
         let end = path[path.count - 1]
         var decorations: [BlockBox.Decoration] = []
