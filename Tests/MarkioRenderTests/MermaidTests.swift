@@ -1572,6 +1572,36 @@ final class MermaidTests: XCTestCase {
         XCTAssertNil(MermaidDiagram.parse("quadrantChart\n  A: [0.5, 0.5] wobble: 3"))
     }
 
+    /// A label written between backticks is markdown: it may run over several
+    /// lines of the source, and `**` and `_` inside it are emphasis rather than
+    /// punctuation on the page.
+    func testAMarkdownLabelRunsOverLinesAndCarriesEmphasis() throws {
+        let source = """
+            flowchart LR
+                markdown["`This **is** _Markdown_`"]
+                newLines["`Line1
+                Line 2
+                Line 3`"]
+                markdown --> newLines
+            """
+        guard case .flowchart(let chart)? = MermaidDiagram.parse(source) else {
+            return XCTFail("expected a flowchart")
+        }
+        // The three lines are one label, joined by the break Mermaid reads a
+        // newline inside a markdown string as.
+        XCTAssertEqual(chart.nodes.count, 2)
+        XCTAssertEqual(chart.nodes[1].label, "`Line1<br/>Line 2<br/>Line 3`")
+        XCTAssertEqual(chart.edges.count, 1)
+        // Three lines of words stand taller than one.
+        let tall = try XCTUnwrap(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+        let flat = try XCTUnwrap(
+            DocumentRenderer.diagram(
+                source: "flowchart LR\n  a[\"one\"]\n  b[\"two\"]\n  a --> b",
+                theme: Theme(isDark: false), width: 700))
+        XCTAssertGreaterThan(tall.height, flat.height)
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             // A day off nobody can name.

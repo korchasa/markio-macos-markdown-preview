@@ -275,6 +275,13 @@ enum MermaidDiagram {
             // it — a comment after an edge is not part of that edge's words.
             let said = raw.range(of: "%%").map { raw[raw.startIndex..<$0.lowerBound] } ?? raw
             let line = said.trimmingCharacters(in: .whitespaces)
+            // A markdown label may run over several lines — the newline inside
+            // it is a line break in the words, not the end of the statement —
+            // so a line with a backtick string still open swallows the next one.
+            if let last = lines.last, last.filter({ $0 == "`" }).count % 2 == 1 {
+                lines[lines.count - 1] = Substring(last + "<br/>" + line)
+                continue
+            }
             // A blank line means nothing here, and neither does a bare comment.
             guard !line.isEmpty else { continue }
             lines.append(Substring(line))

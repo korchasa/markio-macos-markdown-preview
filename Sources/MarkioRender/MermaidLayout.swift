@@ -3129,12 +3129,22 @@ enum MermaidLayout {
     private static func labelLines(_ words: String, font: CTFont, color: CGColor)
         -> (lines: [CTLine], size: CGSize)
     {
+        // A label written between backticks is markdown, and only there does a
+        // `**` mean anything other than two stars on the page.
+        var words = words
+        var markdown = false
+        if words.count >= 2, words.hasPrefix("`"), words.hasSuffix("`") {
+            markdown = true
+            words = String(words.dropFirst().dropLast())
+        }
         var parts = [words]
         for separator in ["<br/>", "<br />", "<br>", "\\n"] {
             parts = parts.flatMap { $0.components(separatedBy: separator) }
         }
-        let lines = parts.map {
-            text($0.trimmingCharacters(in: .whitespaces), font: font, color: color)
+        let lines = parts.map { part -> CTLine in
+            let one = part.trimmingCharacters(in: .whitespaces)
+            return markdown
+                ? marked(one, font: font, color: color) : text(one, font: font, color: color)
         }
         let sizes = lines.map(measure)
         return (
@@ -6110,8 +6120,79 @@ enum MermaidLayout {
         return parts.enumerated().map { (index, part) in (index % 2 == 1, part) }
     }
 
+    /// One line of markdown: `**bold**`, `*italic*` and `_italic_` written in
+    /// the face each asks for, and everything else in the face it was given.
+    private static func marked(_ string: String, font: CTFont, color: CGColor) -> CTLine {
+        var runs: [(text: String, bold: Bool, italic: Bool)] = []
+        var current = ""
+        var bold = false
+        var italic = false
+        var index = string.startIndex
+        func close() {
+            guard !current.isEmpty else { return }
+            runs.append((current, bold, italic))
+            current = ""
+        }
+        while index < string.endIndex {
+            let rest = string[index...]
+            if rest.hasPrefix("**") {
+                close()
+                bold.toggle()
+                index = string.index(index, offsetBy: 2)
+                continue
+            }
+            if rest.hasPrefix("*") || rest.hasPrefix("_") {
+                close()
+                italic.toggle()
+                index = string.index(after: index)
+                continue
+            }
+            current.append(string[index])
+            index = string.index(after: index)
+        }
+        close()
+        let written = NSMutableAttributedString()
+        for run in runs {
+            written.append(
+                NSAttributedString(
+                    string: run.text,
+                    attributes: [
+                        AttributedBuilder.fontKey: face(font, bold: run.bold, italic: run.italic),
+                        AttributedBuilder.colorKey: color,
+                    ]))
+        }
+        return CTLineCreateWithAttributedString(written)
+    }
+
+    /// The same face, asked to stand up or lean over.
+    private static func face(_ font: CTFont, bold: Bool, italic: Bool) -> CTFont {
+        var traits: CTFontSymbolicTraits = []
+        if bold { traits.insert(.traitBold) }
+        if italic { traits.insert(.traitItalic) }
+        guard !traits.isEmpty else { return font }
+        if let asked = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, traits, traits),
+            CTFontCopyPostScriptName(asked) != CTFontCopyPostScriptName(font)
+        {
+            return asked
+        }
+        // The system face at a set weight will not be turned by traits at all —
+        // the label fonts are made that way — so the bold one is asked for by
+        // weight instead, and the lean is put on top of it.
+        let size = CTFontGetSize(font)
+        let heavy = NSFont.systemFont(ofSize: size, weight: bold ? .bold : .regular) as CTFont
+        guard italic else { return heavy }
+        return CTFontCreateCopyWithSymbolicTraits(heavy, 0, nil, .traitItalic, .traitItalic)
+            ?? heavy
+    }
+
     private static func text(_ string: String, font: CTFont, color: CGColor) -> CTLine {
-        CTLineCreateWithAttributedString(
+        // Words written between backticks are markdown wherever they stand — a
+        // node's name, an edge's, a frame's — so they are read as markdown here
+        // rather than at each of those places.
+        if string.count >= 2, string.hasPrefix("`"), string.hasSuffix("`") {
+            return marked(String(string.dropFirst().dropLast()), font: font, color: color)
+        }
+        return CTLineCreateWithAttributedString(
             NSAttributedString(
                 string: string,
                 attributes: [
