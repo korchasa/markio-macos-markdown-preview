@@ -13,10 +13,10 @@ between two drawings of one source, and that is what the notes below record.
 
 The pages these come from hold 408 examples in all. Run end to end, Mermaid draws
 403 of them and Markio 2 draws 363, and there is no example Markio 2 draws that
-Mermaid does not. The 40 it still leaves as source are spread thin — zenuml seven,
-state diagrams five, architecture and class diagrams four apiece, and one or two
-each across nine more kinds — and each is a feature of its own rather than a
-common cause.
+Mermaid does not. Five of the 45 Markio 2 leaves as source are ones Mermaid itself
+refuses, so the real difference is 40 examples. ZenUML accounts for 11 of them and
+the rest are spread thin: five state machines, four class diagrams, four
+architecture diagrams, and ones and twos everywhere else.
 
 The example chosen for each kind is that documentation page's headline one, and
 for several kinds a second, harder example is shown as well — the one that used to

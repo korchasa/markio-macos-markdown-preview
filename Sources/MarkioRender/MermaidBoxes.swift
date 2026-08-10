@@ -357,9 +357,10 @@ enum RequirementDiagram {
                 guard !key.isEmpty, !value.isEmpty else { return nil }
                 // `risk: high` and `verifymethod: test` are chosen from a list
                 // of words the syntax spells in lower case; the prose ones —
-                // `text`, `docref` — are the author's own and stay as written.
+                // `text`, `docref`, an element's `type` — are the author's own
+                // and stay as written.
                 let written =
-                    ["risk", "verifymethod", "type"].contains(key)
+                    ["risk", "verifymethod"].contains(key)
                     ? value.prefix(1).uppercased() + value.dropFirst() : value
                 diagram.boxes[box].compartments[0].append("\(named(key)): \(written)")
                 continue
@@ -417,7 +418,9 @@ enum RequirementDiagram {
                     painted.append((diagram.index(of: name), asked))
                 }
                 let index = diagram.index(of: name)
-                diagram.boxes[index].stereotype = first
+                // A requirement wears its kind in angle brackets and in words:
+                // `<<Functional Requirement>>`, not the keyword as typed.
+                diagram.boxes[index].stereotype = "<<\(spaced(first))>>"
                 diagram.boxes[index].compartments = [[]]
                 open = index
                 continue
@@ -432,7 +435,7 @@ enum RequirementDiagram {
                 BoxDiagram.Link(
                     from: diagram.index(of: String(words[forwards ? 0 : 4])),
                     to: diagram.index(of: String(words[forwards ? 4 : 0])),
-                    label: String(words[2]),
+                    label: "<<\(words[2])>>",
                     dashed: true,
                     fromEnd: .none,
                     toEnd: .arrow,
@@ -447,6 +450,16 @@ enum RequirementDiagram {
             diagram.boxes[box].style.merge(style)
         }
         return diagram
+    }
+
+    /// `functionalRequirement` as a reader would say it: `Functional Requirement`.
+    private static func spaced(_ keyword: String) -> String {
+        var out = keyword.prefix(1).uppercased()
+        for character in keyword.dropFirst() {
+            if character.isUppercase { out.append(" ") }
+            out.append(character)
+        }
+        return out
     }
 
     /// A property as a reader would write it rather than as the syntax spells

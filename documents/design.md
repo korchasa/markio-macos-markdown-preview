@@ -334,7 +334,16 @@ routine: `TD` and `LR` swap the axes, `BT` and `RL` turn the rank axis over once
 every box is placed.
 
 Edges are drawn between box centres and clipped to the boxes, so an edge across
-a rank or back up the graph needs no special case. Two straight lines between
+a rank or back up the graph needs no special case. Clipping to the rectangle is
+not enough on its own, in two ways a reader notices. A line aimed at a corner
+leaves the box at that corner, which reads as a line that missed, so the exit is
+held three tenths of a side in from either end and comes off the flat of the box
+instead. And a box that is not a rectangle — a diamond, a circle, a cylinder —
+has a rectangle standing well clear of it, so a line clipped to the rectangle
+stops in the white space beside the shape rather than on it. Where a node has an
+outline of its own, the point where the line crosses that outline is found by
+halving the run between the centre and the rectangle a dozen times, which needs
+nothing from the shape but the path it is already drawn with. Two straight lines between
 the same pair of boxes would land on top of each other, and a line drawn to a
 box three ranks away would cut through everything in between, so an edge is
 bowed: it is given a lane — the pairs are counted, and the *n*th edge between
@@ -419,10 +428,21 @@ front one and are drawn before it.
 
 A class diagram and an entity–relationship diagram are one layout: titled boxes
 with rows in them, ranked the same way a flowchart is, joined by lines whose
-ends carry the meaning — a hollow triangle for inheritance, a diamond for
-composition, a crow's foot for how many. They differ only in how they are read
+ends carry the meaning — a hollow triangle for inheritance, an open V for a
+line that only points, a diamond for composition, a crow's foot for how many.
+The two arrowheads are not the same mark: a triangle is closed and filled or
+hollow and says one class is another, while `<--` and `<..` merely point and are
+drawn as two strokes meeting, the way an arrow on a flowchart is. They differ
+only in how they are read
 and in which ends their lines may have, which is why `BoxDiagram` is shared and
-`ClassDiagram`/`EntityDiagram` are two readers of it. An entity's attribute is
+`ClassDiagram`/`EntityDiagram` are two readers of it. How far apart two ranks
+stand is measured from what the relations between them actually draw — both end
+marks, the words on the line, and a run of shaft left over. A crow's foot alone
+eats most of an ordinary gap, and an entity diagram whose relations have one at
+each end came out as two symbols floating with no line between them. Room for
+the marks is left at the box as well: a crow's foot stands a little off the
+entity rather than on its border, where it would read as part of the frame.
+An entity's attribute is
 written type first and name second, the order it is declared in: `string email`
 and not `email string`, which would say the attribute is called `string`.
 
@@ -465,7 +485,11 @@ it is a stack of cards below. The colour comes from the section where there is
 one and from the column where there is not.
 
 A quadrant chart is a square cut in four, with each quarter's name along its own
-top edge rather than through the middle of it, which is where the points are. A
+top edge rather than through the middle of it, which is where the points are.
+All four quarters carry the same faint tint. Giving each one a colour of its own
+was the obvious thing to do and the wrong one: on a chart cut this way a red
+quarter and a green quarter are a verdict, and the author wrote four names, not
+four verdicts. A
 point's name goes to the right of its dot, and if that name would leave the
 square or land on something already drawn it is tried on the left and then a
 line up or down, in that order — every dot is placed before any name, so a name
@@ -480,17 +504,26 @@ its own. `gitGraph TB:` turns the lanes down the page rather than across it:
 the same graph, with the two axes swapped and the branch names moved above their
 lanes. A `cherry-pick` is drawn as a dotted line back to the commit it copied,
 because a copy is the same work said twice rather than one line running on.
-What a commit is decides how its
+A commit nobody named is written by its place in the graph — the first is `0`,
+the next `1` — because that is the half of Mermaid's own name for it that means
+anything. The other half is a random string standing in for a hash, and there is
+no repository behind this picture to take a real one from; inventing one would
+put a number in front of the reader that refers to nothing. What a commit is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
 nobody here draws is refused rather than read as an ordinary commit — that is
 the same rule as everywhere else, applied to a word that would otherwise vanish
 without a trace in the picture.
 
-A journey is a line that rises and falls over the steps it is scored on, with
-the sections banded above it and each step's name and actors written under its
-own column. The top and bottom rules are held a dot's radius inside the plot, or
-a five would ride up into the band above it and a one would sit on the names.
+A journey is read downwards rather than as a curve. A section is a band over the
+run of steps it owns, and each step is a card under that band in the same
+colour, so a section looks like a group of its own instead of a stripe with
+loose boxes below it; the bands are held apart and outlined for the same reason.
+Under the cards runs the axis, and from each step a dotted line drops to a face
+drawn at the height of its score — a smile, a straight mouth or a frown. The
+score is what the author wrote the step for, so it is drawn as a face rather
+than as a height alone: a dot on a line says a number, and a number here is a
+feeling. Who was there is written on the step's own card, under its name.
 
 A Gantt chart counts days from its first task and nothing here knows about
 calendars beyond turning a written date into a day number and back, which is why
@@ -539,7 +572,15 @@ requirement is a titled box with its id, its text and its verification method in
 the rows, and `satisfies`/`verifies` and the rest are the lines between them. The
 rows are written the way a reader would say them rather than the way the source
 spells them — `verifymethod: Test` becomes `Verification: Test` — because the
-keyword is the source's grammar and the box is what a person reads.
+keyword is the source's grammar and the box is what a person reads. That applies
+to the words the syntax chooses from and not to the author's own: a risk and a
+verification method come out of a fixed list and are capitalised, while an
+element's `type` is whatever its author called the thing, and it stays as
+written. What kind of box it is stands over its name in the source's own
+brackets, `<<Requirement>>` and `<<Element>>`, rather than in quotation marks:
+those brackets are how the diagram is written and how everyone who reads one
+expects to see it. A relation only points, so it ends in an open V and not in a
+filled head.
 
 A Sankey diagram ranks its nodes the way a flowchart does and then gives each one
 a bar as tall as the larger of what reaches it and what leaves it. The ribbons
@@ -598,10 +639,15 @@ stands clear, which is where Mermaid keeps it too. Moving one can push it into
 the next group, so the sweep repeats until nothing moves. A group written inside
 a group is a frame inside a frame, each with a strip of its own for its name. The
 five icons Mermaid ships are drawn as filled silhouettes with their detail cut
-back out in the page's own colour; an icon from a downloadable pack would have to
-be fetched, and this app fetches nothing, so any name that is not one of the five
-is drawn as the question mark Mermaid itself draws for a name it cannot
-resolve.
+back out in the page's own colour, and each is the picture people already draw
+that thing as: a rack of three shelves with their lamps for a server, a hard
+drive with its platter and arm for a disk, a cylinder for a database. All five
+share one ink. A colour per kind would tell the reader that a database and a
+server differ in some way the author never wrote down, and the same reasoning
+keeps the four quarters of a quadrant chart one colour. An icon from a
+downloadable pack would have to be fetched, and this app fetches nothing, so any
+name that is not one of the five is drawn as the question mark Mermaid itself
+draws for a name it cannot resolve.
 
 A radar chart is a spoke per axis and a closed shape per curve, with the rings
 drawn either as circles or as polygons through the spokes, whichever the source
@@ -675,7 +721,11 @@ block's frame cannot be drawn until its contents have been placed, which is why
 the whole body is laid out before anything below the participant boxes appears.
 An arm of a block carries the word that opened it and its condition; an arm
 written without a condition still gets the word — `else` in an `alt`, `and` in a
-`par` — because a divider with nothing beside it reads as an accident. A `rect`
+`par` — because a divider with nothing beside it reads as an accident. A frame
+is drawn as a dashed rectangle and the walk leaves a gap under it before the
+next thing, which is how a reader tells one block from the next: two solid
+frames whose edges met read as a single box with a line through it, and the
+dashes are what the diagrams everyone learned this from use. A `rect`
 is a block like any other whose frame is a wash of colour with no outline and no
 word on it, painted before the lifelines so the messages stay on top; a `box` is
 a titled band above the participants declared inside it, and both take their

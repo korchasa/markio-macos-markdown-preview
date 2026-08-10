@@ -234,7 +234,9 @@ enum MermaidLayout {
             var stereotypeSize = CGSize.zero
             if !box.stereotype.isEmpty {
                 let line = text(
-                    "«\(box.stereotype)»", font: rowFont, color: theme.palette.secondaryText)
+                    box.stereotype.hasPrefix("<<")
+                        ? box.stereotype : "«\(box.stereotype)»", font: rowFont,
+                    color: theme.palette.secondaryText)
                 stereotype = line
                 stereotypeSize = measure(line)
             }
@@ -269,16 +271,29 @@ enum MermaidLayout {
         }
 
         let down = diagram.direction == .down || diagram.direction == .up
+        // Between two boxes a relation has to fit its two end marks and its own
+        // words, and still show a shaft between them. A crow's foot alone eats
+        // most of the ordinary gap, so the gap is measured from what the
+        // relations actually draw rather than fixed.
+        let headRoom = 11 * metrics.scale
+        let markRoom =
+            diagram.links.flatMap { [$0.fromEnd, $0.toEnd] }
+            .map { inset($0, room: headRoom) + 3 * metrics.scale }.max() ?? 0
+        let wordRoom =
+            diagram.links.filter { !$0.label.isEmpty }
+            .map { measure(text($0.label, font: rowFont, color: theme.palette.text)) }
+            .map { down ? $0.height : $0.width }.max() ?? 0
+        let gap = markRoom * 2 + wordRoom + 24 * metrics.scale
         var frames: [CGRect]
         var content: CGSize
         var walls: [(rect: CGRect, name: String)] = []
         if diagram.namespaces.isEmpty {
             (frames, content) = ranked(
                 sizes: entities.map(\.frame.size), links: diagram.links.map { ($0.from, $0.to) },
-                down: down, metrics: metrics)
+                down: down, gap: gap, metrics: metrics)
         } else {
             (frames, content, walls) = walled(
-                diagram, sizes: entities.map(\.frame.size), down: down, theme: theme,
+                diagram, sizes: entities.map(\.frame.size), down: down, gap: gap, theme: theme,
                 font: rowFont, metrics: metrics)
         }
         let left = max(metrics.padding, (width - content.width) / 2)
@@ -324,7 +339,7 @@ enum MermaidLayout {
     /// points at it, and a cycle cannot spin it. Frames come back measured from
     /// the picture's own corner, so a caller may place them anywhere.
     private static func ranked(
-        sizes: [CGSize], links: [(Int, Int)], down: Bool, metrics: Metrics
+        sizes: [CGSize], links: [(Int, Int)], down: Bool, gap: CGFloat = 0, metrics: Metrics
     ) -> (frames: [CGRect], content: CGSize) {
         var frames = sizes.map { CGRect(origin: .zero, size: $0) }
         let ranks = self.ranks(count: sizes.count, edges: links)
@@ -336,7 +351,7 @@ enum MermaidLayout {
                 + metrics.siblingGap * CGFloat(max(0, rank.count - 1))
         }
         let crossExtent = extents.max() ?? 0
-        let rankGap = metrics.rankGap * 1.3
+        let rankGap = max(metrics.rankGap * 1.3, gap)
         var rankOffset: CGFloat = 0
         for (level, rank) in ranks.enumerated() {
             var cross = (crossExtent - extents[level]) / 2
@@ -363,8 +378,8 @@ enum MermaidLayout {
     /// box, exactly the way a subgraph inside a flowchart is: it is the only way
     /// a frame can be sure to hold its own classes and nobody else's.
     private static func walled(
-        _ diagram: BoxDiagram, sizes: [CGSize], down: Bool, theme: Theme, font: CTFont,
-        metrics: Metrics
+        _ diagram: BoxDiagram, sizes: [CGSize], down: Bool, gap: CGFloat, theme: Theme,
+        font: CTFont, metrics: Metrics
     ) -> (frames: [CGRect], content: CGSize, walls: [(rect: CGRect, name: String)]) {
         let inset = 12 * metrics.scale
         let titleRoom =
@@ -383,7 +398,8 @@ enum MermaidLayout {
                 return (from, to)
             }
             let (laid, content) = ranked(
-                sizes: members.map { sizes[$0] }, links: links, down: down, metrics: metrics)
+                sizes: members.map { sizes[$0] }, links: links, down: down, gap: gap,
+                metrics: metrics)
             for (offset, member) in members.enumerated() {
                 unitOf[member] = unitSizes.count
                 inside[member] = laid[offset].offsetBy(dx: inset, dy: inset + titleRoom)
@@ -405,7 +421,7 @@ enum MermaidLayout {
             return from == to ? nil : (from, to)
         }
         let (units, content) = ranked(
-            sizes: unitSizes, links: between, down: down, metrics: metrics)
+            sizes: unitSizes, links: between, down: down, gap: gap, metrics: metrics)
         let frames = inside.enumerated().map { index, local in
             local.offsetBy(
                 dx: units[unitOf[index]].minX, dy: units[unitOf[index]].minY)
@@ -584,10 +600,22 @@ enum MermaidLayout {
             shaft.addLine(to: shaftEnd)
             decorations.append(.path(shaft, color: colour, lineWidth: 1.3, filled: false))
         }
+        // A crow's foot stands a little off the entity rather than on its
+        // border; the marks a class diagram draws touch the box, as they should.
+        let clear = 3 * metrics.scale
+        func off(_ end: BoxDiagram.End, _ point: CGPoint, _ away: CGPoint) -> CGPoint {
+            switch end {
+            case .one, .zeroOrOne, .oneOrMore, .zeroOrMore:
+                return CGPoint(x: point.x + away.x * clear, y: point.y + away.y * clear)
+            default: return point
+            }
+        }
         decorations += terminal(
-            link.fromEnd, at: start, direction: backwards, theme: theme, metrics: metrics)
+            link.fromEnd, at: off(link.fromEnd, start, direction), direction: backwards,
+            theme: theme, metrics: metrics)
         decorations += terminal(
-            link.toEnd, at: end, direction: direction, theme: theme, metrics: metrics)
+            link.toEnd, at: off(link.toEnd, end, backwards), direction: direction, theme: theme,
+            metrics: metrics)
 
         // A count stands beside the line, a little way along it from its own
         // box, so it never lands on the box or on the relation's own words.
@@ -635,7 +663,9 @@ enum MermaidLayout {
         case .none: return 0
         case .arrow, .triangle: return room
         case .diamond, .hollowDiamond: return room * 1.3
-        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return room
+        // A crow's foot needs its own room and a little clear space besides,
+        // so that nothing it draws sits on the entity's own border.
+        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return room * 1.9
         }
     }
 
@@ -656,12 +686,14 @@ enum MermaidLayout {
         case .none:
             return []
         case .arrow:
+            // An association is drawn as an open head — two strokes meeting at
+            // the box — and never as a filled one: a filled head is what a
+            // different relation means.
             let path = CGMutablePath()
-            path.move(to: tip)
-            path.addLine(to: point(length, half))
+            path.move(to: point(length, half))
+            path.addLine(to: tip)
             path.addLine(to: point(length, -half))
-            path.closeSubpath()
-            return [.path(path, color: colour, lineWidth: 0, filled: true)]
+            return [.path(path, color: colour, lineWidth: 1.3, filled: false)]
         case .triangle:
             let path = CGMutablePath()
             path.move(to: tip)
@@ -691,10 +723,13 @@ enum MermaidLayout {
             var decorations: [BlockBox.Decoration] = []
             let many = end == .oneOrMore || end == .zeroOrMore
             if many {
+                // The foot spreads where it meets the entity and gathers to a
+                // point away from it, which is the way it is read: many of this
+                // stand against one of that.
                 let crow = CGMutablePath()
                 for across in [half, 0, -half] {
-                    crow.move(to: tip)
-                    crow.addLine(to: point(length, across))
+                    crow.move(to: point(length, 0))
+                    crow.addLine(to: point(0, across))
                 }
                 decorations.append(.path(crow, color: colour, lineWidth: 1.3, filled: false))
             }
@@ -1147,8 +1182,13 @@ enum MermaidLayout {
 
     // MARK: - User journey
 
-    /// A journey: how each step of it felt, drawn as a line that rises and falls
-    /// over the steps it is scored on.
+    /// A journey: the steps of a working day in order, each scored by how it
+    /// felt, with a face under it saying so.
+    ///
+    /// The picture is the one every journey map is drawn as — a band per part of
+    /// the day, a card per step, a line of travel under them, and the feeling
+    /// hanging below that line — rather than a chart of the scores, which loses
+    /// the one thing a journey is for.
     private static func journey(
         _ journey: UserJourney, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
@@ -1189,7 +1229,7 @@ enum MermaidLayout {
                     score: task.score,
                     column: 0,
                     columnWidth: max(
-                        84 * metrics.scale, max(nameSize.width, actorsSize.width) + pad * 2),
+                        84 * metrics.scale, max(nameSize.width, actorsSize.width) + pad * 3),
                     tint: theme.diagramWheel[(task.section ?? index) % theme.diagramWheel.count]
                 )
             )
@@ -1209,12 +1249,15 @@ enum MermaidLayout {
             titleSize = measure(line)
         }
         let titleRoom = titleLine == nil ? 0 : titleSize.height + 14 * metrics.scale
-        let bandHeight = journey.sections.isEmpty ? 0 : measure(steps[0].name).height + pad * 2
-        let plotHeight = 130 * metrics.scale
-        let labelHeight =
-            (steps.map(\.nameSize.height).max() ?? 0) + (steps.map(\.actorsSize.height).max() ?? 0)
-            + pad * 2
-        let height = metrics.padding * 2 + titleRoom + bandHeight + plotHeight + labelHeight
+        let rowHeight = (steps.map(\.nameSize.height).max() ?? 12) + pad * 2
+        let bandHeight = journey.sections.isEmpty ? 0 : rowHeight + 4 * metrics.scale
+        let cardHeight =
+            (steps.map(\.nameSize.height).max() ?? 12)
+            + (steps.map(\.actorsSize.height).max() ?? 0) + pad * 2
+        let faceRoom = 120 * metrics.scale
+        let height =
+            metrics.padding * 2 + titleRoom + bandHeight + cardHeight + 22 * metrics.scale
+            + faceRoom
 
         let left = max(metrics.padding, (width - content) / 2)
         var decorations: [BlockBox.Decoration] = []
@@ -1230,21 +1273,29 @@ enum MermaidLayout {
             )
         }
         let bandTop = metrics.padding + titleRoom
+        // A part of the day is a band over the steps it holds, standing clear of
+        // the band beside it: two bands that touch read as one.
         for (index, name) in journey.sections.enumerated() {
             let owned = steps.indices.filter { journey.tasks[$0].section == index }
             guard let first = owned.first, let last = owned.last else { continue }
             let band = CGRect(
-                x: left + steps[first].column,
+                x: left + steps[first].column + 2 * metrics.scale,
                 y: bandTop,
-                width: steps[last].column + steps[last].columnWidth - steps[first].column,
-                height: bandHeight - 6 * metrics.scale
+                width: steps[last].column + steps[last].columnWidth - steps[first].column
+                    - 4 * metrics.scale,
+                height: rowHeight
             )
+            let tint = theme.diagramWheel[index % theme.diagramWheel.count]
             decorations.append(
                 .fill(
-                    rect: band,
-                    color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.22)
-                        ?? theme.diagramWheel[0],
+                    rect: band, color: tint.copy(alpha: 0.22) ?? tint,
                     cornerRadius: 4 * metrics.scale))
+            decorations.append(
+                .path(
+                    CGPath(
+                        roundedRect: band, cornerWidth: 4 * metrics.scale,
+                        cornerHeight: 4 * metrics.scale, transform: nil),
+                    color: tint.copy(alpha: 0.55) ?? tint, lineWidth: 1, filled: false))
             let line = text(name, font: font, color: theme.palette.text)
             let size = measure(line)
             decorations.append(
@@ -1258,84 +1309,116 @@ enum MermaidLayout {
             )
         }
 
-        // Five rules, one per score, so the height of a point can be read off
-        // the picture rather than guessed at. The top and bottom rules are held
-        // a dot's radius inside the plot, or a five would ride up into the band
-        // above it and a one would sit on the names below.
-        let plotBottom = bandTop + bandHeight + plotHeight
-        let dotRadius = 11 * metrics.scale
-        // The scale runs from one to five, so a score written outside it sits on
-        // the nearest line rather than off the picture.
-        func level(_ score: Int) -> CGFloat {
-            let placed = min(max(score, 1), 5)
-            return (plotBottom - dotRadius) - (plotHeight - dotRadius * 2) * CGFloat(placed - 1)
-                / 4
-        }
-        for score in 1...5 {
-            let y = level(score)
-            let rule = CGMutablePath()
-            rule.move(to: CGPoint(x: left, y: y))
-            rule.addLine(to: CGPoint(x: left + content, y: y))
-            decorations.append(
-                .path(
-                    rule, color: theme.palette.tableBorder,
-                    lineWidth: score == 1 ? 1 : 0.5, filled: false))
-        }
-        func point(_ step: Step) -> CGPoint {
-            CGPoint(x: left + step.column + step.columnWidth / 2, y: level(step.score))
-        }
-        if steps.count > 1 {
-            let path = CGMutablePath()
-            path.move(to: point(steps[0]))
-            for step in steps.dropFirst() { path.addLine(to: point(step)) }
-            decorations.append(
-                .path(
-                    path, color: theme.palette.secondaryText, lineWidth: 1.5 * metrics.scale,
-                    filled: false))
-        }
+        // A card per step, under the band its part of the day covers.
+        let cardTop = bandTop + bandHeight
         for step in steps {
-            let centre = point(step)
-            let dot = CGRect(
-                x: centre.x - 11 * metrics.scale, y: centre.y - 11 * metrics.scale,
-                width: 22 * metrics.scale, height: 22 * metrics.scale)
+            let card = CGRect(
+                x: left + step.column + 4 * metrics.scale, y: cardTop,
+                width: step.columnWidth - 8 * metrics.scale, height: cardHeight)
+            decorations.append(
+                .fill(
+                    rect: card, color: step.tint.copy(alpha: 0.14) ?? step.tint,
+                    cornerRadius: 4 * metrics.scale))
             decorations.append(
                 .path(
-                    CGPath(ellipseIn: dot, transform: nil), color: step.tint, lineWidth: 0,
-                    filled: true))
-            let score = text(
-                "\(step.score)", font: scaled(theme.bodyBold, by: metrics.scale * 0.85),
-                color: theme.palette.background)
-            let size = measure(score)
-            decorations.append(
-                .glyphs(
-                    score,
-                    origin: CGPoint(
-                        x: dot.midX - size.width / 2,
-                        y: dot.midY + size.height / 2 - descent(score)
-                    )
-                )
-            )
-            var y = plotBottom + pad
+                    CGPath(
+                        roundedRect: card, cornerWidth: 4 * metrics.scale,
+                        cornerHeight: 4 * metrics.scale, transform: nil),
+                    color: step.tint.copy(alpha: 0.5) ?? step.tint, lineWidth: 1, filled: false))
+            var y = card.minY + pad / 2
             for (line, size) in [(step.name, step.nameSize)]
-                + (step.actors.map {
-                    [($0, step.actorsSize)]
-                } ?? [])
+                + (step.actors.map { [($0, step.actorsSize)] } ?? [])
             {
                 decorations.append(
                     .glyphs(
                         line,
                         origin: CGPoint(
-                            x: centre.x - size.width / 2,
-                            y: y + size.height
-                                - descent(line))))
+                            x: card.midX - size.width / 2, y: y + size.height - descent(line))))
                 y += size.height
             }
+        }
+
+        // The line of travel, pointing the way the day runs.
+        let axisY = cardTop + cardHeight + 14 * metrics.scale
+        let axis = CGMutablePath()
+        axis.move(to: CGPoint(x: left, y: axisY))
+        axis.addLine(to: CGPoint(x: left + content, y: axisY))
+        decorations.append(
+            .path(axis, color: theme.palette.text, lineWidth: 1.5 * metrics.scale, filled: false))
+        let barb = 6 * metrics.scale
+        let head = CGMutablePath()
+        head.move(to: CGPoint(x: left + content, y: axisY))
+        head.addLine(to: CGPoint(x: left + content - barb * 1.6, y: axisY - barb))
+        head.addLine(to: CGPoint(x: left + content - barb * 1.6, y: axisY + barb))
+        head.closeSubpath()
+        decorations.append(.path(head, color: theme.palette.text, lineWidth: 0, filled: true))
+
+        // How a step felt hangs below the line, the better the higher, on a
+        // thread back up to the step it belongs to.
+        let radius = 11 * metrics.scale
+        for step in steps {
+            let centre = left + step.column + step.columnWidth / 2
+            let placed = min(max(step.score, 1), 5)
+            let drop =
+                axisY + 26 * metrics.scale
+                + (faceRoom - 52 * metrics.scale) * CGFloat(5 - placed) / 4
+            decorations.append(
+                .path(
+                    dashed(
+                        from: CGPoint(x: centre, y: axisY),
+                        to: CGPoint(x: centre, y: drop - radius), dash: 2, gap: 3),
+                    color: theme.palette.tableBorder, lineWidth: 1, filled: false))
+            decorations += face(
+                step.score, at: CGPoint(x: centre, y: drop), radius: radius, colour: step.tint,
+                theme: theme, metrics: metrics)
         }
         return Drawing(
             decorations: decorations,
             size: CGSize(width: width, height: height),
             contentWidth: content
         )
+    }
+
+    /// How a step felt: a smile above three, a straight face at three, a frown
+    /// below it — which is the reading Mermaid gives a score too.
+    private static func face(
+        _ score: Int, at centre: CGPoint, radius: CGFloat, colour: CGColor, theme: Theme,
+        metrics: Metrics
+    ) -> [BlockBox.Decoration] {
+        let ring = CGPath(
+            ellipseIn: CGRect(
+                x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2),
+            transform: nil)
+        var decorations: [BlockBox.Decoration] = [
+            .path(ring, color: colour.copy(alpha: 0.18) ?? colour, lineWidth: 0, filled: true),
+            .path(ring, color: colour, lineWidth: 1.4 * metrics.scale, filled: false),
+        ]
+        let eyes = CGMutablePath()
+        let eye = radius * 0.13
+        for side in [-1, 1] as [CGFloat] {
+            eyes.addEllipse(
+                in: CGRect(
+                    x: centre.x + side * radius * 0.36 - eye, y: centre.y - radius * 0.28 - eye,
+                    width: eye * 2, height: eye * 2))
+        }
+        decorations.append(.path(eyes, color: colour, lineWidth: 0, filled: true))
+        let mouth = CGMutablePath()
+        let reach = radius * 0.45
+        let lip = centre.y + radius * 0.28
+        if score == 3 {
+            mouth.move(to: CGPoint(x: centre.x - reach, y: lip))
+            mouth.addLine(to: CGPoint(x: centre.x + reach, y: lip))
+        } else {
+            // A smile bows down, a frown bows up: on this page y grows downward.
+            let bend = score > 3 ? radius * 0.5 : -radius * 0.5
+            mouth.move(to: CGPoint(x: centre.x - reach, y: lip - (score > 3 ? radius * 0.1 : 0)))
+            mouth.addQuadCurve(
+                to: CGPoint(x: centre.x + reach, y: lip - (score > 3 ? radius * 0.1 : 0)),
+                control: CGPoint(x: centre.x, y: lip + bend))
+        }
+        decorations.append(
+            .path(mouth, color: colour, lineWidth: 1.4 * metrics.scale, filled: false))
+        return decorations
     }
 
     // MARK: - Gantt chart
@@ -2281,13 +2364,15 @@ enum MermaidLayout {
             CGRect(x: plot.minX, y: plot.midY, width: side / 2, height: side / 2),
             CGRect(x: plot.midX, y: plot.midY, width: side / 2, height: side / 2),
         ]
+        // Every quarter takes the same faint tint. A colour wheel would say
+        // something the source never did — green for good, red for bad — and a
+        // reader would believe it, because that is what those colours mean.
+        let quarterTint =
+            theme.palette.tableHeaderBackground.copy(alpha: 0.5)
+            ?? theme.palette.tableHeaderBackground
         for (index, corner) in corners.enumerated() {
             decorations.append(
-                .fill(
-                    rect: corner.insetBy(dx: 1, dy: 1),
-                    color: theme.diagramWheel[index % theme.diagramWheel.count].copy(alpha: 0.14)
-                        ?? theme.diagramWheel[index],
-                    cornerRadius: 0))
+                .fill(rect: corner.insetBy(dx: 1, dy: 1), color: quarterTint, cornerRadius: 0))
             let name = chart.quadrants[index]
             guard !name.isEmpty else { continue }
             let line = text(name, font: quadrantFont, color: theme.palette.secondaryText)
@@ -2705,7 +2790,7 @@ enum MermaidLayout {
                     drawn, color: theme.diagramWheel[commit.branch % theme.diagramWheel.count],
                     lineWidth: 2 * metrics.scale, filled: false))
         }
-        for commit in graph.commits {
+        for (order, commit) in graph.commits.enumerated() {
             let here = centre(of: commit)
             let colour = theme.diagramWheel[commit.branch % theme.diagramWheel.count]
             let dot = CGRect(
@@ -2754,7 +2839,13 @@ enum MermaidLayout {
             }
             // A name goes above the dot and a tag below, so the two never land
             // on each other.
-            for (words, above) in [(commit.label, true), (commit.tag, false)] where !words.isEmpty {
+            // Every commit is named under the graph, whether its author named
+            // it or not: a row of unlabelled dots says nothing about which
+            // commit is which. Mermaid writes a random hash for the ones with
+            // no name; there is no repository here to take one from, so what
+            // stands there is the commit's place in the graph.
+            let name = commit.label.isEmpty ? "\(order)" : commit.label
+            for (words, above) in [(name, true), (commit.tag, false)] where !words.isEmpty {
                 let line = text(
                     words, font: above ? font : scaled(theme.bodyBold, by: metrics.scale * 0.8),
                     color: above ? theme.palette.secondaryText : colour)
@@ -3008,6 +3099,17 @@ enum MermaidLayout {
         var seen: [Pair: Int] = [:]
         for edge in chart.edges {
             guard let from = rect(edge.from), let to = rect(edge.to) else { continue }
+            /// A frame is the rectangle it is drawn as, so only a box that is
+            /// something other than a rectangle has an outline worth clipping to.
+            func outline(of end: Flowchart.End) -> CGPath? {
+                guard case .node(let index) = end, index < boxes.count else { return nil }
+                switch boxes[index].shape {
+                case .rectangle, .rounded, .stadium, .subroutine, .linedProcess, .dividedProcess,
+                    .windowPane, .taggedProcess, .stackedProcess, .text:
+                    return nil
+                default: return shape(boxes[index])
+                }
+            }
             var order = 0
             var side: CGFloat = 0
             if !edge.label.isEmpty {
@@ -3031,7 +3133,8 @@ enum MermaidLayout {
                 .map { boxes[$0].frame }
             let drawn = self.edge(
                 edge, from: from, to: to, theme: theme, metrics: metrics,
-                order: order, side: side, lane: lane, obstacles: obstacles)
+                order: order, side: side, lane: lane, obstacles: obstacles,
+                fromOutline: outline(of: edge.from), toOutline: outline(of: edge.to))
             decorations += drawn.shaft
             labels += drawn.label
         }
@@ -4065,7 +4168,10 @@ enum MermaidLayout {
     private static func bow(
         from start: CGPoint, to end: CGPoint, lane: CGFloat, obstacles: [CGRect], metrics: Metrics
     ) -> CGFloat {
-        let laneOffset = lane * metrics.siblingGap
+        // Two boxes joined both ways need room enough between the two lines to
+        // read as two: bowed by half a gap each they meet at their ends and
+        // come out looking like one line with a head at each end.
+        let laneOffset = lane * metrics.siblingGap * 2
         let across = normal(from: start, to: end)
         let margin = 10 * metrics.scale
         var plus: CGFloat = 0
@@ -4220,7 +4326,8 @@ enum MermaidLayout {
     /// same routine draw an edge down a rank, across one, or back up the graph.
     private static func edge(
         _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
-        order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect]
+        order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect],
+        fromOutline: CGPath? = nil, toOutline: CGPath? = nil
     ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
         // `A ~~~ B` is written to hold one box under another and nothing more,
         // so it has already done its work by the time there is a line to draw.
@@ -4239,6 +4346,8 @@ enum MermaidLayout {
             start = exit(of: from, towards: control)
             end = exit(of: to, towards: control)
         }
+        start = onOutline(start, of: fromOutline, from: from.center)
+        end = onOutline(end, of: toOutline, from: to.center)
         let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
         var decorations: [BlockBox.Decoration] = []
         let color = faded(
@@ -4640,10 +4749,17 @@ enum MermaidLayout {
                         y += 6 * metrics.scale
                         continue
                     }
+                    // The frame around a block is drawn as a dotted rectangle,
+                    // the way Mermaid draws it: it fences the messages off
+                    // without reading as a box they are inside.
+                    let corners = [
+                        CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                        CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY),
+                        CGPoint(x: rect.minX, y: rect.minY),
+                    ]
                     frames.append(
                         .path(
-                            CGPath(
-                                roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil),
+                            dashed(along: corners, dash: 3, gap: 3),
                             color: theme.palette.tableBorder, lineWidth: 1, filled: false))
                     for (lineY, title) in dividers {
                         frames.append(
@@ -4657,7 +4773,9 @@ enum MermaidLayout {
                         frames.append(
                             .glyphs(line, origin: CGPoint(x: rect.minX + 8, y: lineY + 12)))
                     }
-                    y += 6 * metrics.scale
+                    // One block must not stand on the next: without room
+                    // between them two frames read as one.
+                    y += metrics.messageGap * 0.6
                 }
             }
         }
@@ -4845,7 +4963,49 @@ enum MermaidLayout {
         let scaleX = delta.x == 0 ? CGFloat.infinity : frame.width / 2 / abs(delta.x)
         let scaleY = delta.y == 0 ? CGFloat.infinity : frame.height / 2 / abs(delta.y)
         let scale = min(scaleX, scaleY)
-        return CGPoint(x: centre.x + delta.x * scale, y: centre.y + delta.y * scale)
+        let point = CGPoint(x: centre.x + delta.x * scale, y: centre.y + delta.y * scale)
+        // A line leaving through a corner reads as a line that missed the box,
+        // so the point is slid along the side it leaves by until it is clear of
+        // both corners. Which side that is has already been decided above: the
+        // smaller of the two scales is the one the point ran out of room in.
+        let corner: CGFloat = 0.3
+        if scaleX <= scaleY {
+            return CGPoint(
+                x: point.x,
+                y: min(
+                    max(point.y, frame.minY + frame.height * corner),
+                    frame.maxY - frame.height * corner))
+        }
+        return CGPoint(
+            x: min(
+                max(point.x, frame.minX + frame.width * corner),
+                frame.maxX - frame.width * corner),
+            y: point.y)
+    }
+
+    /// The same point pulled back onto the box's own outline.
+    ///
+    /// A line is cut off at the box's rectangle, which is the box itself only
+    /// when the box is one. A diamond touches its rectangle at four points and
+    /// stands well inside it everywhere else, so a line aimed at the rectangle
+    /// begins in mid-air; walking it back to where it crosses the outline is
+    /// what makes it start on the shape whatever the shape is.
+    private static func onOutline(_ point: CGPoint, of outline: CGPath?, from centre: CGPoint)
+        -> CGPoint
+    {
+        guard let outline, !outline.contains(point) else { return point }
+        var inside: CGFloat = 0
+        var outside: CGFloat = 1
+        for _ in 0..<12 {
+            let middle = (inside + outside) / 2
+            let probe = CGPoint(
+                x: centre.x + (point.x - centre.x) * middle,
+                y: centre.y + (point.y - centre.y) * middle)
+            if outline.contains(probe) { inside = middle } else { outside = middle }
+        }
+        return CGPoint(
+            x: centre.x + (point.x - centre.x) * inside,
+            y: centre.y + (point.y - centre.y) * inside)
     }
 
     /// Where a straight line between two boxes starts and ends.
@@ -5439,10 +5599,16 @@ enum MermaidLayout {
         let colours: [ArchitectureDiagram.Icon: Int] = [
             .cloud: 0, .database: 1, .disk: 2, .internet: 3, .server: 4,
         ]
-        let ink = theme.diagramWheel[(colours[kind] ?? 0) % theme.diagramWheel.count]
+        // Every icon is drawn in one ink. A colour per kind would say something
+        // about the thing it stands for that its author never wrote down.
+        _ = colours
+        let ink = theme.diagramWheel[0]
         let cut = theme.palette.background
         let body = CGMutablePath()
         var detail: CGPath?
+        /// What is cut out of the body rather than drawn on it: the dots on a
+        /// rack's shelves, the spindle of a disk.
+        var cutouts: CGPath?
         switch kind {
         case .unknown:
             // An icon out of a pack nobody registered, which Mermaid draws as a
@@ -5463,17 +5629,48 @@ enum MermaidLayout {
                         y: rect.midY + size.height / 2 - descent(mark))),
             ]
         case .server:
+            // A rack: three shelves, each with its lamp at the left, which is
+            // the picture everyone draws a server as.
             body.addRoundedRect(
-                in: rect.insetBy(dx: rect.width * 0.08, dy: 0), cornerWidth: rect.width * 0.1,
-                cornerHeight: rect.width * 0.1)
+                in: rect.insetBy(dx: rect.width * 0.04, dy: 0), cornerWidth: rect.width * 0.08,
+                cornerHeight: rect.width * 0.08)
             let shelves = CGMutablePath()
-            for share in [0.36, 0.68] as [CGFloat] {
-                let y = rect.minY + rect.height * share
-                shelves.move(to: CGPoint(x: rect.minX + rect.width * 0.14, y: y))
-                shelves.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.14, y: y))
+            let lamps = CGMutablePath()
+            let left = rect.minX + rect.width * 0.17
+            let right = rect.maxX - rect.width * 0.17
+            let tall = rect.height * 0.19
+            let dot = rect.width * 0.035
+            for share in [0.15, 0.405, 0.66] as [CGFloat] {
+                let top = rect.minY + rect.height * share
+                shelves.addRect(CGRect(x: left, y: top, width: right - left, height: tall))
+                for step in [0, 1, 2] as [CGFloat] {
+                    lamps.addEllipse(
+                        in: CGRect(
+                            x: left + rect.width * 0.07 + step * dot * 3 - dot,
+                            y: top + tall / 2 - dot, width: dot * 2, height: dot * 2))
+                }
             }
             detail = shelves
-        case .database, .disk:
+            cutouts = lamps
+        case .disk:
+            // A hard drive: the case, the platter inside it and the spindle it
+            // turns on.
+            body.addRoundedRect(
+                in: rect, cornerWidth: rect.width * 0.1, cornerHeight: rect.width * 0.1)
+            let platter = CGMutablePath()
+            platter.addEllipse(in: rect.insetBy(dx: rect.width * 0.2, dy: rect.height * 0.2))
+            let arm = CGMutablePath()
+            arm.move(to: CGPoint(x: rect.midX, y: rect.midY))
+            arm.addLine(
+                to: CGPoint(x: rect.maxX - rect.width * 0.16, y: rect.maxY - rect.height * 0.16))
+            platter.addPath(arm)
+            detail = platter
+            let spindle = rect.width * 0.07
+            cutouts = CGPath(
+                ellipseIn: CGRect(
+                    x: rect.midX - spindle, y: rect.midY - spindle, width: spindle * 2,
+                    height: spindle * 2), transform: nil)
+        case .database:
             // A cylinder seen from the side: a lid, two walls and a curved foot.
             let lid = rect.height * 0.26
             body.move(to: CGPoint(x: rect.minX, y: rect.minY + lid / 2))
@@ -5522,6 +5719,9 @@ enum MermaidLayout {
         if let detail {
             decorations.append(
                 .path(detail, color: cut, lineWidth: max(1, rect.width * 0.06), filled: false))
+        }
+        if let cutouts {
+            decorations.append(.path(cutouts, color: cut, lineWidth: 0, filled: true))
         }
         return decorations
     }

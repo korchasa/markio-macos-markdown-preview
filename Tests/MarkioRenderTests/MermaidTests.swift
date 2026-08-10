@@ -1699,13 +1699,14 @@ final class MermaidTests: XCTestCase {
             )
         else { return XCTFail("expected a requirement diagram") }
         XCTAssertEqual(diagram.boxes.map(\.name), ["speed_req", "bench"])
-        XCTAssertEqual(diagram.boxes.map(\.stereotype), ["requirement", "element"])
+        XCTAssertEqual(
+            diagram.boxes.map(\.stereotype), ["<<Requirement>>", "<<Element>>"])
         // The keywords are written as words: `id` is an ID, `high` a risk that
         // starts a sentence.
         XCTAssertEqual(
             diagram.boxes[0].compartments[0], ["ID: 1", "Text: opens fast.", "Risk: High"])
         XCTAssertEqual(diagram.links.count, 1)
-        XCTAssertEqual(diagram.links[0].label, "verifies")
+        XCTAssertEqual(diagram.links[0].label, "<<verifies>>")
         // The arrow runs from the thing that verifies to the thing verified.
         XCTAssertEqual(diagram.links[0].from, 1)
         XCTAssertEqual(diagram.links[0].to, 0)
