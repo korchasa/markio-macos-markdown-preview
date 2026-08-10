@@ -4783,21 +4783,28 @@ enum MermaidLayout {
     private static func loopReach(_ metrics: Metrics) -> CGFloat { 26 * metrics.scale }
 
     /// Where a line bound for a lane leaves its box: by the side facing the box
-    /// at the other end, at the point on that side nearest the lane, and never
-    /// nearer a corner than any other line is allowed to come.
+    /// at the other end, at the point on that side nearest the lane.
+    ///
+    /// A line joining two boxes directly is held well in from the corners,
+    /// because without that the point slides into one. A line with a lane needs
+    /// no such holding: the lane is beside the box already, so the nearest point
+    /// on the side is the one the reader would draw, and holding it in only
+    /// makes the line swing back out to reach the lane. It is kept off the
+    /// corner itself and no further.
     private static func leaves(
         _ box: CGRect, along lane: (vertical: Bool, at: CGFloat), towards other: CGRect
     ) -> CGPoint {
+        let clear = corner / 4
         if lane.vertical {
             let below = other.midY > box.midY
             return CGPoint(
-                x: min(max(lane.at, box.minX + box.width * corner), box.maxX - box.width * corner),
+                x: min(max(lane.at, box.minX + box.width * clear), box.maxX - box.width * clear),
                 y: below ? box.maxY : box.minY)
         }
         let right = other.midX > box.midX
         return CGPoint(
             x: right ? box.maxX : box.minX,
-            y: min(max(lane.at, box.minY + box.height * corner), box.maxY - box.height * corner))
+            y: min(max(lane.at, box.minY + box.height * clear), box.maxY - box.height * clear))
     }
 
     /// The run of a line from one box to another: where it leaves, how it goes,
@@ -4828,27 +4835,52 @@ enum MermaidLayout {
         // set aside for this line: out of the side facing the way it is going,
         // straight down the lane, and in at the far end.
         if let beside {
-            // Straight out of the side it leaves by, across into the lane, down
-            // the lane, across again, and straight in at the far end. The turns
-            // are rounded off, so what the reader follows is a line that bends
-            // twice rather than five lines laid end to end.
-            let out = leaves(from, along: beside, towards: to)
-            let into = leaves(to, along: beside, towards: from)
-            let step = 16 * metrics.scale
-            let onwards = beside.vertical ? (into.y > out.y ? step : -step) : 0
-            let along = beside.vertical ? 0 : (into.x > out.x ? step : -step)
-            return basis([
-                onOutline(out, of: fromOutline, from: from.center),
-                CGPoint(x: out.x + along, y: out.y + onwards),
-                CGPoint(
-                    x: beside.vertical ? beside.at : out.x + along,
-                    y: beside.vertical ? out.y + onwards : beside.at),
-                CGPoint(
-                    x: beside.vertical ? beside.at : into.x - along,
-                    y: beside.vertical ? into.y - onwards : beside.at),
-                CGPoint(x: into.x - along, y: into.y - onwards),
-                onOutline(into, of: toOutline, from: to.center),
-            ])
+            // Out of the side it leaves by, swept into the lane, straight down
+            // the lane, and swept back out of it to come in square at the far
+            // end. The two sweeps are what the reader follows as one line: an
+            // elbow at either end reads as three lines laid against each other.
+            //
+            // The lane runs one way and the boxes stand across it, so the path
+            // is measured in those two terms and turned back into points at the
+            // end, which spares the whole of it being written twice over.
+            let out = onOutline(
+                leaves(from, along: beside, towards: to), of: fromOutline, from: from.center)
+            let into = onOutline(
+                leaves(to, along: beside, towards: from), of: toOutline, from: to.center)
+            func point(_ along: CGFloat, _ across: CGFloat) -> CGPoint {
+                beside.vertical ? CGPoint(x: across, y: along) : CGPoint(x: along, y: across)
+            }
+            let leaving = beside.vertical ? out.y : out.x
+            let arriving = beside.vertical ? into.y : into.x
+            let sideOut = beside.vertical ? out.x : out.y
+            let sideIn = beside.vertical ? into.x : into.y
+            let run = arriving - leaving
+            let onwards: CGFloat = run >= 0 ? 1 : -1
+            // The bend is spread over the gap between two ranks at the least,
+            // however little the line has to move sideways: a bend as short as
+            // that movement turns hard and then runs straight for the rest of
+            // the way, which is the kink a reader sees rather than a curve.
+            // Nor is it spread over more than a share of the run, or it eats
+            // the lane it is joining. Both of its handles stand half way along
+            // it, which is what makes the bend even from end to end.
+            func sweep(_ side: CGFloat) -> CGFloat {
+                min(max(abs(beside.at - side), metrics.rankGap), abs(run) * 0.4)
+            }
+            let first = leaving + onwards * sweep(sideOut)
+            let last = arriving - onwards * sweep(sideIn)
+            var path = samples(
+                from: point(leaving, sideOut),
+                out: point(leaving + onwards * sweep(sideOut) / 2, sideOut),
+                in: point(first - onwards * sweep(sideOut) / 2, beside.at),
+                to: point(first, beside.at))
+            path.append(point(last, beside.at))
+            path += samples(
+                from: point(last, beside.at),
+                out: point(last + onwards * sweep(sideIn) / 2, beside.at),
+                in: point(arriving - onwards * sweep(sideIn) / 2, sideIn),
+                to: point(arriving, sideIn)
+            ).dropFirst()
+            return path
         }
         // An edge that skips a rank would otherwise run straight through
         // whatever stands between, which reads as an edge to that box; and two
