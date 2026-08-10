@@ -422,7 +422,10 @@ a bend and an arrowhead sit square on the line's real direction.
 border and nothing more: its name is written above it and to the left, so
 counting the whole strip as the frame's own would stop every line a whole line's
 height short with nothing under its head. The name stands in the way as a box
-does instead, and only a line that would really cross a name goes round one. The
+does instead, and only a line that would really cross a name goes round one —
+except for the line that ends on the frame the name belongs to, which is on its
+way to the border under it. Sending that line out to one side and back is what
+crossed the two arrows leaving a state machine's start over each other. The
 line stops at the border and never crosses it; the mark on the end is drawn in the room the
 line gives up for it and faces along the last stretch of line. A box that is not
 a rectangle — a diamond, a circle, a cylinder — has a rectangle standing well
@@ -603,11 +606,15 @@ its own. `gitGraph TB:` turns the lanes down the page rather than across it:
 the same graph, with the two axes swapped and the branch names moved above their
 lanes. A `cherry-pick` is drawn as a dotted line back to the commit it copied,
 because a copy is the same work said twice rather than one line running on.
-A commit nobody named is written by its place in the graph — the first is `0`,
-the next `1` — because that is the half of Mermaid's own name for it that means
-anything. The other half is a random string standing in for a hash, and there is
-no repository behind this picture to take a real one from; inventing one would
-put a number in front of the reader that refers to nothing. What a commit is decides how its
+A commit nobody named is written the way Mermaid writes it: its place in the
+graph, a dash, and seven hex characters — `2-ad6c9c3`, which is what a git log
+shows. Mermaid draws seven random ones, and a picture that changes every time it
+is drawn cannot be compared with the one drawn before it, so the seven are worked
+out from the graph and the commit's place in it. A reader sees a hash and two
+runs agree on which one. The names are what set how far apart the commits stand
+across the page: a hash is far wider than the dot it belongs to, and Mermaid
+turns its names on their side to fit them where this one gives them the room.
+What a commit is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
 nobody here draws is refused rather than read as an ordinary commit — that is
@@ -632,12 +639,20 @@ and whatever stands between them — so a chart written any way Mermaid allows
 lands on the right days. `excludes` and `includes` turn a length into a count of
 working days: the bar then reaches further along the calendar than its `3d` says,
 and the days off are shaded behind it so the difference is visible rather than
-mysterious. A milestone has no length, so it is drawn as a diamond on its day rather
-than a bar nobody would see. The axis carries whole dates, year included: a
-chart that runs over a new year would otherwise label two different days the
-same way. How wide a date is decides both how wide the plot has to be and how
-many ticks can be labelled, so the number of ticks follows from the room rather
-than being fixed at five.
+mysterious. A milestone and a `vert` rule are drawn at a moment rather than over
+a stretch — a diamond and a heavy line — but the length each was written with is
+still its own: the task under one begins where it ends and the chart reaches as
+far as it does, so only the drawing ignores it. The axis carries whole dates,
+year included: a chart that runs over a new year would otherwise label two
+different days the same way. How wide a date is decides both how wide the plot
+has to be and how many ticks can be labelled, so the number of ticks follows
+from the room rather than being fixed at five. That room is only the starting
+point for the step itself, which is the next round amount of time above it —
+worked out from the span alone it lands on figures nobody counts in, seven
+minutes or nineteen hours. A chart told in hours then puts its ticks at round
+moments of the clock, so one opening at 17:32 is still read against 17:35 and
+17:40; a chart told in days already starts on a whole day, and counting its ticks
+from any other one would only move the first of them off the edge of the plot.
 
 A packet diagram is a row per word of bits. A gap between two fields is a run of
 bits the author left unspoken, and it is drawn as the empty stretch it is; two

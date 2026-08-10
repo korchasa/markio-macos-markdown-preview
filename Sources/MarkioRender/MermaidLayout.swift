@@ -1708,7 +1708,25 @@ enum MermaidLayout {
             min(430 * metrics.scale, span * 14 * metrics.scale))
         // How far apart the ticks stand: what the chart asked for when it asked,
         // and otherwise as many as fit without the dates running together.
-        var tickStep = span / Double(max(2, min(4, Int(plotWidth / dateWidth))))
+        //
+        // A step worked out from the span alone lands on figures nobody counts
+        // in — seven minutes, nineteen hours — so the room the labels leave is
+        // only the starting point, and the step itself is the next round amount
+        // of time above it. A chart with no date in it is counted in whole days,
+        // and its axis says so, so the rounder steps are the only ones it takes.
+        let whole: [Double] = [1, 2, 7, 14, 30, 90, 180, 365]
+        let second: Double = 1 / 86400
+        let minute: Double = 1 / 1440
+        let hour: Double = 1 / 24
+        var rounds: [Double] = []
+        if chart.origin != nil {
+            for count in [1.0, 2, 5, 10, 15, 30] { rounds.append(count * second) }
+            for count in [1.0, 2, 5, 10, 15, 30] { rounds.append(count * minute) }
+            for count in [1.0, 2, 3, 6, 12] { rounds.append(count * hour) }
+        }
+        rounds += whole
+        let room = span / Double(max(2, min(4, Int(plotWidth / dateWidth))))
+        var tickStep = rounds.first { $0 >= room } ?? max(room, 365)
         if let interval = chart.tickInterval {
             let days: Double
             switch interval.unit {
@@ -1722,7 +1740,22 @@ enum MermaidLayout {
             }
             tickStep = max(days * Double(interval.count), span / 60)
         }
-        let ticks = max(1, Int((span / max(tickStep, 0.0001)).rounded(.down)))
+        // A chart told in hours has its ticks at round moments of the clock
+        // rather than at multiples of its own start, so one opening at 17:32 is
+        // still read against 17:35 and 17:40. A chart told in days already
+        // starts on a whole day, and counting its ticks from any other one only
+        // moves the first of them off the edge of the plot.
+        let ticks: [Double] = {
+            let step = max(tickStep, 0.0001)
+            let began = step < 1 ? (chart.origin ?? 0) : 0
+            var day = (began / step).rounded(.up) * step - began
+            var found: [Double] = []
+            while day <= span + 1e-9, found.count < 200 {
+                found.append(day)
+                day += step
+            }
+            return found.isEmpty ? [0] : found
+        }()
         let perDay = span > 0 ? plotWidth / span : plotWidth
         let content = gutter + plotWidth
 
@@ -1807,8 +1840,7 @@ enum MermaidLayout {
                     color: theme.palette.tableBorder.copy(alpha: 0.35)
                         ?? theme.palette.tableBorder, cornerRadius: 0))
         }
-        for step in 0...ticks {
-            let day = min(span, tickStep * Double(step))
+        for day in ticks {
             let x = plotLeft + CGFloat(day) * perDay
             let rule = CGMutablePath()
             rule.move(to: CGPoint(x: x, y: bodyTop))
@@ -1911,10 +1943,13 @@ enum MermaidLayout {
             let barTop = y + pad
             let barHeight = rowHeight - pad * 2
             if task.milestone {
-                // No length to draw, so a milestone is the diamond the day it
-                // falls on, not a bar of zero width nobody would see.
+                // A milestone is a moment rather than a stretch, so it is drawn
+                // as a diamond and not as a bar of no width nobody would see.
+                // The moment is the middle of whatever length it was written
+                // with, which for the usual `0d` is simply the day it falls on.
                 let centre = CGPoint(
-                    x: plotLeft + CGFloat(task.start) * perDay, y: barTop + barHeight / 2)
+                    x: plotLeft + CGFloat(task.start + task.length / 2) * perDay,
+                    y: barTop + barHeight / 2)
                 let radius = barHeight / 2
                 let diamond = CGMutablePath()
                 diamond.move(to: CGPoint(x: centre.x, y: centre.y - radius))
@@ -2974,14 +3009,25 @@ enum MermaidLayout {
             (graph.branches.map {
                 measure(text($0, font: branchFont, color: theme.palette.text)).width
             }.max() ?? 0) + 14 * metrics.scale
-        let step = 56 * metrics.scale
-        let lane = 46 * metrics.scale
-        let radius = 7 * metrics.scale
-        let columns = (graph.commits.map(\.column).max() ?? 0) + 1
         // Turned on its side the lanes run down the page: what was a column of
         // commits becomes a row of them, and the branch names sit above their
         // lanes rather than beside them.
         let down = graph.vertical
+        // A commit is named under its dot, and a name is far wider than a dot:
+        // laid across the page the commits have to stand as far apart as their
+        // names, or a row of hashes runs into itself. Down the page the names
+        // stack instead and the dots need no more room than they take.
+        let tagFont = scaled(theme.bodyBold, by: metrics.scale * 0.8)
+        let widest =
+            graph.commits.map {
+                max(
+                    measure(text($0.label, font: font, color: theme.palette.text)).width,
+                    measure(text($0.tag, font: tagFont, color: theme.palette.text)).width)
+            }.max() ?? 0
+        let step = down ? 56 * metrics.scale : max(56 * metrics.scale, widest + 8 * metrics.scale)
+        let lane = 46 * metrics.scale
+        let radius = 7 * metrics.scale
+        let columns = (graph.commits.map(\.column).max() ?? 0) + 1
         let nameHeight =
             (graph.branches.map {
                 measure(text($0, font: branchFont, color: theme.palette.text)).height
@@ -3135,13 +3181,12 @@ enum MermaidLayout {
             // on each other.
             // Every commit is named under the graph, whether its author named
             // it or not: a row of unlabelled dots says nothing about which
-            // commit is which. Mermaid writes a random hash for the ones with
-            // no name; there is no repository here to take one from, so what
-            // stands there is the commit's place in the graph.
+            // commit is which. The name a graph gives an unnamed commit is
+            // settled when it is read, so there is nothing left to decide here.
             let name = commit.label.isEmpty ? "\(order)" : commit.label
             for (words, above) in [(name, true), (commit.tag, false)] where !words.isEmpty {
                 let line = text(
-                    words, font: above ? font : scaled(theme.bodyBold, by: metrics.scale * 0.8),
+                    words, font: above ? font : tagFont,
                     color: above ? theme.palette.secondaryText : colour)
                 let size = measure(line)
                 decorations.append(
@@ -3449,20 +3494,30 @@ enum MermaidLayout {
         // arriving anywhere else along the top should stop at the border rather
         // than a line's height above it — so it stands in the way as a box does,
         // and only a line that would really cross a name goes round one.
-        let nameplates = chart.groups.indices.compactMap { group -> CGRect? in
-            guard let rect = frames[group], !chart.groups[group].title.isEmpty else { return nil }
+        //
+        // Except for the line that ends on the frame itself. That line is on its
+        // way to the border the name is written above, so a name treated as
+        // something to go round sends it out to one side and back, and a pair of
+        // such lines leaves their common start crossed over each other.
+        var nameplates: [Int: CGRect] = [:]
+        for group in chart.groups.indices {
+            guard let rect = frames[group], !chart.groups[group].title.isEmpty else { continue }
             let said = labelLines(
                 chart.groups[group].title, font: labelFont, color: theme.palette.text
             ).size
-            return CGRect(
+            nameplates[group] = CGRect(
                 x: rect.minX, y: rect.minY - titleRoom, width: said.width + 8 * metrics.scale,
                 height: titleRoom)
         }
         func standing(between edge: Flowchart.Edge, _ from: CGRect, _ to: CGRect) -> [CGRect] {
             let inside = held(by: edge, chart: chart)
+            var named = nameplates
+            for end in [edge.from, edge.to] {
+                if case .frame(let group) = end { named[group] = nil }
+            }
             return boxes.indices
                 .filter { !inside.contains($0) && boxes[$0].frame != from && boxes[$0].frame != to }
-                .map { boxes[$0].frame } + nameplates
+                .map { boxes[$0].frame } + named.sorted { $0.key < $1.key }.map(\.value)
         }
         // A line that has to go round something runs down a lane beside it, and
         // the lanes are handed out for the picture as a whole: an edge choosing

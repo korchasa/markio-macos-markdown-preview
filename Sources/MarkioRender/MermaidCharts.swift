@@ -291,7 +291,10 @@ struct GanttChart {
             } else {
                 guard task.length >= 0 else { return nil }
             }
-            if task.milestone || task.vertical { task.length = 0 }
+            // A milestone and a rule are drawn at a moment rather than over a
+            // stretch, but the stretch they were written with is still theirs:
+            // the task under one begins where it ends, and the chart reaches as
+            // far as it does. Only the drawing ignores the length.
             previousEnd = task.start + task.length
             if let identifier {
                 guard !identifier.isEmpty, !identifier.contains(" ") else { return nil }

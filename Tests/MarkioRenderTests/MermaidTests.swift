@@ -1723,7 +1723,10 @@ final class MermaidTests: XCTestCase {
             return XCTFail("expected a gantt chart")
         }
         XCTAssertEqual(chart.tasks.map(\.vertical), [true, false, false])
-        XCTAssertEqual(chart.tasks[0].length, 0)
+        // A rule is drawn at one moment, but the two minutes it was written with
+        // are still its own: the task under it begins where those minutes end.
+        XCTAssertEqual(chart.tasks[0].length, 2.0 / 1440, accuracy: 1e-9)
+        XCTAssertEqual(chart.tasks[1].start, 2.0 / 1440, accuracy: 1e-9)
         // Three minutes is a fiftieth of a day, and the second task follows the
         // first rather than starting with it.
         XCTAssertEqual(chart.tasks[1].length, 3.0 / 1440, accuracy: 1e-9)
