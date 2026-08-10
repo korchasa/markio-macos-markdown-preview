@@ -265,7 +265,10 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
 ## BUILD — How it is kept honest
 
 - **BUILD-1** One command, `deno task check`, is the gate: format, lint,
-  type-check, build, comment scan, web-engine scan, format lint, tests.
+  type-check, a debug build and a release build, comment scan, web-engine scan,
+  format lint, tests. Both configurations are built: whole-module optimization
+  lets the release compiler see across files and reject captures the debug build
+  accepts, and the release build is the one that reaches a reader.
 - **BUILD-2** The web-engine scan fails the build if `WebKit`, `WKWebView`,
   `JavaScriptCore` or HTML loading appears in the sources. PROD-1 is enforced,
   not trusted.

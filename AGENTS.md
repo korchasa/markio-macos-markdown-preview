@@ -27,9 +27,11 @@ means the change is wrong.
 Everything is a `deno task`. Add a task, never a shell script or a Makefile
 target.
 
-- `deno task check` — the gate: fmt, lint, type-check, build, comment scan,
-  web-engine scan, swift-format lint, tests. Run it before you call anything
-  done.
+- `deno task check` — the gate: fmt, lint, type-check, a debug build and a
+  release build, comment scan, web-engine scan, swift-format lint, tests. Run it
+  before you call anything done. The release build is not the debug one made
+  faster — it compiles the whole module at once and rejects captures debug lets
+  through, so leaving it out hides errors until someone wants a bundle.
 - `deno task test` — tests alone
 - `deno task app` — build `.build/Markio2.app`
 - `deno task dev <file.md>` — build and open a document

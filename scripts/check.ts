@@ -17,7 +17,7 @@ const MARKERS = /TODO|FIXME|HACK|XXX|swiftlint:disable|swift-format-ignore|debug
  */
 const WEB_ENGINE = /import WebKit|WKWebView|JavaScriptCore|loadHTMLString/;
 
-const TOTAL = 6;
+const TOTAL = 7;
 
 async function check(): Promise<void> {
   section(`[1/${TOTAL}] Tooling (deno fmt --check, lint, type-check)`);
@@ -26,7 +26,16 @@ async function check(): Promise<void> {
   section(`[2/${TOTAL}] Build (debug)`);
   await run("swift", { args: ["build"] });
 
-  section(`[3/${TOTAL}] Comment scan (TODO/FIXME/HACK/XXX, suppressions, debugPrint)`);
+  // The release build is a different compile, not the same one made faster:
+  // whole-module optimization lets the compiler see across files, and it
+  // rejects captures the debug build accepts. Everything that reaches a reader
+  // is built this way, so the gate has to build it this way too — this step
+  // exists because a data-race error sat in `main` for days, invisible to a
+  // gate that only ever built debug, and surfaced when a bundle was wanted.
+  section(`[3/${TOTAL}] Build (release)`);
+  await run("swift", { args: ["build", "-c", "release"] });
+
+  section(`[4/${TOTAL}] Comment scan (TODO/FIXME/HACK/XXX, suppressions, debugPrint)`);
   const hits = await scanFiles(SWIFT_SOURCES, [".swift"], MARKERS);
   if (hits.length > 0) {
     hits.forEach((hit) => console.log(hit));
@@ -34,7 +43,7 @@ async function check(): Promise<void> {
   }
   console.log("    clean");
 
-  section(`[4/${TOTAL}] No-web-engine scan (WebKit, JavaScriptCore, HTML loading)`);
+  section(`[5/${TOTAL}] No-web-engine scan (WebKit, JavaScriptCore, HTML loading)`);
   const web = await scanFiles(SWIFT_SOURCES, [".swift"], WEB_ENGINE);
   if (web.length > 0) {
     web.forEach((hit) => console.log(hit));
@@ -42,10 +51,10 @@ async function check(): Promise<void> {
   }
   console.log("    clean");
 
-  section(`[5/${TOTAL}] Format check (swift format lint)`);
+  section(`[6/${TOTAL}] Format check (swift format lint)`);
   await run("swift", { args: ["format", "lint", "-s", "-r", ...SWIFT_SOURCES] });
 
-  section(`[6/${TOTAL}] Tests`);
+  section(`[7/${TOTAL}] Tests`);
   await test();
 
   section("check: OK");

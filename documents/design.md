@@ -997,7 +997,10 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
 
 ## Verifying it
 
-- `deno task check` is the gate. Its web-engine scan is what keeps PROD-1 true.
+- `deno task check` is the gate. Its web-engine scan is what keeps PROD-1 true,
+  and it builds both configurations: the release compiler sees the whole module
+  at once and rejects captures the debug build accepts, so a gate that built only
+  debug would pass a tree from which no bundle could be made.
 - Tests cover the block scanner (structure dumps), the inline parser (run
   dumps), the Fenwick tree against naive prefix sums, and the parity between
   find's plain text and the renderer's.

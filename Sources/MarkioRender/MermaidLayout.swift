@@ -322,9 +322,14 @@ enum MermaidLayout {
             walls[index].rect.origin.y += metrics.padding
         }
         for index in entities.indices { entities[index].frame = frames[index] }
+        // Where every box came to rest, taken once and not read again from the
+        // array they live in. A relation asks this while it is being routed,
+        // and a closure that reaches back into a variable the surrounding code
+        // can still write to is a closure sharing something that may change.
+        let placed = entities.map(\.frame)
 
         let slips = notes(
-            diagram.notes, beside: entities.map(\.frame), theme: theme, font: rowFont,
+            diagram.notes, beside: placed, theme: theme, font: rowFont,
             metrics: metrics)
 
         var decorations: [BlockBox.Decoration] = []
@@ -347,7 +352,7 @@ enum MermaidLayout {
         for link in diagram.links { pairs[Pair(link), default: 0] += 1 }
         var taken: [Pair: Int] = [:]
         func standing(between link: BoxDiagram.Link) -> [CGRect] {
-            entities.indices.filter { $0 != link.from && $0 != link.to }.map { entities[$0].frame }
+            placed.indices.filter { $0 != link.from && $0 != link.to }.map { placed[$0] }
         }
         // The lanes beside a box are handed out for the picture as a whole, so
         // two relations passing the same box do not run down the same one.
@@ -3460,6 +3465,11 @@ enum MermaidLayout {
         let left = max(metrics.padding, (width - content.width) / 2)
         for index in boxes.indices { boxes[index].frame.origin.x += left }
         let frames = placement.frames.mapValues { $0.offsetBy(dx: left, dy: 0) }
+        // Where every box came to rest, taken once and not read again from the
+        // array they live in. An edge asks this while it is being routed, and a
+        // closure that reaches back into a variable the surrounding code can
+        // still write to is a closure sharing something that may change.
+        let placed = boxes.map(\.frame)
 
         var decorations: [BlockBox.Decoration] = []
         // Frames first: everything else in the diagram stands on top of them,
@@ -3542,9 +3552,9 @@ enum MermaidLayout {
             for end in [edge.from, edge.to] {
                 if case .frame(let group) = end { named[group] = nil }
             }
-            return boxes.indices
-                .filter { !inside.contains($0) && boxes[$0].frame != from && boxes[$0].frame != to }
-                .map { boxes[$0].frame } + named.sorted { $0.key < $1.key }.map(\.value)
+            return placed.indices
+                .filter { !inside.contains($0) && placed[$0] != from && placed[$0] != to }
+                .map { placed[$0] } + named.sorted { $0.key < $1.key }.map(\.value)
         }
         // A line that has to go round something runs down a lane beside it, and
         // the lanes are handed out for the picture as a whole: an edge choosing

@@ -80,9 +80,11 @@ Needs Deno 2 and a Swift 6.3 toolchain.
 deno task check
 ```
 
-That is the gate: format, lint, type-check, build, a scan for TODO markers, a
-scan that fails if WebKit or JavaScriptCore ever appear in the sources, a
-format lint, and the tests.
+That is the gate: format, lint, type-check, a debug build and a release one, a
+scan for TODO markers, a scan that fails if WebKit or JavaScriptCore ever appear
+in the sources, a format lint, and the tests. Both configurations are built
+because the release compiler sees across files and rejects captures the debug
+one accepts, and the release build is what a reader ends up running.
 
 Other verbs:
 
