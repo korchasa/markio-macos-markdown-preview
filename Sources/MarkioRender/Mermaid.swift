@@ -635,7 +635,7 @@ struct Flowchart {
         case left
     }
 
-    enum Shape {
+    enum Shape: Hashable {
         case rectangle
         case rounded
         case stadium
@@ -667,11 +667,9 @@ struct Flowchart {
         /// A state machine's note: a slip of paper with a folded corner.
         case note
         /// A block diagram's `blockArrowId<[…]>(down)`: a fat arrow with words
-        /// in it, pointing one of four ways.
-        case arrowUp
-        case arrowDown
-        case arrowLeft
-        case arrowRight
+        /// in it. It may point several ways at once — `(x)` is left and right
+        /// together, `(y)` is up and down, and `(x, down)` is all three.
+        case blockArrow(up: Bool, down: Bool, left: Bool, right: Bool)
 
         // The shapes an author asks for by name, `A@{ shape: manual-file }`.
         // Every one of them is a symbol from the flowcharting alphabet, drawn

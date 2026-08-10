@@ -103,6 +103,9 @@ struct Treemap {
         var value: Double
         var children: [Int]
         var depth: Int
+        /// What `classDef` says this rectangle is painted with. A section hands
+        /// its paint down to everything it holds, which is what Mermaid draws.
+        var style = Flowchart.Style()
     }
 
     var nodes: [Node]
@@ -111,8 +114,34 @@ struct Treemap {
         var map = Treemap(nodes: [])
         var stack: [(indent: Int, index: Int)] = []
         var roots: [Int] = []
+        /// The styles `classDef` named. They are written under the map rather
+        /// than over it, so which class each rectangle asked for is kept here
+        /// and the paint is handed out once the whole map has been read.
+        var styles: [String: Flowchart.Style] = [:]
+        var asked: [Int: String] = [:]
         for line in lines {
             var text = line.text
+            if text.hasPrefix("classDef") {
+                let rest = text.dropFirst("classDef".count).trimmingCharacters(in: .whitespaces)
+                let body = rest.hasSuffix(";") ? String(rest.dropLast()) : rest
+                let parts = body.split(
+                    separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                guard parts.count == 2, let style = Flowchart.style(from: String(parts[1]))
+                else { return nil }
+                for name in parts[0].split(separator: ",") {
+                    styles[name.trimmingCharacters(in: .whitespaces)] = style
+                }
+                continue
+            }
+            // `:::name` may follow the label or the number, so it is taken off
+            // before the number is read — otherwise the colons of `:::` read as
+            // the colon that introduces a value.
+            if let mark = text.range(of: ":::") {
+                let name = text[mark.upperBound...].trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty, !name.contains(" ") else { return nil }
+                asked[map.nodes.count] = name
+                text = text[text.startIndex..<mark.lowerBound]
+            }
             var value: Double?
             if let colon = text.lastIndex(of: ":") {
                 let number = text[text.index(after: colon)...].trimmingCharacters(in: .whitespaces)
@@ -136,6 +165,22 @@ struct Treemap {
             stack.append((line.indent, index))
         }
         guard !map.nodes.isEmpty else { return nil }
+        // A class nobody defined paints nothing, which is what Mermaid makes of
+        // it; a class that is defined paints its rectangle and everything under
+        // it, so the paint is handed down before the roots are gathered.
+        for (index, name) in asked {
+            guard let style = styles[name] else { continue }
+            map.nodes[index].style.merge(style)
+        }
+        for index in map.nodes.indices {
+            let style = map.nodes[index].style
+            guard !style.isEmpty else { continue }
+            for child in map.nodes[index].children {
+                var inherited = style
+                inherited.merge(map.nodes[child].style)
+                map.nodes[child].style = inherited
+            }
+        }
         // Sum upwards, deepest first, which the flat array already orders for
         // us: a child always sits after its parent.
         for index in map.nodes.indices.reversed() where !map.nodes[index].children.isEmpty {

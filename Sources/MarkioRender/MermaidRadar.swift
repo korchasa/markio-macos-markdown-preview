@@ -174,6 +174,14 @@ struct BlockDiagram {
                 }
                 continue
             }
+            // A nested block need not be named: `block … end` opens a frame
+            // that no arrow can reach, which is a way of grouping alone.
+            if word == "block", rest.isEmpty {
+                blocks.append(Block(id: "", columns: nil, cells: []))
+                add(Cell(node: nil, span: 1, block: blocks.count - 1))
+                open.append(blocks.count - 1)
+                continue
+            }
             if word.hasPrefix("block:") {
                 var id = String(word.dropFirst("block:".count))
                 // `block:group:2` takes two of the row's columns, the same way
@@ -273,11 +281,11 @@ struct BlockDiagram {
         /// An edge may name a block as well as a box, and a block is drawn as a
         /// frame, which the flowchart already knows how to end a line on.
         func end(_ name: String) -> Flowchart.End? {
+            guard !name.isEmpty else { return nil }
             if let node = identifiers[name] { return .node(node) }
             if let block = blocks.firstIndex(where: { $0.id == name }) { return .frame(block) }
             // An arrow may name a box nobody wrote into a row, and Mermaid puts
             // that box on the page, the same way a flowchart does.
-            guard !name.isEmpty else { return nil }
             chart.nodes.append(Flowchart.Node(id: name, label: name, shape: .rectangle))
             identifiers[name] = chart.nodes.count - 1
             add(Cell(node: chart.nodes.count - 1, span: 1, block: nil))
@@ -305,10 +313,6 @@ struct BlockDiagram {
     private static func blockArrow(_ text: String)
         -> (id: String, label: String?, shape: Flowchart.Shape?)?
     {
-        let directions: [String: Flowchart.Shape] = [
-            "up": .arrowUp, "down": .arrowDown, "left": .arrowLeft, "right": .arrowRight,
-            "x": .arrowRight, "y": .arrowUp,
-        ]
         guard let open = text.range(of: "<["), let close = text.range(of: "]>"),
             open.upperBound <= close.lowerBound, text.hasSuffix(")")
         else { return nil }
@@ -318,12 +322,34 @@ struct BlockDiagram {
             .replacingOccurrences(of: "&nbsp;", with: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
         let tail = text[close.upperBound...]
-        guard tail.hasPrefix("("),
-            let shape = directions[
-                String(tail.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
-                    .lowercased()]
-        else { return nil }
-        return (id, inner.trimmingCharacters(in: .whitespaces), shape)
+        guard tail.hasPrefix("(") else { return nil }
+        // `(x)` points left and right at once, `(y)` up and down, and a comma
+        // list points every way it names.
+        var up = false
+        var down = false
+        var left = false
+        var right = false
+        let named = tail.dropFirst().dropLast().split(separator: ",")
+        guard !named.isEmpty else { return nil }
+        for word in named {
+            switch word.trimmingCharacters(in: .whitespaces).lowercased() {
+            case "up": up = true
+            case "down": down = true
+            case "left": left = true
+            case "right": right = true
+            case "x":
+                left = true
+                right = true
+            case "y":
+                up = true
+                down = true
+            default: return nil
+            }
+        }
+        return (
+            id, inner.trimmingCharacters(in: .whitespaces),
+            .blockArrow(up: up, down: down, left: left, right: right)
+        )
     }
 
     /// `a --> b`, `a -->|words| b`, `a --- b`, `a -.-> b`.

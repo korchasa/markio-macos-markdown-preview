@@ -1914,7 +1914,10 @@ enum MermaidLayout {
         for (index, node) in map.nodes.enumerated() where index > 0 || !node.label.isEmpty {
             let frame = frames[index]
             guard frame.width > 2, frame.height > 2 else { continue }
-            let colour = theme.diagramWheel[index % theme.diagramWheel.count]
+            // A rectangle a class painted keeps that paint; one nobody painted
+            // takes its turn off the wheel.
+            let wheel = theme.diagramWheel[index % theme.diagramWheel.count]
+            let colour = node.style.fill.map(cgColor) ?? wheel
             let branch = !node.children.isEmpty
             decorations.append(
                 .fill(
@@ -1923,14 +1926,17 @@ enum MermaidLayout {
                     cornerRadius: 3 * metrics.scale))
             decorations.append(
                 .path(
-                    CGPath(rect: frame, transform: nil), color: theme.palette.background,
-                    lineWidth: 1.5, filled: false))
+                    CGPath(rect: frame, transform: nil),
+                    color: node.style.stroke.map(cgColor) ?? theme.palette.background,
+                    lineWidth: CGFloat(node.style.strokeWidth ?? 1.5), filled: false))
             // A branch is named along its own top edge, above what it holds; a
             // leaf gets its name in the middle. Both carry their number: a
             // branch's is the sum of what it holds, and that is what the map is
             // about.
             let words = "\(node.label)  \(number(node.value))"
-            let line = text(words, font: branch ? headFont : font, color: theme.palette.text)
+            let line = text(
+                words, font: branch ? headFont : font,
+                color: node.style.text.map(cgColor) ?? theme.palette.text)
             let size = measure(line)
             guard size.width <= frame.width - 6 * metrics.scale,
                 size.height <= frame.height - 4 * metrics.scale
@@ -2980,10 +2986,11 @@ enum MermaidLayout {
             case .note:
                 box.width += 10 * metrics.scale
                 box.height += 6 * metrics.scale
-            case .arrowUp, .arrowDown:
-                box.height += size.height * 1.4
-            case .arrowLeft, .arrowRight:
-                box.width += size.width * 0.6 + 20 * metrics.scale
+            case .blockArrow(let up, let down, let left, let right):
+                // The words sit in the bar, so the arrow needs room for its
+                // points on top of them, on whichever sides it has points.
+                if up || down { box.height += size.height * 1.4 }
+                if left || right { box.width += size.width * 0.6 + 20 * metrics.scale }
             // A named shape gets back whatever its own drawing takes away: the
             // corner it cuts, the wave along its foot, the rule down its side,
             // the copies stacked behind it.
@@ -3764,29 +3771,64 @@ enum MermaidLayout {
                 CGPoint(x: frame.maxX, y: frame.maxY),
                 CGPoint(x: frame.minX, y: frame.maxY),
             ])
-        case .arrowUp, .arrowDown, .arrowLeft, .arrowRight:
-            // A fat arrow: a shaft half the width across, and a head that takes
-            // the last third of the length.
-            let along = box.shape == .arrowUp || box.shape == .arrowDown
-            let length = along ? frame.height : frame.width
-            let across = along ? frame.width : frame.height
-            let head = min(length * 0.42, across / 2)
-            let shaft = across * 0.24
-            // Points along the arrow measured from its tail, then turned to
-            // face whichever way it points.
-            func at(_ forward: CGFloat, _ side: CGFloat) -> CGPoint {
-                switch box.shape {
-                case .arrowDown: return CGPoint(x: frame.midX + side, y: frame.minY + forward)
-                case .arrowUp: return CGPoint(x: frame.midX + side, y: frame.maxY - forward)
-                case .arrowRight: return CGPoint(x: frame.minX + forward, y: frame.midY + side)
-                default: return CGPoint(x: frame.maxX - forward, y: frame.midY + side)
-                }
+        case .blockArrow(let up, let down, let left, let right):
+            // A fat arrow: a bar across the middle with a point on every side it
+            // names. The point's base is as wide as the room left over once the
+            // other axis has taken its own points, so a cross of four arrows
+            // never runs outside itself.
+            let headX = left || right ? min(frame.width * 0.35, frame.height / 2) : 0
+            let headY = up || down ? min(frame.height * 0.35, frame.width / 2) : 0
+            let insideLeft = frame.minX + (left ? headX : 0)
+            let insideRight = frame.maxX - (right ? headX : 0)
+            let insideTop = frame.minY + (up ? headY : 0)
+            let insideBottom = frame.maxY - (down ? headY : 0)
+            let baseX = (insideRight - insideLeft) / 2
+            let baseY = (insideBottom - insideTop) / 2
+            let barX = (insideRight - insideLeft) * 0.25
+            let barY = (insideBottom - insideTop) * 0.35
+            let middleX = frame.midX
+            let middleY = frame.midY
+            var points: [CGPoint] = [CGPoint(x: insideLeft, y: middleY - barY)]
+            if up {
+                points += [
+                    CGPoint(x: middleX - barX, y: middleY - barY),
+                    CGPoint(x: middleX - barX, y: insideTop),
+                    CGPoint(x: middleX - baseX, y: insideTop),
+                    CGPoint(x: middleX, y: frame.minY),
+                    CGPoint(x: middleX + baseX, y: insideTop),
+                    CGPoint(x: middleX + barX, y: insideTop),
+                    CGPoint(x: middleX + barX, y: middleY - barY),
+                ]
             }
-            return polygon([
-                at(0, -shaft), at(length - head, -shaft), at(length - head, -across / 2),
-                at(length, 0), at(length - head, across / 2), at(length - head, shaft),
-                at(0, shaft),
-            ])
+            points.append(CGPoint(x: insideRight, y: middleY - barY))
+            if right {
+                points += [
+                    CGPoint(x: insideRight, y: middleY - baseY),
+                    CGPoint(x: frame.maxX, y: middleY),
+                    CGPoint(x: insideRight, y: middleY + baseY),
+                ]
+            }
+            points.append(CGPoint(x: insideRight, y: middleY + barY))
+            if down {
+                points += [
+                    CGPoint(x: middleX + barX, y: middleY + barY),
+                    CGPoint(x: middleX + barX, y: insideBottom),
+                    CGPoint(x: middleX + baseX, y: insideBottom),
+                    CGPoint(x: middleX, y: frame.maxY),
+                    CGPoint(x: middleX - baseX, y: insideBottom),
+                    CGPoint(x: middleX - barX, y: insideBottom),
+                    CGPoint(x: middleX - barX, y: middleY + barY),
+                ]
+            }
+            points.append(CGPoint(x: insideLeft, y: middleY + barY))
+            if left {
+                points += [
+                    CGPoint(x: insideLeft, y: middleY + baseY),
+                    CGPoint(x: frame.minX, y: middleY),
+                    CGPoint(x: insideLeft, y: middleY - baseY),
+                ]
+            }
+            return polygon(points)
         case .cylinder:
             // A drum seen from the side: an ellipse for the lid, straight sides,
             // and the same curve again at the foot.
@@ -5374,7 +5416,8 @@ enum MermaidLayout {
                     // A fat arrow keeps its own girth: stretched across a whole
                     // row it would read as a band rather than an arrow.
                     switch diagram.chart.nodes[node].shape {
-                    case .arrowUp, .arrowDown:
+                    case .blockArrow(let up, let down, let left, let right)
+                    where (up || down) && !left && !right:
                         let side = min(frame.width, frame.height * 1.6)
                         frame = CGRect(
                             x: frame.midX - side / 2, y: frame.minY, width: side,

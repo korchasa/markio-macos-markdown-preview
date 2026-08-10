@@ -2647,10 +2647,80 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.blocks[0].cells.compactMap(\.node).count, 2)
         // The arrow, the framed block and `D` are the diagram's own three cells.
         XCTAssertEqual(diagram.cells.count, 3)
-        XCTAssertEqual(diagram.chart.nodes[0].shape, .arrowDown)
+        XCTAssertEqual(
+            diagram.chart.nodes[0].shape,
+            .blockArrow(up: false, down: true, left: false, right: false))
         XCTAssertEqual(diagram.chart.nodes[0].label, "go")
         // The edge ends on the frame, not on any box inside it.
         XCTAssertEqual(diagram.chart.edges[0].from, .frame(0))
+    }
+
+    /// `(x)` points left and right at once, `(y)` up and down, and a comma
+    /// list points every way it names. A direction nobody knows is refused.
+    func testABlockArrowPointsEveryWayItNames() throws {
+        let source = """
+            block
+              a<["One"]>(x)
+              b<["Two"]>(y)
+              c<["Three"]>(x, down)
+            """
+        guard case .blocks(let diagram)? = MermaidDiagram.parse(source) else {
+            return XCTFail("expected a block diagram")
+        }
+        XCTAssertEqual(
+            diagram.chart.nodes.map(\.shape),
+            [
+                .blockArrow(up: false, down: false, left: true, right: true),
+                .blockArrow(up: true, down: true, left: false, right: false),
+                .blockArrow(up: false, down: true, left: true, right: true),
+            ])
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
+        XCTAssertNil(MermaidDiagram.parse("block\n  a<[\"One\"]>(sideways)"))
+    }
+
+    /// A nested block need not be named. Mermaid opens a frame for a bare
+    /// `block`, and what stands inside it may set its own column count.
+    func testANamelessBlockOpensAFrameOfItsOwn() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                """
+                block
+                  block
+                    columns 1
+                    a["A label"] b
+                  end
+                  C
+                """)
+        else { return XCTFail("expected a block diagram") }
+        XCTAssertEqual(diagram.blocks.map(\.id), [""])
+        XCTAssertEqual(diagram.blocks[0].columns, 1)
+        XCTAssertEqual(diagram.blocks[0].cells.compactMap(\.node).count, 2)
+        XCTAssertEqual(diagram.cells.count, 2)
+    }
+
+    /// A treemap's `classDef` paints the rectangle that asked for it and
+    /// everything that rectangle holds. A class nobody defined paints nothing.
+    func testATreemapClassPaintsASectionAndWhatItHolds() throws {
+        guard
+            case .treemap(let map)? = MermaidDiagram.parse(
+                """
+                treemap-beta
+                "Main"
+                    "A": 20
+                    "B":::important
+                        "B1": 10
+                    "C": 5:::missing
+
+                classDef important fill:#f96,stroke:#333,stroke-width:2px;
+                """)
+        else { return XCTFail("expected a treemap") }
+        XCTAssertEqual(map.nodes.map(\.label), ["Main", "A", "B", "B1", "C"])
+        XCTAssertNil(map.nodes[1].style.fill)
+        XCTAssertEqual(map.nodes[2].style.fill, map.nodes[3].style.fill)
+        XCTAssertEqual(map.nodes[2].style.strokeWidth, 2)
+        XCTAssertNotNil(map.nodes[2].style.fill)
+        XCTAssertTrue(map.nodes[4].style.isEmpty)
     }
 
     func testRadarBlocksAndZenUmlAreDrawnWhole() throws {
