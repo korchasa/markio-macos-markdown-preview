@@ -3181,8 +3181,12 @@ enum MermaidLayout {
             // on each other.
             // Every commit is named under the graph, whether its author named
             // it or not: a row of unlabelled dots says nothing about which
-            // commit is which. The name a graph gives an unnamed commit is
-            // settled when it is read, so there is nothing left to decide here.
+            // commit is which. What stands there is the commit's place in the
+            // graph. Mermaid writes that place and then a random string — "a
+            // unique & random ID", as its own documentation puts it — and a
+            // string that is different every time the picture is drawn is not
+            // a hash of anything. Writing one here would show the reader an
+            // identifier that refers to nothing.
             let name = commit.label.isEmpty ? "\(order)" : commit.label
             for (words, above) in [(name, true), (commit.tag, false)] where !words.isEmpty {
                 let line = text(

@@ -337,12 +337,6 @@ struct GitGraph {
         var column = 0
         /// The last commit on each branch, which is what a merge line points at.
         var tips: [Int: Int] = [:]
-        /// The graph's own number, so that two graphs do not name their first
-        /// commits alike. See `named(_:_:)` for what it is for.
-        var seed: UInt64 = 0xcbf2_9ce4_8422_2325
-        for line in lines {
-            for byte in line.utf8 { seed = (seed ^ UInt64(byte)) &* 0x100_0000_01b3 }
-        }
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
@@ -351,8 +345,7 @@ struct GitGraph {
                 guard let options = options(rest) else { return nil }
                 graph.commits.append(
                     Commit(
-                        label: options.id.isEmpty ? named(column, seed) : options.id,
-                        tag: options.tag, branch: current, column: column,
+                        label: options.id, tag: options.tag, branch: current, column: column,
                         merges: nil, picks: nil, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
@@ -388,8 +381,7 @@ struct GitGraph {
                 guard let options else { return nil }
                 graph.commits.append(
                     Commit(
-                        label: options.id.isEmpty ? named(column, seed) : options.id,
-                        tag: options.tag, branch: current, column: column,
+                        label: options.id, tag: options.tag, branch: current, column: column,
                         merges: tip, picks: nil, kind: options.kind))
                 tips[current] = graph.commits.count - 1
                 column += 1
@@ -399,26 +391,6 @@ struct GitGraph {
         }
         guard !graph.commits.isEmpty else { return nil }
         return graph
-    }
-
-    /// What a commit nobody named is called: its place in the graph, a dash,
-    /// and a short hash — `2-ad6c9c3`, which is what a git log shows.
-    ///
-    /// Mermaid puts seven random hex characters there, and a picture that
-    /// changes every time it is drawn cannot be compared with the one drawn
-    /// before it. So the seven are worked out from the graph and the commit's
-    /// place in it: a reader sees a hash, and two runs agree on which one.
-    private static func named(_ column: Int, _ seed: UInt64) -> String {
-        var hash = seed
-        for byte in "\(column)".utf8 { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3 }
-        // Stirred once more, or the hashes of two commits standing next to each
-        // other come out alike but for a character, and a column of near-twins
-        // reads as a mistake rather than as seven hex digits.
-        hash ^= hash >> 33
-        hash = hash &* 0xff51_afd7_ed55_8ccd
-        hash ^= hash >> 33
-        let hex = String(hash & 0xfff_ffff, radix: 16)
-        return "\(column)-" + String(repeating: "0", count: max(0, 7 - hex.count)) + hex
     }
 
     /// `id: "Alpha" tag: "v1.0" type: HIGHLIGHT parent: "B"`

@@ -606,15 +606,17 @@ its own. `gitGraph TB:` turns the lanes down the page rather than across it:
 the same graph, with the two axes swapped and the branch names moved above their
 lanes. A `cherry-pick` is drawn as a dotted line back to the commit it copied,
 because a copy is the same work said twice rather than one line running on.
-A commit nobody named is written the way Mermaid writes it: its place in the
-graph, a dash, and seven hex characters — `2-ad6c9c3`, which is what a git log
-shows. Mermaid draws seven random ones, and a picture that changes every time it
-is drawn cannot be compared with the one drawn before it, so the seven are worked
-out from the graph and the commit's place in it. A reader sees a hash and two
-runs agree on which one. The names are what set how far apart the commits stand
-across the page: a hash is far wider than the dot it belongs to, and Mermaid
-turns its names on their side to fit them where this one gives them the room.
-What a commit is decides how its
+A commit nobody named is written by its place in the graph — the first is `0`,
+the next `1` — because that is the half of Mermaid's own name for it that means
+anything. The other half is, in the words of Mermaid's own documentation, "a
+unique & random ID": seven hex characters drawn afresh every time the picture is
+drawn, so they are not a hash of anything and no reader can look them up. Writing
+a string of that shape here would put an identifier in front of the reader that
+refers to nothing, and working one out from the source instead would only make
+the invention repeatable. The names set how far apart the commits stand across
+the page: a name is far wider than the dot it belongs to, and Mermaid turns its
+names on their side to fit them where this one gives them the room. What a commit
+is decides how its
 dot is drawn: a merge is hollow because it is the one commit belonging to two
 lines at once, a `REVERSE` is crossed out, a `HIGHLIGHT` is ringed. A `type:`
 nobody here draws is refused rather than read as an ordinary commit — that is
