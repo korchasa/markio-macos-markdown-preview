@@ -4626,7 +4626,9 @@ enum MermaidLayout {
         // `A ~~~ B` is written to hold one box under another and nothing more,
         // so it has already done its work by the time there is a line to draw.
         guard edge.stroke != .invisible else { return (shaft: [], label: []) }
-        var (start, end) = joined(from, to)
+        let joining = route(from, to)
+        var start = joining.start
+        var end = joining.end
         // An edge that skips a rank would otherwise run straight through
         // whatever stands between, which reads as an edge to that box; and two
         // nodes joined both ways would put one line exactly on top of the other.
@@ -4642,7 +4644,25 @@ enum MermaidLayout {
         }
         start = onOutline(start, of: fromOutline, from: from.center)
         end = onOutline(end, of: toOutline, from: to.center)
-        let path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
+        var path = curveOut == 0 ? [start, end] : samples(from: start, through: control, to: end)
+        if curveOut == 0, joining.turns {
+            // Half way is where the turn goes: the line runs straight out of
+            // the side it left by, bends once, and comes in straight at the
+            // other end rather than crossing both boxes on the slant.
+            let reach =
+                joining.sideways ? (end.x - start.x) / 2 : (end.y - start.y) / 2
+            path = samples(
+                from: start,
+                out: joining.sideways
+                    ? CGPoint(x: start.x + reach, y: start.y)
+                    : CGPoint(
+                        x: start.x,
+                        y: start.y
+                            + reach),
+                in: joining.sideways
+                    ? CGPoint(x: end.x - reach, y: end.y) : CGPoint(x: end.x, y: end.y - reach),
+                to: end)
+        }
         var decorations: [BlockBox.Decoration] = []
         let color = faded(
             edge.style.stroke.map(cgColor) ?? theme.palette.secondaryText, by: edge.style)
@@ -5392,6 +5412,23 @@ enum MermaidLayout {
     /// is one. Boxes that stand over each other are joined down the middle of
     /// what they share; anything else is aimed at the centre as before.
     private static func joined(_ from: CGRect, _ to: CGRect) -> (CGPoint, CGPoint) {
+        let route = route(from, to)
+        return (route.start, route.end)
+    }
+
+    /// Which sides two boxes are joined by, and whether the line between them
+    /// has to turn to get there.
+    ///
+    /// Boxes that stand one over the other, or side by side, are joined by the
+    /// sides that face each other and the line between them is straight. Boxes
+    /// that stand corner to corner have no facing sides at all, and a line
+    /// drawn straight between them leaves through a corner, which reads as a
+    /// line that missed the box. Such a line leaves by the side across the
+    /// wider of the two gaps — the way the graph is flowing — and turns on its
+    /// way, which is what Mermaid draws for it.
+    private static func route(_ from: CGRect, _ to: CGRect)
+        -> (start: CGPoint, end: CGPoint, turns: Bool, sideways: Bool)
+    {
         let sharedX = min(from.maxX, to.maxX) - max(from.minX, to.minX)
         let sharedY = min(from.maxY, to.maxY) - max(from.minY, to.minY)
         if sharedX > 0, sharedY <= 0 {
@@ -5399,7 +5436,8 @@ enum MermaidLayout {
             let below = to.midY > from.midY
             return (
                 CGPoint(x: x, y: below ? from.maxY : from.minY),
-                CGPoint(x: x, y: below ? to.minY : to.maxY)
+                CGPoint(x: x, y: below ? to.minY : to.maxY),
+                false, false
             )
         }
         if sharedY > 0, sharedX <= 0 {
@@ -5407,10 +5445,44 @@ enum MermaidLayout {
             let right = to.midX > from.midX
             return (
                 CGPoint(x: right ? from.maxX : from.minX, y: y),
-                CGPoint(x: right ? to.minX : to.maxX, y: y)
+                CGPoint(x: right ? to.minX : to.maxX, y: y),
+                false, false
             )
         }
-        return (exit(of: from, towards: to.center), exit(of: to, towards: from.center))
+        let acrossX = max(to.minX - from.maxX, from.minX - to.maxX)
+        let acrossY = max(to.minY - from.maxY, from.minY - to.maxY)
+        if acrossX >= acrossY {
+            let right = to.midX > from.midX
+            return (
+                CGPoint(x: right ? from.maxX : from.minX, y: from.midY),
+                CGPoint(x: right ? to.minX : to.maxX, y: to.midY),
+                true, true
+            )
+        }
+        let below = to.midY > from.midY
+        return (
+            CGPoint(x: from.midX, y: below ? from.maxY : from.minY),
+            CGPoint(x: to.midX, y: below ? to.minY : to.maxY),
+            true, false
+        )
+    }
+
+    /// A run of points along a cubic, for a line that leaves one box straight
+    /// and arrives at the next straight with a single turn in between.
+    private static func samples(
+        from start: CGPoint, out first: CGPoint, in second: CGPoint, to end: CGPoint
+    ) -> [CGPoint] {
+        let steps = 24
+        return (0...steps).map { step in
+            let t = CGFloat(step) / CGFloat(steps)
+            let u = 1 - t
+            return CGPoint(
+                x: u * u * u * start.x + 3 * u * u * t * first.x + 3 * u * t * t * second.x + t * t
+                    * t * end.x,
+                y: u * u * u * start.y + 3 * u * u * t * first.y + 3 * u * t * t * second.y + t * t
+                    * t * end.y
+            )
+        }
     }
 
     /// A dashed line as a path of short segments: `Decoration` has no dash

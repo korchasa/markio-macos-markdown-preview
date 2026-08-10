@@ -348,10 +348,15 @@ every box is placed.
 
 Edges are drawn between box centres and clipped to the boxes, so an edge across
 a rank or back up the graph needs no special case. Clipping to the rectangle is
-not enough on its own, in two ways a reader notices. A line aimed at a corner
+not enough on its own, in three ways a reader notices. A line aimed at a corner
 leaves the box at that corner, which reads as a line that missed, so the exit is
 held three tenths of a side in from either end and comes off the flat of the box
-instead. And a box that is not a rectangle — a diamond, a circle, a cylinder —
+instead. Two boxes standing corner to corner have no facing sides at all, and
+between them even a held-in exit still leaves on the slant: such a line leaves by
+the side across the wider of the two gaps — the way the graph is flowing — runs
+straight out of it, turns once half way, and comes in straight at the other end,
+which is the shape Mermaid draws for the same pair. And a box that is not a
+rectangle — a diamond, a circle, a cylinder —
 has a rectangle standing well clear of it, so a line clipped to the rectangle
 stops in the white space beside the shape rather than on it. Where a node has an
 outline of its own, the point where the line crosses that outline is found by
