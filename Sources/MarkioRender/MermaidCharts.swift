@@ -64,14 +64,20 @@ struct GanttChart {
         var active: Bool
         var critical: Bool
         var milestone: Bool
+        /// `vert`: not a row of its own but a heavy rule across the whole
+        /// chart, named under the axis. It marks a moment everything else is
+        /// read against.
+        var vertical = false
     }
 
     var title: String
     var sections: [String]
     var tasks: [Task]
-    /// The day number the chart starts on, so the axis can print real dates.
-    /// Nil when the chart named no date at all and the axis can only count days.
-    var origin: Int?
+    /// The day the chart starts on, so the axis can print real dates. A chart
+    /// told in hours starts part way through a day, so this is a fraction as
+    /// well. Nil when the chart named no date at all and the axis can only
+    /// count days.
+    var origin: Double?
     /// The days a task's length skips, counted from the chart's own zero. They
     /// are shaded, because a bar that spans them is longer than its `3d` says.
     var excluded: Set<Int> = []
@@ -136,12 +142,15 @@ struct GanttChart {
                 continue
             case "tickInterval":
                 // `1week`, `2day`, `1month`.
+                // A unit Mermaid does not know — `1decade`, `1year` — is passed
+                // over without a word, and the ticks fall where they would have
+                // fallen anyway.
                 let count = rest.prefix(while: { $0.isNumber })
                 let unit = String(rest.dropFirst(count.count))
                 guard let number = Int(count), number > 0,
                     ["millisecond", "second", "minute", "hour", "day", "week", "month"]
                         .contains(unit)
-                else { return nil }
+                else { continue }
                 chart.tickInterval = (count: number, unit: unit)
                 continue
             case "todayMarker":
@@ -184,7 +193,12 @@ struct GanttChart {
                         continue
                     }
                     guard let date = day(written, format: format) else { return nil }
-                    if word == "excludes" { offDates.insert(date) } else { onDates.insert(date) }
+                    let number = Int(date.rounded(.down))
+                    if word == "excludes" {
+                        offDates.insert(number)
+                    } else {
+                        onDates.insert(number)
+                    }
                 }
                 continue
             case "click":
@@ -219,7 +233,8 @@ struct GanttChart {
                 case "done": task.done = true
                 case "active": task.active = true
                 case "crit": task.critical = true
-                case "milestone", "vert": task.milestone = true
+                case "milestone": task.milestone = true
+                case "vert": task.vertical = true
                 default: break
                 }
                 guard ["done", "active", "crit", "milestone", "vert"].contains(first) else { break }
@@ -276,7 +291,7 @@ struct GanttChart {
             } else {
                 guard task.length >= 0 else { return nil }
             }
-            if task.milestone { task.length = 0 }
+            if task.milestone || task.vertical { task.length = 0 }
             previousEnd = task.start + task.length
             if let identifier {
                 guard !identifier.isEmpty, !identifier.contains(" ") else { return nil }
@@ -291,9 +306,12 @@ struct GanttChart {
         // Everything was counted from the first real date; shift it all so the
         // chart starts at zero and the axis knows which day that was.
         let earliest = chart.tasks.map(\.start).min() ?? 0
-        let zero = dated ? earliest.rounded(.down) : 0
+        // A chart told in days starts on a whole day; one told in hours starts
+        // at the first task's own time, so that the axis does not open hours
+        // before anything happens.
+        let zero = dated ? earliest : 0
         if dated {
-            chart.origin = Int(zero)
+            chart.origin = zero
             for index in chart.tasks.indices { chart.tasks[index].start -= zero }
         }
         // The days off are shaded across the whole chart, so they are gathered
@@ -344,16 +362,19 @@ struct GanttChart {
             let names = text.dropFirst(6).split(separator: " ").map(String.init)
             return names.compactMap { starts[$0] }.min() ?? starts.values.min() ?? 0
         }
-        return day(text, format: format).map(Double.init)
+        return day(text, format: format)
     }
 
-    /// `30d`, `2w`, `12h`.
+    /// `30d`, `2w`, `12h`, `10m`, `45s`. Everything is counted in days, so a
+    /// chart told in minutes works in fractions of one.
     private static func span(_ text: String) -> Double? {
         guard let unit = text.last, let number = Double(text.dropLast()) else { return nil }
         switch unit {
         case "d": return number
         case "w": return number * 7
         case "h": return number / 24
+        case "m": return number / 1440
+        case "s": return number / 86400
         default: return nil
         }
     }
@@ -364,14 +385,15 @@ struct GanttChart {
     /// The format is read as Mermaid writes it: `YYYY`, `YY`, `MM`, `DD`, `HH`,
     /// `mm`, `ss` and whatever punctuation stands between them, plus `X` for a
     /// count of seconds and `x` for a count of milliseconds.
-    static func day(_ text: String, format: String = "YYYY-MM-DD") -> Int? {
-        if format == "X" { return Int(text).map { $0 / 86400 } }
-        if format == "x" { return Int(text).map { $0 / 86_400_000 } }
+    static func day(_ text: String, format: String = "YYYY-MM-DD") -> Double? {
+        if format == "X" { return Double(text).map { $0 / 86400 } }
+        if format == "x" { return Double(text).map { $0 / 86_400_000 } }
         var read = Substring(text)
         var pattern = Substring(format)
         var year: Int?
         var month = 1
         var dayOfMonth = 1
+        var seconds = 0
         let tokens: [(text: String, digits: Int)] = [
             ("YYYY", 4), ("YY", 2), ("MM", 2), ("DD", 2), ("HH", 2), ("mm", 2), ("ss", 2),
             ("SSS", 3),
@@ -393,22 +415,29 @@ struct GanttChart {
             case "YY": year = 2000 + number
             case "MM": month = number
             case "DD": dayOfMonth = number
+            case "HH": seconds += number * 3600
+            case "mm": seconds += number * 60
+            case "ss": seconds += number
             default: break
             }
             pattern = pattern.dropFirst(token.text.count)
             read = read.dropFirst(token.digits)
         }
-        guard read.isEmpty, let year, (1...12).contains(month), (1...31).contains(dayOfMonth)
+        // A chart told in hours names no year at all — `dateFormat HH:mm` — so
+        // the day is the first of the epoch and the time of day is the whole of
+        // what was written.
+        guard read.isEmpty, (1...12).contains(month), (1...31).contains(dayOfMonth)
         else { return nil }
+        guard year != nil || seconds > 0 || format.contains("HH") else { return nil }
         var components = DateComponents()
-        components.year = year
+        components.year = year ?? 1970
         components.month = month
         components.day = dayOfMonth
         var calendar = Calendar(identifier: .gregorian)
         guard let zone = TimeZone(identifier: "UTC") else { return nil }
         calendar.timeZone = zone
         guard let date = calendar.date(from: components) else { return nil }
-        return Int((date.timeIntervalSince1970 / 86400).rounded())
+        return (date.timeIntervalSince1970 + Double(seconds)) / 86400
     }
 
     /// The other way round, for the axis.
@@ -416,11 +445,12 @@ struct GanttChart {
     /// The year is written out. A chart that runs over a new year would
     /// otherwise label two different days the same way, and a reader has no way
     /// of telling which is which from a picture that omits it.
-    static func date(_ day: Int, format: String = "") -> String {
+    static func date(_ day: Double, format: String = "") -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
-        let date = Date(timeIntervalSince1970: Double(day) * 86400)
-        let parts = calendar.dateComponents([.year, .month, .day, .weekday], from: date)
+        let date = Date(timeIntervalSince1970: day * 86400)
+        let parts = calendar.dateComponents(
+            [.year, .month, .day, .weekday, .hour, .minute, .second], from: date)
         let year = parts.year ?? 1970
         let month = parts.month ?? 1
         let dayOfMonth = parts.day ?? 1
@@ -449,9 +479,9 @@ struct GanttChart {
             case "e": written += String(dayOfMonth)
             case "b": written += months[max(0, min(11, month - 1))]
             case "a": written += days[max(0, min(6, (parts.weekday ?? 1) - 1))]
-            case "H": written += "00"
-            case "M": written += "00"
-            case "S": written += "00"
+            case "H": written += String(format: "%02d", parts.hour ?? 0)
+            case "M": written += String(format: "%02d", parts.minute ?? 0)
+            case "S": written += String(format: "%02d", parts.second ?? 0)
             case "%": written += "%"
             default: written += "%\(letter)"
             }

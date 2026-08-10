@@ -109,7 +109,24 @@ enum MermaidDiagram {
             if line.isEmpty || line.hasPrefix("#") { continue }
             guard let colon = line.firstIndex(of: ":") else { return nil }
             let key = String(line[line.startIndex..<colon])
-            let value = scalar(line[line.index(after: colon)...])
+            var written = String(line[line.index(after: colon)...])
+                .trimmingCharacters(in: .whitespaces)
+            // A quoted value may run over several lines — a stylesheet written
+            // into the preamble does — and what stands on those lines is not
+            // YAML of its own. They are swallowed up to the closing quote.
+            for quote in ["\"", "'"]
+            where written.hasPrefix(quote)
+                && !written.dropFirst()
+                    .contains(quote)
+            {
+                while index < lines.count {
+                    let more = lines[index].trimmingCharacters(in: .whitespaces)
+                    index += 1
+                    written += " " + more
+                    if more.contains(quote) { break }
+                }
+            }
+            let value = scalar(Substring(written))
             while let last = path.last, last.indent >= indent { path.removeLast() }
             let here = path.map(\.key) + [key]
             if value.isEmpty {

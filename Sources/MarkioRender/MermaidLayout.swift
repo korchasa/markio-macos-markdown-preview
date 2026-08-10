@@ -1485,7 +1485,7 @@ enum MermaidLayout {
         // dates running into each other.
         func axisLabel(_ day: Double) -> String {
             guard let origin = chart.origin else { return "day \(Int(day.rounded()))" }
-            return GanttChart.date(origin + Int(day.rounded()), format: chart.axisFormat)
+            return GanttChart.date(origin + day, format: chart.axisFormat)
         }
         let sample = axisLabel(span)
         let dateWidth =
@@ -1538,6 +1538,12 @@ enum MermaidLayout {
         var sectionStart = 0
         var free: [Double] = []
         for (index, task) in chart.tasks.enumerated() {
+            // A `vert` is a rule across the chart rather than a row in it, so
+            // it takes no room among the bars.
+            if task.vertical {
+                rowOf[index] = -1
+                continue
+            }
             if task.section != lastSection {
                 lastSection = task.section
                 rows += 1
@@ -1553,7 +1559,12 @@ enum MermaidLayout {
             rows += 1
             free.append(task.start + max(task.length, 0.5))
         }
-        let height = metrics.padding * 2 + titleRoom + axisHeight + CGFloat(rows) * rowHeight
+        // A rule across the chart is named under it, so its name needs a row of
+        // its own below the last bar.
+        let verticals = chart.tasks.filter(\.vertical)
+        let vertRoom = verticals.isEmpty ? 0 : rowHeight
+        let height =
+            metrics.padding * 2 + titleRoom + axisHeight + CGFloat(rows) * rowHeight + vertRoom
 
         let left = max(metrics.padding, (width - content) / 2)
         let plotLeft = left + gutter
@@ -1611,7 +1622,7 @@ enum MermaidLayout {
 
         // The line where the reader stands, if today falls inside the chart.
         if chart.marksToday, let origin = chart.origin {
-            let today = Double(GanttChart.today() - origin)
+            let today = Double(GanttChart.today()) - origin
             if today >= 0, today <= span {
                 let rule = CGMutablePath()
                 let x = plotLeft + CGFloat(today) * perDay
@@ -1624,8 +1635,30 @@ enum MermaidLayout {
             }
         }
 
+        // The rules a `vert` asks for, drawn over the bars and named under the
+        // chart in the ink the rule is drawn in.
+        for task in verticals {
+            let x = plotLeft + CGFloat(task.start) * perDay
+            let rule = CGMutablePath()
+            rule.move(to: CGPoint(x: x, y: bodyTop))
+            rule.addLine(to: CGPoint(x: x, y: bodyBottom))
+            let colour =
+                task.critical
+                ? CGColor(red: 0.85, green: 0.33, blue: 0.33, alpha: 1) : theme.diagramWheel[0]
+            decorations.append(
+                .path(rule, color: colour, lineWidth: 2.5 * metrics.scale, filled: false))
+            let line = text(task.name, font: smallFont, color: colour)
+            let size = measure(line)
+            decorations.append(
+                .glyphs(
+                    line,
+                    origin: CGPoint(
+                        x: min(left + content - size.width, max(left, x - size.width / 2)),
+                        y: bodyBottom + 6 * metrics.scale + size.height - descent(line))))
+        }
+
         lastSection = nil
-        for (index, task) in chart.tasks.enumerated() {
+        for (index, task) in chart.tasks.enumerated() where !task.vertical {
             let y = bodyTop + CGFloat(rowOf[index]) * rowHeight
             if task.section != lastSection {
                 lastSection = task.section

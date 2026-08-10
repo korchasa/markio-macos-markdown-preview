@@ -1512,10 +1512,9 @@ final class MermaidTests: XCTestCase {
 
     func testWhatTheChartsRefuse() {
         for source in [
-            // A day off nobody can name, and a tick as long as nothing.
+            // A day off nobody can name.
             "gantt\n  excludes someday\n  Draft :3d",
             "gantt\n  includes weekends\n  Draft :3d",
-            "gantt\n  tickInterval 1fortnight\n  Draft :3d",
             "gantt\n  displayMode roomy\n  Draft :3d",
             // A date that does not fit the format the chart declared.
             "gantt\n  dateFormat DD-MM-YYYY\n  Draft :a1, 2026-01-01",
@@ -1524,6 +1523,47 @@ final class MermaidTests: XCTestCase {
         ] {
             XCTAssertNil(MermaidDiagram.parse(source), source)
         }
+    }
+
+    /// A tick as long as nothing is passed over rather than refused: Mermaid
+    /// draws the chart and lets the ticks fall where they would have fallen.
+    func testATickIntervalNobodyKnowsIsPassedOver() throws {
+        guard
+            case .gantt(let chart)? = MermaidDiagram.parse(
+                "gantt\n  tickInterval 1fortnight\n  Draft :3d")
+        else { return XCTFail("the chart is still drawn") }
+        XCTAssertNil(chart.tickInterval)
+        XCTAssertEqual(chart.tasks.count, 1)
+    }
+
+    /// A chart may be told in hours and minutes rather than in days: the dates
+    /// carry a time, the lengths are counted in minutes, and the axis starts at
+    /// the first task rather than at midnight before it. A `vert` is a rule
+    /// across the whole chart, not a row of its own.
+    func testAGanttMayBeToldInMinutesAndRuledByAVert() throws {
+        let source = """
+            gantt
+                dateFormat HH:mm
+                axisFormat %H:%M
+                Initial vert : vert, v1, 17:30, 2m
+                Task A : 3m
+                Task B : 8m
+            """
+        guard case .gantt(let chart)? = MermaidDiagram.parse(source) else {
+            return XCTFail("expected a gantt chart")
+        }
+        XCTAssertEqual(chart.tasks.map(\.vertical), [true, false, false])
+        XCTAssertEqual(chart.tasks[0].length, 0)
+        // Three minutes is a fiftieth of a day, and the second task follows the
+        // first rather than starting with it.
+        XCTAssertEqual(chart.tasks[1].length, 3.0 / 1440, accuracy: 1e-9)
+        XCTAssertEqual(
+            chart.tasks[2].start, chart.tasks[1].start + chart.tasks[1].length, accuracy: 1e-9)
+        // The chart opens at half past five, not at the midnight before it.
+        let origin = try XCTUnwrap(chart.origin)
+        XCTAssertEqual(GanttChart.date(origin, format: "%H:%M"), "17:30")
+        XCTAssertNotNil(
+            DocumentRenderer.diagram(source: source, theme: Theme(isDark: false), width: 700))
     }
 
     /// A chart written around the working week, in a date format of its own.
