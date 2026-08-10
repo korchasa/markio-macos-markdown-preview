@@ -80,10 +80,16 @@ enum C4Diagram {
                 }
                 continue
             }
-            if boundaries.contains(keyword) {
+            // A deployment node is a box on its own and a frame when something
+            // is written inside it, and the brace is what says which.
+            if boundaries.contains(keyword) || (elements[keyword] != nil && line.hasSuffix("{")) {
                 guard arguments.count >= 2, line.hasSuffix("{") else { return nil }
+                var title = arguments[1]
+                if elements[keyword] != nil, arguments.count > 2, !arguments[2].isEmpty {
+                    title += "<br/>[\(arguments[2])]"
+                }
                 var group = Flowchart.Group(
-                    title: arguments[1], members: [], id: arguments[0], parent: open.last)
+                    title: title, members: [], id: arguments[0], parent: open.last)
                 group.style.merge(painted)
                 chart.groups.append(group)
                 open.append(chart.groups.count - 1)

@@ -3278,7 +3278,15 @@ enum MermaidLayout {
         let labelSizes =
             chart.edges.filter { !$0.label.isEmpty }
             .map { measure(text($0.label, font: labelFont, color: theme.palette.text)) }
-        let titleRoom = chart.groups.isEmpty ? 0 : 20 * metrics.scale
+        // A frame's name is written above it, and a name broken over two lines
+        // needs twice the room, so the deepest of them decides how far every
+        // frame stands from what is over it.
+        let titleRoom =
+            chart.groups.isEmpty
+            ? 0
+            : (chart.groups.map {
+                labelLines($0.title, font: labelFont, color: theme.palette.text).size.height
+            }.max() ?? 0) + 7 * metrics.scale
         let placement = placed(
             chart: chart, boxes: boxes, labels: labelSizes, metrics: metrics, titleRoom: titleRoom)
         for (index, frame) in placement.nodes { boxes[index].frame = frame }
@@ -3696,22 +3704,20 @@ enum MermaidLayout {
                 lineWidth: group.style.strokeWidth ?? 1, filled: false),
         ]
         guard !group.title.isEmpty else { return decorations }
-        let line = text(
+        let (lines, size) = labelLines(
             group.title,
             font: scaled(theme.controlLabel, by: metrics.scale),
             color: faded(
                 group.style.text.map(cgColor) ?? theme.palette.secondaryText, by: group.style)
         )
-        let size = measure(line)
-        decorations.append(
-            .glyphs(
-                line,
-                origin: CGPoint(
-                    x: bounds.minX + 4,
-                    y: bounds.minY - max(3, titleRoom - size.height) - descent(line)
-                )
-            )
-        )
+        var top = bounds.minY - max(3, titleRoom - size.height) - size.height
+        for line in lines {
+            let one = measure(line)
+            decorations.append(
+                .glyphs(
+                    line, origin: CGPoint(x: bounds.minX + 4, y: top + one.height - descent(line))))
+            top += one.height
+        }
         return decorations
     }
 
@@ -4835,14 +4841,19 @@ enum MermaidLayout {
                 .path(
                     CGPath(rect: rect, transform: nil), color: theme.palette.tableBorder,
                     lineWidth: 1, filled: false))
-            let line = text(group.label, font: small, color: theme.palette.secondaryText)
-            let size = measure(line)
-            decorations.append(
-                .glyphs(
-                    line,
-                    origin: CGPoint(
-                        x: rect.midX - size.width / 2,
-                        y: rect.minY + 4 * metrics.scale + size.height - descent(line))))
+            let lines = labelLines(
+                group.label, font: small, color: theme.palette.secondaryText
+            ).lines
+            var top = rect.minY + 4 * metrics.scale
+            for line in lines {
+                let one = measure(line)
+                decorations.append(
+                    .glyphs(
+                        line,
+                        origin: CGPoint(
+                            x: rect.midX - one.width / 2, y: top + one.height - descent(line))))
+                top += one.height
+            }
         }
         decorations += body.tints
         for (index, centre) in centres.enumerated() {

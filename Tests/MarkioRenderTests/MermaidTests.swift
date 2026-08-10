@@ -1655,6 +1655,31 @@ final class MermaidTests: XCTestCase {
         XCTAssertNil(MermaidDiagram.parse("mindmap\n:::urgent"))
     }
 
+    /// A deployment node is a box on its own and a frame when something is
+    /// written inside it. The brace is what says which, and the node's kit is
+    /// written under its name inside the frame's own label.
+    func testADeploymentNodeIsAFrameWhenSomethingStandsInIt() throws {
+        guard
+            case .flowchart(let chart)? = MermaidDiagram.parse(
+                """
+                C4Deployment
+                Deployment_Node(comp, "Customer's computer", "Windows or macOS"){
+                    Deployment_Node(browser, "Web Browser", "Chrome or Safari"){
+                        Container(spa, "Single Page Application", "Angular")
+                    }
+                }
+                Deployment_Node(alone, "A node with nothing in it", "Ubuntu")
+                """)
+        else { return XCTFail("expected a C4 diagram") }
+        XCTAssertEqual(chart.groups.map(\.id), ["comp", "browser"])
+        XCTAssertEqual(chart.groups[0].title, "Customer's computer<br/>[Windows or macOS]")
+        XCTAssertEqual(chart.groups[1].parent, 0)
+        // The one with nothing inside it stayed a box, and the container is the
+        // only other box on the page.
+        XCTAssertEqual(chart.nodes.count, 2)
+        XCTAssertEqual(chart.groups[1].members.count, 1)
+    }
+
     func testWhatTheChartsRefuse() {
         for source in [
             // A day off nobody can name.
