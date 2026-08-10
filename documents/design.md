@@ -373,6 +373,17 @@ that no held-in point exists, they are treated as standing corner to corner. A
 line from a box to itself has no facing side at all: it leaves the right-hand
 side and comes back to it lower down.
 
+Several lines meeting one side share it. Left alone each would be drawn to the
+middle of it, so three classes inheriting from one would put three heads in the
+same place and read as a single smudge. They are given their own places along
+the side instead, in the order their other ends stand — which is also what keeps
+them from crossing on the way in — and a crowd is allowed nearer the corners
+than one line is, since a line among several is plainly one of several and the
+room matters more than the hold. They are spread no further than tells two heads
+apart: a pair pushed to the ends of a wide side leans both lines for no reason a
+reader could name. A line with a lane keeps out of this, because where it meets
+the box was settled by the lane it runs in.
+
 *How it runs.* Straight, where the two sides face each other and nothing stands
 between — down the middle of what the two boxes share, rather than from centre
 to centre, because aiming at the centres leans the line whenever the boxes are
