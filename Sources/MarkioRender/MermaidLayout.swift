@@ -5352,6 +5352,10 @@ enum MermaidLayout {
 
     /// Where a line towards `target` leaves a box. Rectangles only — a diamond
     /// or a circle is close enough at this size that the difference is a pixel.
+    /// How far in from either end of a side a line may land, as a share of that
+    /// side. Nearer than this and the line reads as one that missed the box.
+    private static let corner: CGFloat = 0.3
+
     private static func exit(of frame: CGRect, towards target: CGPoint) -> CGPoint {
         let centre = frame.center
         let delta = CGPoint(x: target.x - centre.x, y: target.y - centre.y)
@@ -5364,7 +5368,6 @@ enum MermaidLayout {
         // so the point is slid along the side it leaves by until it is clear of
         // both corners. Which side that is has already been decided above: the
         // smaller of the two scales is the one the point ran out of room in.
-        let corner: CGFloat = 0.3
         if scaleX <= scaleY {
             return CGPoint(
                 x: point.x,
@@ -5431,23 +5434,53 @@ enum MermaidLayout {
     {
         let sharedX = min(from.maxX, to.maxX) - max(from.minX, to.minX)
         let sharedY = min(from.maxY, to.maxY) - max(from.minY, to.minY)
+        // Where the two boxes overlap is not enough on its own: two boxes may
+        // overlap by a hair at one end, and a line drawn down the middle of
+        // that hair leaves both of them by a corner. The crossing has to stand
+        // on the flat of both boxes, so the overlap is narrowed to the part
+        // that is clear of every corner, and a pair with nothing left over is
+        // joined the way boxes standing corner to corner are.
         if sharedX > 0, sharedY <= 0 {
-            let x = (max(from.minX, to.minX) + min(from.maxX, to.maxX)) / 2
-            let below = to.midY > from.midY
-            return (
-                CGPoint(x: x, y: below ? from.maxY : from.minY),
-                CGPoint(x: x, y: below ? to.minY : to.maxY),
-                false, false
-            )
+            let low = max(
+                max(from.minX, to.minX),
+                max(
+                    from.minX + from.width * corner,
+                    to.minX + to.width * corner))
+            let high = min(
+                min(from.maxX, to.maxX),
+                min(
+                    from.maxX - from.width * corner,
+                    to.maxX - to.width * corner))
+            if low <= high {
+                let x = (low + high) / 2
+                let below = to.midY > from.midY
+                return (
+                    CGPoint(x: x, y: below ? from.maxY : from.minY),
+                    CGPoint(x: x, y: below ? to.minY : to.maxY),
+                    false, false
+                )
+            }
         }
         if sharedY > 0, sharedX <= 0 {
-            let y = (max(from.minY, to.minY) + min(from.maxY, to.maxY)) / 2
-            let right = to.midX > from.midX
-            return (
-                CGPoint(x: right ? from.maxX : from.minX, y: y),
-                CGPoint(x: right ? to.minX : to.maxX, y: y),
-                false, false
-            )
+            let low = max(
+                max(from.minY, to.minY),
+                max(
+                    from.minY + from.height * corner,
+                    to.minY + to.height * corner))
+            let high = min(
+                min(from.maxY, to.maxY),
+                min(
+                    from.maxY - from.height * corner,
+                    to.maxY - to.height * corner))
+            if low <= high {
+                let y = (low + high) / 2
+                let right = to.midX > from.midX
+                return (
+                    CGPoint(x: right ? from.maxX : from.minX, y: y),
+                    CGPoint(x: right ? to.minX : to.maxX, y: y),
+                    false, false
+                )
+            }
         }
         let acrossX = max(to.minX - from.maxX, from.minX - to.maxX)
         let acrossY = max(to.minY - from.maxY, from.minY - to.maxY)
