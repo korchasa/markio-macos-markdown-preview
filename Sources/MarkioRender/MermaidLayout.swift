@@ -351,22 +351,16 @@ enum MermaidLayout {
         }
         // The lanes beside a box are handed out for the picture as a whole, so
         // two relations passing the same box do not run down the same one.
-        var beside: [Int: (vertical: Bool, at: CGFloat)] = [:]
-        var lanesTaken: [String: Int] = [:]
+        var wanted: [Int: Bypass] = [:]
         for (index, link) in diagram.links.enumerated() {
             guard link.from < entities.count, link.to < entities.count,
                 let choice = laneChoice(
                     from: entities[link.from].frame, to: entities[link.to].frame,
                     obstacles: standing(between: link), metrics: metrics)
             else { continue }
-            let key = "\(choice.vertical) \(Int(choice.at.rounded()))"
-            let place = lanesTaken[key, default: 0]
-            lanesTaken[key] = place + 1
-            beside[index] = (
-                choice.vertical,
-                choice.at + choice.outward * CGFloat(place) * metrics.siblingGap
-            )
+            wanted[index] = choice
         }
+        let beside = lanes(wanted, metrics: metrics)
         for (index, link) in diagram.links.enumerated() {
             guard link.from < entities.count, link.to < entities.count else { continue }
             let key = Pair(link)
@@ -3401,13 +3395,7 @@ enum MermaidLayout {
         func rect(_ end: Flowchart.End) -> CGRect? {
             switch end {
             case .node(let index): return boxes.indices.contains(index) ? boxes[index].frame : nil
-            case .frame(let group):
-                // The strip the frame's name is written in belongs to the frame:
-                // a line stopping at the border alone would cross the name.
-                guard let rect = frames[group] else { return nil }
-                return CGRect(
-                    x: rect.minX, y: rect.minY - titleRoom, width: rect.width,
-                    height: rect.height + titleRoom)
+            case .frame(let group): return frames[group]
             }
         }
         // Two labelled edges leaving one node run side by side, so their words
@@ -3439,37 +3427,45 @@ enum MermaidLayout {
         }
         // Every edge between the same two nodes, labelled or not: two states
         // that go back and forth would otherwise be one line drawn twice.
-        var lanes: [Pair: Int] = [:]
-        for edge in chart.edges { lanes[Pair(edge), default: 0] += 1 }
+        var bothWays: [Pair: Int] = [:]
+        for edge in chart.edges { bothWays[Pair(edge), default: 0] += 1 }
         var lanesSeen: [Pair: Int] = [:]
         var seen: [Pair: Int] = [:]
         // A box's own boxes are not obstacles for a line that ends on its
         // frame: the line stops at the border and never reaches them.
+        // A frame's name is written above it and to the left, over what would
+        // otherwise be clear ground. It is not part of the frame — a line
+        // arriving anywhere else along the top should stop at the border rather
+        // than a line's height above it — so it stands in the way as a box does,
+        // and only a line that would really cross a name goes round one.
+        let nameplates = chart.groups.indices.compactMap { group -> CGRect? in
+            guard let rect = frames[group], !chart.groups[group].title.isEmpty else { return nil }
+            let said = labelLines(
+                chart.groups[group].title, font: labelFont, color: theme.palette.text
+            ).size
+            return CGRect(
+                x: rect.minX, y: rect.minY - titleRoom, width: said.width + 8 * metrics.scale,
+                height: titleRoom)
+        }
         func standing(between edge: Flowchart.Edge, _ from: CGRect, _ to: CGRect) -> [CGRect] {
             let inside = held(by: edge, chart: chart)
             return boxes.indices
                 .filter { !inside.contains($0) && boxes[$0].frame != from && boxes[$0].frame != to }
-                .map { boxes[$0].frame }
+                .map { boxes[$0].frame } + nameplates
         }
         // A line that has to go round something runs down a lane beside it, and
         // the lanes are handed out for the picture as a whole: an edge choosing
         // one on its own would put two lines down the same lane.
-        var beside: [Int: (vertical: Bool, at: CGFloat)] = [:]
-        var lanesTaken: [String: Int] = [:]
+        var wanted: [Int: Bypass] = [:]
         for (index, edge) in chart.edges.enumerated() {
             guard let from = rect(edge.from), let to = rect(edge.to),
                 let choice = laneChoice(
                     from: from, to: to, obstacles: standing(between: edge, from, to),
                     metrics: metrics)
             else { continue }
-            let key = "\(choice.vertical) \(Int(choice.at.rounded()))"
-            let place = lanesTaken[key, default: 0]
-            lanesTaken[key] = place + 1
-            beside[index] = (
-                choice.vertical,
-                choice.at + choice.outward * CGFloat(place) * metrics.siblingGap
-            )
+            wanted[index] = choice
         }
+        let beside = lanes(wanted, metrics: metrics)
         for (index, edge) in chart.edges.enumerated() {
             guard let from = rect(edge.from), let to = rect(edge.to) else { continue }
             /// A frame is the rectangle it is drawn as, so only a box that is
@@ -3497,7 +3493,7 @@ enum MermaidLayout {
             let key = Pair(edge)
             let taken = lanesSeen[key, default: 0]
             lanesSeen[key] = taken + 1
-            let lane = CGFloat(taken) - CGFloat((lanes[key] ?? 1) - 1) / 2
+            let lane = CGFloat(taken) - CGFloat((bothWays[key] ?? 1) - 1) / 2
             let drawn = self.edge(
                 edge, from: from, to: to, theme: theme, metrics: metrics,
                 order: order, side: side, lane: lane,
@@ -4590,9 +4586,37 @@ enum MermaidLayout {
         return out
     }
 
-    /// Where a line runs when a box stands between the two it joins: which way
-    /// the picture flows there, which lane beside the box it takes, and which
-    /// way is further out of it. Nil when the road is clear.
+    /// What a line has to say for itself before its lane can be chosen: which
+    /// way the picture flows where it runs, the two lanes it could take, the one
+    /// it would take if nothing else were drawn, and how far along it runs.
+    private struct Bypass {
+        var vertical: Bool
+        var low: CGFloat
+        var high: CGFloat
+        var near: CGFloat
+        var start: CGFloat
+        var end: CGFloat
+
+        var length: CGFloat { abs(end - start) }
+
+        /// Whether two lines run alongside each other at all.
+        func meets(_ other: Bypass) -> Bool {
+            vertical == other.vertical && min(end, other.end) > max(start, other.start)
+        }
+
+        /// Whether two lines have to cross wherever they are put: they run
+        /// alongside each other, and neither one's run holds the other's. Two
+        /// nested runs never cross — the longer stands outside the shorter, the
+        /// way brackets do — so only this counts against a side.
+        func tangles(_ other: Bypass) -> Bool {
+            meets(other)
+                && !(start <= other.start && end >= other.end)
+                && !(other.start <= start && other.end >= end)
+        }
+    }
+
+    /// Where a line runs when a box stands between the two it joins. Nil when
+    /// the road is clear.
     ///
     /// Mermaid does not bow such a line round in a wide arc — it runs it
     /// straight down a free lane beside whatever is in the way and turns into
@@ -4600,17 +4624,89 @@ enum MermaidLayout {
     /// lanes instead of crossing.
     private static func laneChoice(
         from: CGRect, to: CGRect, obstacles: [CGRect], metrics: Metrics
-    ) -> (vertical: Bool, at: CGFloat, outward: CGFloat)? {
+    ) -> Bypass? {
         guard from != to else { return nil }
         let joining = route(from, to)
-        let blockers = obstacles.filter { crosses($0, from: joining.start, to: joining.end) }
-        guard !blockers.isEmpty else { return nil }
+        guard obstacles.contains(where: { crosses($0, from: joining.start, to: joining.end) })
+        else { return nil }
         let margin = 12 * metrics.scale
         let vertical = !joining.sideways
+        let leaves = vertical ? joining.start.y : joining.start.x
+        let arrives = vertical ? joining.end.y : joining.end.x
+        let run = (min(leaves, arrives), max(leaves, arrives))
         let near = vertical ? joining.start.x : joining.start.y
-        let low = (vertical ? blockers.map(\.minX).min() : blockers.map(\.minY).min())! - margin
-        let high = (vertical ? blockers.map(\.maxX).max() : blockers.map(\.maxY).max())! + margin
-        return near - low <= high - near ? (vertical, low, -1) : (vertical, high, 1)
+        // Only what stands alongside the run can be in the lane's way, and a
+        // lane clear of the first box it met may still be inside the second.
+        // So the lane is walked outward past one box at a time until nothing is
+        // left standing in it: stopping at the first, as this once did, put the
+        // line through whatever stood beyond.
+        let alongside = obstacles.filter {
+            min(vertical ? $0.maxY : $0.maxX, run.1) > max(vertical ? $0.minY : $0.minX, run.0)
+        }
+        func clear(_ outward: CGFloat) -> CGFloat {
+            var at = near
+            for _ in 0...alongside.count {
+                guard
+                    let blocking = alongside.first(where: {
+                        at > (vertical ? $0.minX : $0.minY) - margin
+                            && at < (vertical ? $0.maxX : $0.maxY) + margin
+                    })
+                else { break }
+                at =
+                    outward < 0
+                    ? (vertical ? blocking.minX : blocking.minY) - margin
+                    : (vertical ? blocking.maxX : blocking.maxY) + margin
+            }
+            return at
+        }
+        return Bypass(
+            vertical: vertical, low: clear(-1), high: clear(1), near: near,
+            start: run.0, end: run.1)
+    }
+
+    /// Which lane each line takes, decided for the picture as a whole rather
+    /// than by each line for itself.
+    ///
+    /// Two rules are what make a set of lines read as a drawing rather than a
+    /// tangle. A line takes the side of the picture where fewer of the lines
+    /// already there are ones it would have to cross — lines whose runs
+    /// interleave cross wherever they are put, so the count is of those alone,
+    /// and where the two sides are equal the nearer one wins. And on one side, a
+    /// line that runs past another stands further out than the one it passes, so
+    /// runs that share a stretch nest instead of crossing, while runs that share
+    /// nothing sit in the same lane and cost no room at all.
+    ///
+    /// The shortest run is settled first, because a lane is placed outside
+    /// whatever it already runs alongside: settling the longest first would
+    /// leave it innermost with everything it passes crossing over it.
+    private static func lanes(_ wanted: [Int: Bypass], metrics: Metrics)
+        -> [Int: (vertical: Bool, at: CGFloat)]
+    {
+        var placed: [(bypass: Bypass, outward: CGFloat, track: Int)] = []
+        var chosen: [Int: (vertical: Bool, at: CGFloat)] = [:]
+        let order = wanted.keys.sorted {
+            (wanted[$0]!.length, $0) < (wanted[$1]!.length, $1)
+        }
+        for index in order {
+            let bypass = wanted[index]!
+            func crossings(_ outward: CGFloat) -> Int {
+                placed.filter { $0.outward == outward && $0.bypass.tangles(bypass) }.count
+            }
+            let outward: CGFloat =
+                crossings(-1) == crossings(1)
+                ? (bypass.near - bypass.low <= bypass.high - bypass.near ? -1 : 1)
+                : (crossings(-1) < crossings(1) ? -1 : 1)
+            let track =
+                (placed.filter { $0.outward == outward && $0.bypass.meets(bypass) }
+                .map(\.track).max()).map { $0 + 1 } ?? 0
+            placed.append((bypass, outward, track))
+            chosen[index] = (
+                bypass.vertical,
+                (outward < 0 ? bypass.low : bypass.high) + outward * CGFloat(track)
+                    * metrics.siblingGap
+            )
+        }
+        return chosen
     }
 
     /// How far to one side a line has to bow: enough to clear whatever stands
