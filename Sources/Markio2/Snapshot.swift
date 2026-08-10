@@ -142,6 +142,11 @@ enum Snapshot {
         rep.size = size
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
+        // A bitmap context maps one unit to one pixel however the rep's size in
+        // points is set, so without this the view draws at 1:1 into a buffer
+        // twice its size and fills a quarter of it — a picture of exactly the
+        // right dimensions with the app in one corner and nothing around it.
+        context.cgContext.scaleBy(x: scale, y: scale)
         view.displayIgnoringOpacity(view.bounds, in: context)
         NSGraphicsContext.restoreGraphicsState()
         return rep

@@ -68,6 +68,30 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(rep.size.height, Snapshot.storeSize.height, accuracy: 0.5)
     }
 
+    /// The drawing has to cover the whole bitmap, not sit in a corner of it.
+    ///
+    /// A bitmap context maps one unit to one pixel whatever the rep's size in
+    /// points says, so drawing a 1440×900 view into a 2880×1800 buffer without
+    /// scaling the transform first fills a quarter of it and leaves the rest
+    /// untouched — transparent, and white once it is encoded. The picture is
+    /// the right size and useless. Corners are the cheapest place to see it:
+    /// an untouched pixel has an alpha of zero.
+    func testTheDrawingCoversTheWholeBitmap() throws {
+        let rep = try Snapshot.image(of: try window(), size: Snapshot.storeSize)
+        let corners = [
+            (10, 10),
+            (rep.pixelsWide - 10, 10),
+            (10, rep.pixelsHigh - 10),
+            (rep.pixelsWide - 10, rep.pixelsHigh - 10),
+        ]
+        for (x, y) in corners {
+            let colour = try XCTUnwrap(rep.colorAt(x: x, y: y), "no pixel at \(x),\(y)")
+            XCTAssertEqual(
+                colour.alphaComponent, 1, accuracy: 0.01,
+                "the pixel at \(x),\(y) was never drawn into")
+        }
+    }
+
     /// A shot plan is read from beside the document it describes. A missing or
     /// malformed plan stops the run: a store screenshot silently skipped is
     /// worse than one that never got made.
