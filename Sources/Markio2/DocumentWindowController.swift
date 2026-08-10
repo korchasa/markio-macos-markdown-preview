@@ -566,6 +566,19 @@ final class DocumentWindowController: NSWindowController {
         setSidebarVisible(!Preferences.outlineVisible, animated: true)
     }
 
+    /// Put the sidebar in a known state rather than flipping whatever it was
+    /// in. A shot plan says whether the outline is open, and a toggle would
+    /// make each picture depend on the one before it.
+    func setOutline(visible: Bool) {
+        setSidebarVisible(visible, animated: false)
+    }
+
+    /// Back to the first line, for the same reason.
+    func scrollToTop() {
+        documentView.layoutSubtreeIfNeeded()
+        documentView.scroll(.zero)
+    }
+
     private func setSidebarVisible(_ visible: Bool, animated: Bool) {
         Preferences.outlineVisible = visible
         sidebarWidthConstraint.constant = visible ? 240 : 0

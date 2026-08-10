@@ -26,7 +26,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
         if let baseline = baselineFromCommandLine() { startComparison(against: baseline) }
+        if let directory = snapshotDirectory() { runSnapshot(into: directory) }
         if let target = captureTarget() { capture(to: target) }
+    }
+
+    /// `--snapshot <dir>`: take the store screenshots and quit.
+    ///
+    /// Two words rather than `--snapshot=<dir>`, because that is the shape the
+    /// tooling outside this repository already calls every app it packages
+    /// with. What to shoot comes from a plan beside the document — see
+    /// `Snapshot`.
+    private func snapshotDirectory() -> URL? {
+        guard let index = CommandLine.arguments.firstIndex(of: "--snapshot"),
+            index + 1 < CommandLine.arguments.count
+        else { return nil }
+        return URL(fileURLWithPath: CommandLine.arguments[index + 1])
+    }
+
+    private func runSnapshot(into directory: URL) {
+        guard let document = launchFiles.first else {
+            FileHandle.standardError.write(Data("snapshot: no document to shoot\n".utf8))
+            exit(1)
+        }
+        do {
+            try Snapshot.run(document: document, into: directory)
+        } catch {
+            FileHandle.standardError.write(Data("snapshot: \(error)\n".utf8))
+            exit(1)
+        }
+        NSApp.terminate(nil)
     }
 
     /// `--compare=<path>`, with `--side-by-side` to give the baseline its own
@@ -63,7 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// stop the app on a modal alert.
     private func filesFromCommandLine() -> [URL] {
         var files: [URL] = []
-        for path in CommandLine.arguments.dropFirst() where !path.hasPrefix("-") {
+        // `--snapshot <dir>` puts a real, existing path in the argument list
+        // that is not a document. The check below would happily open it.
+        let snapshotValue = CommandLine.arguments.firstIndex(of: "--snapshot").map { $0 + 1 }
+        for (index, path) in CommandLine.arguments.enumerated().dropFirst()
+        where !path.hasPrefix("-") && index != snapshotValue {
             let url = URL(fileURLWithPath: path)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 FileHandle.standardError.write(Data("no such file: \(path)\n".utf8))
