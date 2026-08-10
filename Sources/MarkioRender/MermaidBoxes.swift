@@ -36,10 +36,12 @@ struct BoxDiagram {
         var style = Flowchart.Style()
     }
 
-    /// A `namespace`: a titled frame around the classes written inside it.
+    /// A `namespace`: a titled frame around the classes written inside it, and
+    /// around whatever other namespaces were written inside it.
     struct Namespace {
         var name: String
         var members: [Int] = []
+        var parent: Int?
     }
 
     struct Link {
@@ -91,7 +93,8 @@ enum ClassDiagram {
     static func parse(_ lines: [Substring]) -> BoxDiagram? {
         var diagram = BoxDiagram(boxes: [], links: [], direction: .down)
         var open: Int?
-        var openNamespace: Int?
+        /// The namespaces open around the line being read, innermost last.
+        var openNamespaces: [Int] = []
         /// The styles `classDef` named, waiting for a `cssClass` to use them.
         var styles: [String: Flowchart.Style] = [:]
         for line in lines {
@@ -106,8 +109,8 @@ enum ClassDiagram {
                 continue
             }
             if line == "}" {
-                guard openNamespace != nil else { return nil }
-                openNamespace = nil
+                guard !openNamespaces.isEmpty else { return nil }
+                openNamespaces.removeLast()
                 continue
             }
             switch word {
@@ -117,16 +120,27 @@ enum ClassDiagram {
                 diagram.direction = read
                 continue
             case "namespace":
-                guard openNamespace == nil, rest.hasSuffix("{") else { return nil }
-                let name = String(rest.dropLast()).trimmingCharacters(in: .whitespaces)
-                guard !name.isEmpty, !name.contains(" ") else { return nil }
-                diagram.namespaces.append(BoxDiagram.Namespace(name: name))
-                openNamespace = diagram.namespaces.count - 1
+                guard rest.hasSuffix("{") else { return nil }
+                var text = String(rest.dropLast()).trimmingCharacters(in: .whitespaces)
+                // `namespace Auth["Authentication Service"]` shows one thing and
+                // is known by another, the same way a class is.
+                var shown: String?
+                if let bracket = text.firstIndex(of: "["), text.hasSuffix("]") {
+                    shown = String(
+                        text[text.index(after: bracket)..<text.index(before: text.endIndex)]
+                    ).trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+                    text = String(text[text.startIndex..<bracket])
+                        .trimmingCharacters(in: .whitespaces)
+                }
+                guard !text.isEmpty, !text.contains(" ") else { return nil }
+                diagram.namespaces.append(
+                    BoxDiagram.Namespace(name: shown ?? text, parent: openNamespaces.last))
+                openNamespaces.append(diagram.namespaces.count - 1)
                 continue
             case "class":
-                guard declared(rest, in: &diagram, opening: &open, inside: openNamespace) else {
-                    return nil
-                }
+                guard
+                    declared(rest, in: &diagram, opening: &open, inside: openNamespaces.last)
+                else { return nil }
                 continue
             case "note":
                 guard let note = note(rest, in: &diagram) else { return nil }
@@ -201,7 +215,7 @@ enum ClassDiagram {
             // Mermaid makes of it: it draws the diagram without it.
             continue
         }
-        guard open == nil, openNamespace == nil else { return nil }
+        guard open == nil, openNamespaces.isEmpty else { return nil }
         return diagram
     }
 
@@ -225,7 +239,19 @@ enum ClassDiagram {
         return BoxDiagram.Note(text: words, attached: attached)
     }
 
-    /// `class Animal`, `class Animal {`, `class Animal["A nicer name"]`.
+    /// A name written in backticks may hold spaces and punctuation —
+    /// `` `Animal Class!` `` — and is otherwise one word. `class Shape~T~` is a
+    /// generic, and the tilde is part of the name.
+    static func name(_ text: String) -> String? {
+        if text.hasPrefix("`"), text.hasSuffix("`"), text.count >= 2 {
+            let inner = String(text.dropFirst().dropLast())
+            return inner.isEmpty ? nil : inner
+        }
+        return text.isEmpty || text.contains(" ") ? nil : text
+    }
+
+    /// `class Animal`, `class Animal {`, `class Animal["A nicer name"]`,
+    /// `class Shape <<interface>>`.
     private static func declared(
         _ rest: String, in diagram: inout BoxDiagram, opening: inout Int?, inside namespace: Int?
     ) -> Bool {
@@ -235,17 +261,26 @@ enum ClassDiagram {
             opens = true
             text = String(text.dropLast()).trimmingCharacters(in: .whitespaces)
         }
-        var name = text
+        // What kind of class it is may be written on the same line as its name.
+        var stereotype: String?
+        if text.hasSuffix(">>"), let mark = text.range(of: "<<"),
+            mark.lowerBound > text.startIndex
+        {
+            stereotype = String(text[mark.upperBound..<text.index(text.endIndex, offsetBy: -2)])
+            text = String(text[text.startIndex..<mark.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+        }
+        var written = text
         var label: String?
-        if let bracket = text.firstIndex(of: "["), text.hasSuffix("]") {
-            name = String(text[text.startIndex..<bracket]).trimmingCharacters(in: .whitespaces)
+        if !text.hasPrefix("`"), let bracket = text.firstIndex(of: "["), text.hasSuffix("]") {
+            written = String(text[text.startIndex..<bracket]).trimmingCharacters(in: .whitespaces)
             label = String(text[text.index(after: bracket)..<text.index(before: text.endIndex)])
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
         }
-        // `class Shape~T~` is a generic, and the tilde is part of the name.
-        guard !name.isEmpty, !name.contains(" ") else { return false }
+        guard let name = Self.name(written) else { return false }
         let index = diagram.index(of: name)
         if let label { diagram.boxes[index].name = label }
+        if let stereotype { diagram.boxes[index].stereotype = stereotype }
         if opens { opening = index }
         // A class written in a second namespace stays where it was first put:
         // one class is drawn once, inside one frame.
@@ -296,9 +331,9 @@ enum ClassDiagram {
             tail = String(tail.dropFirst(candidate.text.count)).trimmingCharacters(in: .whitespaces)
             break
         }
-        let (from, fromCount) = counted(head)
-        let (to, toCount) = counted(tail)
-        guard !from.isEmpty, !to.isEmpty, !from.contains(" "), !to.contains(" ") else { return nil }
+        let (head0, fromCount) = counted(head)
+        let (tail0, toCount) = counted(tail)
+        guard let from = Self.name(head0), let to = Self.name(tail0) else { return nil }
         return BoxDiagram.Link(
             from: diagram.index(of: from),
             to: diagram.index(of: to),

@@ -727,9 +727,66 @@ final class MermaidTests: XCTestCase {
             )
         )
         XCTAssertEqual(chart.direction, .right)
-        XCTAssertEqual(chart.nodes.map(\.shape), [.point, .rounded, .rounded, .endPoint])
-        XCTAssertEqual(chart.nodes[1].label, "Waiting for a file")
+        // A state named before it is used stands first, the way it is written.
+        XCTAssertEqual(chart.nodes.map(\.shape), [.rounded, .point, .rounded, .endPoint])
+        XCTAssertEqual(chart.nodes[0].label, "Waiting for a file")
         XCTAssertEqual(chart.edges[1].label, "open")
+    }
+
+    /// A state named and mentioned nowhere else is still a state, however its
+    /// description is written.
+    func testAStateDescribedAndNeverUsedIsStillDrawn() throws {
+        for source in [
+            "stateDiagram-v2\n    state \"This is a state description\" as s2",
+            "stateDiagram-v2\n    s2 : This is a state description",
+        ] {
+            let chart = try XCTUnwrap(flowchart(source), source)
+            XCTAssertEqual(chart.nodes.map(\.id), ["s2"], source)
+            XCTAssertEqual(chart.nodes[0].label, "This is a state description", source)
+        }
+    }
+
+    /// `%%` opens a comment wherever it stands, and `class A, B name` names two
+    /// boxes however the comma is spaced.
+    func testACommentEndsTheLineAndAClassMayNameSeveralBoxes() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                stateDiagram-v2
+                    classDef movement fill:#f00
+                %% this is a comment
+                    Still --> Moving %% another comment
+                    class Moving, Still movement
+                """
+            )
+        )
+        XCTAssertEqual(chart.edges.count, 1)
+        XCTAssertEqual(chart.edges[0].label, "")
+        XCTAssertEqual(chart.nodes.compactMap(\.style.fill).count, 2)
+    }
+
+    /// `--` divides a composite state into concurrent regions, each fenced off
+    /// and each with a beginning of its own.
+    func testACompositeStateMayHoldConcurrentRegions() throws {
+        let chart = try XCTUnwrap(
+            flowchart(
+                """
+                stateDiagram-v2
+                    state Active {
+                        [*] --> NumLockOff
+                        --
+                        [*] --> CapsLockOff
+                    }
+                """
+            )
+        )
+        XCTAssertEqual(chart.groups.count, 3)
+        XCTAssertEqual(chart.groups[0].id, "Active")
+        // The two regions stand inside it and are drawn without names.
+        XCTAssertEqual(chart.groups.dropFirst().map(\.title), ["", ""])
+        XCTAssertEqual(chart.groups.dropFirst().compactMap(\.parent), [0, 0])
+        // Each region begins for itself rather than sharing one start.
+        XCTAssertEqual(chart.nodes.filter { $0.shape == .point }.count, 2)
     }
 
     /// `state Big { … }` is a machine inside a machine, drawn in a frame of its
@@ -1042,6 +1099,51 @@ final class MermaidTests: XCTestCase {
                 source: "classDiagram\n Animal <|-- Duck\n note for Duck \"can fly\"",
                 theme: Theme(isDark: false), width: 900))
         XCTAssertGreaterThan(noted.width, plain.width)
+    }
+
+    /// A name in backticks may hold spaces and punctuation, and what kind of
+    /// class it is may be written on the same line as the name.
+    func testAClassMayBeNamedInBackticksAndMarkedOnOneLine() throws {
+        guard
+            case .boxes(let quoted)? = MermaidDiagram.parse(
+                "classDiagram\n class `Animal Class!`\n `Animal Class!` --> `Car Class`")
+        else { return XCTFail("expected a class diagram") }
+        XCTAssertEqual(quoted.boxes.map(\.name), ["Animal Class!", "Car Class"])
+        XCTAssertEqual(quoted.links.count, 1)
+        guard
+            case .boxes(let marked)? = MermaidDiagram.parse(
+                "classDiagram\n class Shape <<interface>>")
+        else { return XCTFail("expected a class diagram") }
+        XCTAssertEqual(marked.boxes.map(\.stereotype), ["interface"])
+        XCTAssertEqual(marked.boxes.map(\.name), ["Shape"])
+    }
+
+    /// A namespace may show one name and be known by another, and may hold a
+    /// namespace of its own.
+    func testANamespaceMayWearANameAndHoldAnother() throws {
+        guard
+            case .boxes(let shown)? = MermaidDiagram.parse(
+                "classDiagram\n namespace Auth[\"Authentication Service\"] {\n class UserService\n }"
+            )
+        else { return XCTFail("expected a class diagram") }
+        XCTAssertEqual(shown.namespaces.map(\.name), ["Authentication Service"])
+        XCTAssertEqual(shown.boxes[0].namespace, 0)
+        guard
+            case .boxes(let nested)? = MermaidDiagram.parse(
+                """
+                classDiagram
+                    namespace Platform {
+                        namespace Auth {
+                            class UserService
+                        }
+                        class Gateway
+                    }
+                """)
+        else { return XCTFail("expected a class diagram") }
+        XCTAssertEqual(nested.namespaces.map(\.name), ["Platform", "Auth"])
+        XCTAssertEqual(nested.namespaces.map(\.parent), [nil, 0])
+        // The class stands in the inner frame, and the plain one in the outer.
+        XCTAssertEqual(nested.boxes.map(\.namespace), [1, 0])
     }
 
     /// A class named in a second namespace, a click, a painting and a class of
@@ -2187,6 +2289,125 @@ final class MermaidTests: XCTestCase {
         guard case .block(let block) = diagram.items[2] else { return XCTFail("expected a block") }
         XCTAssertEqual(block.kind, "alt")
         XCTAssertEqual(block.sections.map(\.title), ["miss", ""])
+    }
+
+    /// A participant may be named on a line of its own, and given something
+    /// else to show; neither draws an arrow.
+    func testAZenUmlParticipantMayStandOnItsOwnAndWearAnAlias() throws {
+        let plain = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  Bob
+                  Alice
+                  Alice->Bob: Hi Bob
+                """
+            )
+        )
+        XCTAssertEqual(plain.participants.map(\.id), ["Bob", "Alice"])
+        XCTAssertEqual(plain.messages.count, 1)
+        let named = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  A as Alice
+                  J as John
+                  A->J: Hello John, how are you?
+                """
+            )
+        )
+        XCTAssertEqual(named.participants.map(\.id), ["A", "J"])
+        XCTAssertEqual(named.participants.map(\.label), ["Alice", "John"])
+    }
+
+    /// A comment belongs to the message under it. One over a participant is
+    /// dropped, which is what ZenUML does with it.
+    func testAZenUmlCommentIsWrittenAboveTheMessageItBelongsTo() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  // a comment on a participant will not be rendered
+                  BookService
+                  // a comment on a message.
+                  // **Markdown** is supported.
+                  BookService.getBook()
+                """
+            )
+        )
+        guard case .comment(let lines) = diagram.items[0] else {
+            return XCTFail("expected the comment above the message")
+        }
+        XCTAssertEqual(lines, ["a comment on a message.", "**Markdown** is supported."])
+        XCTAssertEqual(diagram.items.count, 2)
+        XCTAssertEqual(diagram.messages.map(\.text), ["getBook()"])
+    }
+
+    /// `a = A.method()` draws the call and the answer it is named for, and a
+    /// type written in front of the name says nothing about the picture.
+    func testAZenUmlAssignmentDrawsTheAnswerItIsNamedFor() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  a = A.SyncMessage()
+                  SomeType b = A.SyncMessage()
+                """
+            )
+        )
+        XCTAssertEqual(
+            diagram.messages.map(\.text),
+            ["SyncMessage()", "a", "SyncMessage()", "b"])
+        XCTAssertTrue(diagram.messages[1].dashed)
+        XCTAssertEqual(diagram.messages[1].from, diagram.messages[0].to)
+        XCTAssertEqual(diagram.messages[1].to, diagram.messages[0].from)
+    }
+
+    /// `new A(with, parameters)` makes somebody and says so on the arrow, and a
+    /// bare `@return` says the message under it is an answer.
+    func testAZenUmlMakesParticipantsAndMarksAnAnswer() throws {
+        let made = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  new A1
+                  new A2(with, parameters)
+                """
+            )
+        )
+        XCTAssertEqual(made.messages.map(\.text), ["«create»", "« with,parameters »"])
+        XCTAssertTrue(made.messages.allSatisfy(\.dashed))
+        let answered = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  A->B: call
+                  @return
+                  B->A: result
+                """
+            )
+        )
+        XCTAssertEqual(answered.messages.map(\.dashed), [false, true])
+    }
+
+    /// A call may be written without its parentheses, and a call that opens
+    /// braces still says who is making it.
+    func testAZenUmlCallNeedsNoParenthesesAndKeepsItsCaller() throws {
+        let diagram = try XCTUnwrap(
+            sequence(
+                """
+                zenuml
+                  Client->A.method() {
+                    return x
+                  }
+                  A.SyncMessage
+                """
+            )
+        )
+        XCTAssertEqual(diagram.participants.map(\.id), ["Client", "A"])
+        XCTAssertEqual(diagram.messages.map(\.text), ["method()", "x", "SyncMessage"])
+        XCTAssertEqual(diagram.messages[1].from, 1)
+        XCTAssertEqual(diagram.messages[1].to, 0)
     }
 
     /// Two axes make a line rather than a shape, and zero rings leave a bare

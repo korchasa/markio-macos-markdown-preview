@@ -19,6 +19,10 @@ enum ZenUML {
         var stack: [Frame] = []
         /// Who is calling, innermost last.
         var callers: [Int] = []
+        /// The `//` lines read so far, waiting for the message they belong to.
+        var pending: [String] = []
+        /// Set by a bare `@return`/`@reply`: the next message is an answer.
+        var answers = false
 
         func index(of name: String) -> Int? {
             let id = name.trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
@@ -40,6 +44,31 @@ enum ZenUML {
             diagram.items.append(item)
         }
 
+        /// Put a message down, with whatever was written above it and with the
+        /// dashes a `@return` annotator asked for.
+        func say(_ message: SequenceDiagram.Message) {
+            var message = message
+            if answers {
+                message.dashed = true
+                answers = false
+            }
+            if !pending.isEmpty {
+                append(.comment(pending))
+                pending = []
+            }
+            append(.message(message))
+        }
+
+        /// Who is calling. Nobody having said, it is the nameless figure
+        /// Mermaid draws to the left of everyone.
+        func starter() -> Int? {
+            if let caller = callers.last { return caller }
+            diagram.participants.insert(
+                SequenceDiagram.Participant(id: "__starter", label: "", isActor: true), at: 0)
+            callers = [0]
+            return 0
+        }
+
         /// The openers, with the block kind each becomes.
         let openers: [(word: String, kind: String)] = [
             ("if", "alt"), ("while", "loop"), ("for", "loop"), ("forEach", "loop"),
@@ -48,6 +77,14 @@ enum ZenUML {
 
         for raw in lines {
             var line = raw
+            // A comment belongs to the message under it, so it waits here until
+            // that message is written; one standing over a participant is
+            // dropped, which is what ZenUML does with it.
+            if line.hasPrefix("//") {
+                pending.append(
+                    String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces))
+                continue
+            }
             // `} else if (…) {` is a closing and an opening on one line, so the
             // closing brace is dealt with before anything else on it.
             if line.hasPrefix("}") {
@@ -97,6 +134,14 @@ enum ZenUML {
                 continue
             }
             if word.hasPrefix("@") {
+                // `@return` and `@reply` standing alone say that the message
+                // written under them is an answer rather than a call.
+                if word == "@return" || word == "@reply",
+                    line.dropFirst(word.count).trimmingCharacters(in: .whitespaces).isEmpty
+                {
+                    answers = true
+                    continue
+                }
                 // `@Starter(A)` says where the first call comes from; every other
                 // `@Word Name` is a participant with a kind this does not draw.
                 if word == "@Starter" {
@@ -131,11 +176,36 @@ enum ZenUML {
                 // Mermaid draws the diagram without it.
                 guard callers.count > 1 else { continue }
                 let words = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
-                append(
-                    .message(
-                        SequenceDiagram.Message(
-                            from: callers[callers.count - 1], to: callers[callers.count - 2],
-                            text: words, dashed: true)))
+                say(
+                    SequenceDiagram.Message(
+                        from: callers[callers.count - 1], to: callers[callers.count - 2],
+                        text: words, dashed: true))
+                continue
+            }
+            // `new A(with, parameters)` makes a participant and says so on the
+            // arrow that makes it.
+            if word == "new" {
+                let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
+                let name = String(rest.prefix(while: { $0 != "(" }))
+                    .trimmingCharacters(in: .whitespaces)
+                let args = arguments(
+                    String(rest.dropFirst(name.count))
+                        .trimmingCharacters(in: .whitespaces))
+                guard let caller = starter(), let made = index(of: name) else { return nil }
+                say(
+                    SequenceDiagram.Message(
+                        from: caller, to: made,
+                        text: args.isEmpty ? "«create»" : "« \(args) »", dashed: true))
+                continue
+            }
+            // A word on its own declares a participant, and `A as Alice` gives
+            // it something else to show. Neither draws an arrow.
+            if let declared = declaration(line) {
+                guard let index = index(of: declared.id) else { return nil }
+                if !declared.label.isEmpty { diagram.participants[index].label = declared.label }
+                // A comment over a participant is not drawn, so it is dropped
+                // rather than carried down to the next message.
+                pending = []
                 continue
             }
 
@@ -144,6 +214,13 @@ enum ZenUML {
             if body.hasSuffix("{") {
                 opens = true
                 body = body.dropLast().trimmingCharacters(in: .whitespaces)[...]
+            }
+            // `a = A.method()`, and `SomeType a = A.method()`: the call is the
+            // arrow and the name on the left is what comes back on the answer.
+            var answer = ""
+            if let split = assignment(body) {
+                answer = split.name
+                body = split.call[...]
             }
             if callers.isEmpty, !body.contains("->") {
                 // A call nobody made comes from the nameless figure Mermaid
@@ -155,14 +232,22 @@ enum ZenUML {
             guard var message = self.call(body, from: callers.last, index: index)?.message else {
                 return nil
             }
-            message.activates = opens
-            append(.message(message))
+            message.activates = opens || !answer.isEmpty
+            say(message)
+            if !answer.isEmpty {
+                append(
+                    .message(
+                        SequenceDiagram.Message(
+                            from: message.to, to: message.from, text: answer, dashed: true)))
+                append(.deactivate(message.to))
+            }
+            // The first message says who is calling from now on, whether or not
+            // it opens braces: a caller nobody pushed leaves every reply inside
+            // those braces with nowhere to go back to.
+            if callers.isEmpty { callers = [message.from] }
             if opens {
                 callers.append(message.to)
                 stack.append(.call)
-            } else if callers.isEmpty {
-                // The first plain `A->B` message says who is calling from now on.
-                callers = [message.from]
             }
         }
         // A brace never closed is closed at the end of the diagram, which is
@@ -206,13 +291,64 @@ enum ZenUML {
             )
         }
         // `B.method(args)`: the receiver is before the first dot, and the call
-        // itself is what the arrow is labelled with.
-        guard let dot = body.firstIndex(of: "."), body.hasSuffix(")"),
+        // itself is what the arrow is labelled with. The parentheses are the
+        // author's to leave off — `A.SyncMessage` is the same call as
+        // `A.SyncMessage()` and is drawn as what is written.
+        guard let dot = body.firstIndex(of: "."),
             let to = index(String(body[body.startIndex..<dot]))
         else { return nil }
-        let method = String(body[body.index(after: dot)...])
+        let method = tightened(String(body[body.index(after: dot)...]))
         guard !method.isEmpty else { return nil }
         return (SequenceDiagram.Message(from: from, to: to, text: method, dashed: false), false)
+    }
+
+    /// `Bob` standing on its own, or `A as Alice`: somebody taking part and
+    /// nothing else. A name is letters, digits and underscores, so a call and a
+    /// fragment of prose both fall through to be read as what they are.
+    private static func declaration(_ line: Substring) -> (id: String, label: String)? {
+        let words = line.split(separator: " ", omittingEmptySubsequences: true)
+        if words.count == 1, isName(words[0]) { return (String(words[0]), "") }
+        guard words.count >= 3, words[1] == "as", isName(words[0]) else { return nil }
+        return (String(words[0]), words.dropFirst(2).joined(separator: " "))
+    }
+
+    private static func isName(_ word: Substring) -> Bool {
+        !word.isEmpty && word.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    /// `a = A.method()` and `SomeType a = A.method()` split into the name the
+    /// answer carries and the call that earns it. A type written in front of
+    /// the name says nothing about the picture, so the name alone is kept.
+    /// `==` is a comparison rather than an assignment and is left alone.
+    private static func assignment(_ line: Substring) -> (name: String, call: String)? {
+        guard let equals = line.firstIndex(of: "=") else { return nil }
+        let after = line.index(after: equals)
+        guard after < line.endIndex, line[after] != "=" else { return nil }
+        if equals > line.startIndex, "=!<>".contains(line[line.index(before: equals)]) {
+            return nil
+        }
+        let names = line[line.startIndex..<equals]
+            .split(separator: " ", omittingEmptySubsequences: true)
+        guard (1...2).contains(names.count), names.allSatisfy(isName),
+            let last = names.last
+        else { return nil }
+        let call = line[after...].trimmingCharacters(in: .whitespaces)
+        guard !call.isEmpty else { return nil }
+        return (String(last), call)
+    }
+
+    /// What `new A(with, parameters)` writes on its arrow: `with,parameters`.
+    private static func arguments(_ text: String) -> String {
+        guard text.hasPrefix("("), text.hasSuffix(")") else { return "" }
+        return tightened(String(text.dropFirst().dropLast()))
+    }
+
+    /// ZenUML writes an argument list with no space after a comma, and a label
+    /// that reads one way in the source and another in the picture is a
+    /// difference a reader would notice.
+    private static func tightened(_ text: String) -> String {
+        text.split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: ",")
     }
 
     /// `(more == true)` reads better over a frame as `more == true`.

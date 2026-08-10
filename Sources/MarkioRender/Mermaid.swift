@@ -252,9 +252,13 @@ enum MermaidDiagram {
         /// than thrown away with the rest of the whitespace.
         var indents: [Int] = []
         for raw in source.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            // `%%` is a Mermaid comment, and a blank line means nothing here.
-            guard !line.isEmpty, !line.hasPrefix("%%") else { continue }
+            // `%%` opens a comment wherever it stands and runs to the end of the
+            // line, which is what every one of Mermaid's own readers does with
+            // it — a comment after an edge is not part of that edge's words.
+            let said = raw.range(of: "%%").map { raw[raw.startIndex..<$0.lowerBound] } ?? raw
+            let line = said.trimmingCharacters(in: .whitespaces)
+            // A blank line means nothing here, and neither does a bare comment.
+            guard !line.isEmpty else { continue }
             lines.append(Substring(line))
             indents.append(raw.prefix(while: { $0 == " " || $0 == "\t" }).count)
         }
@@ -424,8 +428,13 @@ enum StateDiagram {
         var notes = 0
         /// The composite states currently open, innermost last. `[*]` inside one
         /// is that machine's own beginning and end, not the whole diagram's, so
-        /// the points are named after the state that holds them.
-        var open: [String] = []
+        /// the points are named after the region that holds them.
+        ///
+        /// `start` is where in the body that state's contents begin, which is
+        /// what lets the first of its concurrent regions be fenced off after the
+        /// fact — nothing says there will be a second one until `--` appears.
+        var open: [(name: String, scope: String, start: Int, regions: Int)] = []
+        var regions = 0
         for line in lines {
             let word = String(line.prefix(while: { !$0.isWhitespace }))
             let rest = line.dropFirst(word.count).trimmingCharacters(in: .whitespaces)
@@ -436,9 +445,28 @@ enum StateDiagram {
                 continue
             }
             if line == "}" {
-                guard !open.isEmpty else { return nil }
-                open.removeLast()
+                guard let closing = open.popLast() else { return nil }
+                // The last of its regions closes with it.
+                if closing.regions > 0 { body.append("end") }
                 body.append("end")
+                continue
+            }
+            // `--` divides a composite state into concurrent regions, each of
+            // which Mermaid fences off and draws beside the others. A region is
+            // a frame inside a frame, which this already knows how to place.
+            if line.count >= 2, line.allSatisfy({ $0 == "-" }), !open.isEmpty {
+                var top = open[open.count - 1]
+                if top.regions == 0 {
+                    body.insert(Substring("subgraph __region\(regions)[ ]"), at: top.start)
+                    regions += 1
+                    top.regions = 1
+                }
+                body.append("end")
+                body.append(Substring("subgraph __region\(regions)[ ]"))
+                regions += 1
+                top.regions += 1
+                top.scope = "\(top.name)__\(top.regions)"
+                open[open.count - 1] = top
                 continue
             }
             if var note = openNote {
@@ -491,14 +519,19 @@ enum StateDiagram {
                     let tail = rest[rest.index(after: close)...]
                         .trimmingCharacters(in: .whitespaces)
                     guard tail.hasPrefix("as ") else { return nil }
-                    names[String(tail.dropFirst(3)).trimmingCharacters(in: .whitespaces)] = label
+                    let id = String(tail.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                    guard !id.isEmpty, !id.contains(" ") else { return nil }
+                    names[id] = label
+                    // A state named here and mentioned nowhere else is still a
+                    // state, so it is written into the body as one.
+                    body.append(Substring(id))
                     continue
                 }
                 guard rest.hasSuffix("{") else { return nil }
                 let name = String(rest.dropLast()).trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty, !name.contains(" ") else { return nil }
-                open.append(name)
                 body.append(Substring("subgraph \(name)"))
+                open.append((name: name, scope: name, start: body.count, regions: 0))
                 continue
             }
             // The words a flowchart already knows are handed to it as written.
@@ -523,6 +556,7 @@ enum StateDiagram {
                     .trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty, !name.contains(" "), !label.isEmpty else { return nil }
                 names[name] = label
+                body.append(Substring(name))
                 continue
             }
             var from = String(line[line.startIndex..<arrow.lowerBound])
@@ -535,7 +569,7 @@ enum StateDiagram {
                 tail = String(tail[tail.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
             }
             guard !from.isEmpty, !tail.isEmpty else { return nil }
-            let scope = open.last ?? ""
+            let scope = open.last?.scope ?? ""
             if from == "[*]" { from = "__start\(scope)" }
             if tail == "[*]" { tail = "__end\(scope)" }
             let arrowText = label.isEmpty ? "-->" : "-->|\(label)|"
@@ -1139,10 +1173,15 @@ struct Flowchart {
     /// nothing to do, which is how Mermaid treats them.
     private mutating func applyClass(_ rest: String) -> Bool {
         let parts = rest.split(separator: " ", omittingEmptySubsequences: true)
-        guard parts.count == 2 else { return false }
-        guard let style = classes[String(parts[1])] else { return true }
-        for name in parts[0].split(separator: ",") {
-            let id = name.trimmingCharacters(in: .whitespaces)
+        // The last word is the class; everything before it is the list of boxes
+        // asking for it, and the comma between two of them may carry a space.
+        guard parts.count >= 2, let asked = parts.last else { return false }
+        let names = parts.dropLast().joined(separator: " ").split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard !names.isEmpty, names.allSatisfy({ !$0.isEmpty && !$0.contains(" ") })
+        else { return false }
+        guard let style = classes[String(asked)] else { return true }
+        for id in names {
             guard let index = nodes.firstIndex(where: { $0.id == id }) else { continue }
             nodes[index].style.merge(style)
         }
@@ -1759,6 +1798,8 @@ struct SequenceDiagram {
         case block(Block)
         case activate(Int)
         case deactivate(Int)
+        /// A run of ZenUML `//` lines, written above the message they belong to.
+        case comment([String])
     }
 
     var participants: [Participant]
@@ -1817,6 +1858,7 @@ struct SequenceDiagram {
                 return .block(block)
             case .activate(let who): return .activate(moved[who])
             case .deactivate(let who): return .deactivate(moved[who])
+            case .comment(let lines): return .comment(lines)
             }
         }
     }
@@ -1832,7 +1874,7 @@ struct SequenceDiagram {
             switch item {
             case .message(let message): return [message]
             case .block(let block): return block.sections.flatMap { messages(in: $0.items) }
-            case .note, .activate, .deactivate: return []
+            case .note, .activate, .deactivate, .comment: return []
             }
         }
     }

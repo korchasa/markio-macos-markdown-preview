@@ -115,7 +115,11 @@ public enum DocumentRenderer {
         // narrower than the room is drawn again at its own size.
         let tight = min(width, drawing.contentWidth + 32)
         if tight < width { drawing = MermaidLayout.draw(parsed, theme: theme, width: tight) }
-        let size = CGSize(width: tight, height: drawing.size.height)
+        // Laid out again at its own size, a picture may come back a little wider
+        // than the measurement that asked for that size — a word laid beside a
+        // line moves with the line. A bitmap cut to the earlier figure clips it.
+        let size = CGSize(
+            width: min(width, max(tight, drawing.size.width)), height: drawing.size.height)
         guard size.width > 0, size.height > 0,
             let context = CGContext(
                 data: nil,

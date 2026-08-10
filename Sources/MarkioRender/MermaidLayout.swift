@@ -199,6 +199,10 @@ enum MermaidLayout {
             drawing.decorations = drawing.decorations.map { moved($0, right: right, down: down) }
         }
         drawing.size.height = max(drawing.size.height, box.maxY + down + padding)
+        // And as wide: a word laid beside a line near the right-hand edge used
+        // to be cut off by the bitmap even after the picture had been measured,
+        // because only the height grew to hold what was drawn.
+        drawing.size.width = max(drawing.size.width, box.maxX + right + padding)
         return drawing
     }
 
@@ -385,51 +389,83 @@ enum MermaidLayout {
         let titleRoom =
             measure(text("X", font: font, color: theme.palette.text)).height
             + 10 * metrics.scale
-        /// Which top-level unit each box belongs to, and where inside it stands.
-        var unitOf = [Int](repeating: 0, count: sizes.count)
-        var inside = [CGRect](repeating: .zero, count: sizes.count)
-        var unitSizes: [CGSize] = []
-        var wallOf: [Int: Int] = [:]
-        for (index, space) in diagram.namespaces.enumerated() {
-            let members = space.members
-            let local = Dictionary(uniqueKeysWithValues: members.enumerated().map { ($1, $0) })
+        /// What stands directly inside one container: a class, or a namespace
+        /// with a picture of its own.
+        enum Unit {
+            case box(Int)
+            case wall(Int)
+        }
+
+        /// Everything inside one container, measured from that container's own
+        /// corner. A namespace inside a namespace is placed by calling this
+        /// again, so nesting needs no case of its own.
+        func place(_ space: Int?) -> (size: CGSize, boxes: [Int: CGRect], walls: [Int: CGRect]) {
+            var units: [Unit] = []
+            for (index, box) in diagram.boxes.enumerated() where box.namespace == space {
+                units.append(.box(index))
+            }
+            for (index, child) in diagram.namespaces.enumerated() where child.parent == space {
+                units.append(.wall(index))
+            }
+            var held: [Int: (size: CGSize, boxes: [Int: CGRect], walls: [Int: CGRect])] = [:]
+            var unitSizes: [CGSize] = []
+            for unit in units {
+                switch unit {
+                case .box(let index): unitSizes.append(sizes[index])
+                case .wall(let index):
+                    let laid = place(index)
+                    held[index] = laid
+                    unitSizes.append(
+                        CGSize(
+                            width: laid.size.width + inset * 2,
+                            height: laid.size.height + inset * 2 + titleRoom))
+                }
+            }
+            // Which unit each class belongs to, however deep inside it stands:
+            // a line between two classes in different frames ranks the frames.
+            var unitOf: [Int: Int] = [:]
+            for (position, unit) in units.enumerated() {
+                switch unit {
+                case .box(let index): unitOf[index] = position
+                case .wall(let index):
+                    for inside in held[index]?.boxes.keys ?? [:].keys { unitOf[inside] = position }
+                }
+            }
             let links = diagram.links.compactMap { link -> (Int, Int)? in
-                guard let from = local[link.from], let to = local[link.to] else { return nil }
+                guard let from = unitOf[link.from], let to = unitOf[link.to], from != to
+                else { return nil }
                 return (from, to)
             }
-            let (laid, content) = ranked(
-                sizes: members.map { sizes[$0] }, links: links, down: down, gap: gap,
-                metrics: metrics)
-            for (offset, member) in members.enumerated() {
-                unitOf[member] = unitSizes.count
-                inside[member] = laid[offset].offsetBy(dx: inset, dy: inset + titleRoom)
+            let (places, content) = ranked(
+                sizes: unitSizes, links: links, down: down, gap: gap, metrics: metrics)
+            var boxes: [Int: CGRect] = [:]
+            var walls: [Int: CGRect] = [:]
+            for (position, unit) in units.enumerated() {
+                switch unit {
+                case .box(let index):
+                    boxes[index] = CGRect(origin: places[position].origin, size: sizes[index])
+                case .wall(let index):
+                    walls[index] = places[position]
+                    guard let laid = held[index] else { continue }
+                    let dx = places[position].minX + inset
+                    let dy = places[position].minY + inset + titleRoom
+                    for (inside, rect) in laid.boxes {
+                        boxes[inside] = rect.offsetBy(dx: dx, dy: dy)
+                    }
+                    for (inside, rect) in laid.walls {
+                        walls[inside] = rect.offsetBy(dx: dx, dy: dy)
+                    }
+                }
             }
-            wallOf[unitSizes.count] = index
-            unitSizes.append(
-                CGSize(
-                    width: content.width + inset * 2,
-                    height: content.height + inset * 2 + titleRoom))
+            return (size: content, boxes: boxes, walls: walls)
         }
-        for (index, box) in diagram.boxes.enumerated() where box.namespace == nil {
-            unitOf[index] = unitSizes.count
-            inside[index] = CGRect(origin: .zero, size: sizes[index])
-            unitSizes.append(sizes[index])
+
+        let laid = place(nil)
+        let frames = sizes.indices.map { laid.boxes[$0] ?? .zero }
+        let walls = diagram.namespaces.indices.compactMap { index in
+            laid.walls[index].map { (rect: $0, name: diagram.namespaces[index].name) }
         }
-        let between = diagram.links.compactMap { link -> (Int, Int)? in
-            let from = unitOf[link.from]
-            let to = unitOf[link.to]
-            return from == to ? nil : (from, to)
-        }
-        let (units, content) = ranked(
-            sizes: unitSizes, links: between, down: down, gap: gap, metrics: metrics)
-        let frames = inside.enumerated().map { index, local in
-            local.offsetBy(
-                dx: units[unitOf[index]].minX, dy: units[unitOf[index]].minY)
-        }
-        let walls = wallOf.keys.sorted().map {
-            (rect: units[$0], name: diagram.namespaces[wallOf[$0]!].name)
-        }
-        return (frames, content, walls)
+        return (frames, laid.size, walls)
     }
 
     /// The titled frame a `namespace` draws around the classes inside it.
@@ -4410,8 +4446,14 @@ enum MermaidLayout {
             ? length / 2 : min(max(clearance, base), length - clearance)
         let (anchor, heading) = point(along: path, at: along)
         // Sideways room is the label's own size, so two words either side of a
-        // vertical line clear each other however long they are.
-        let across = CGPoint(x: -heading.y, y: heading.x)
+        // vertical line clear each other however long they are. Which side is
+        // which must not depend on the way the arrow runs: two states pointing
+        // at each other are one pair, and a normal that turns over with the
+        // arrow puts both sets of words on the same side of it.
+        var across = CGPoint(x: -heading.y, y: heading.x)
+        if heading.y < -0.0001 || (abs(heading.y) <= 0.0001 && heading.x < 0) {
+            across = CGPoint(x: -across.x, y: -across.y)
+        }
         let step = abs(heading.y) > abs(heading.x) ? size.width + 10 : size.height + 6
         let middle = CGPoint(
             x: anchor.x + across.x * side * step,
@@ -4449,7 +4491,7 @@ enum MermaidLayout {
             switch item {
             case .message(let message): return [message]
             case .block(let block): return block.sections.flatMap { messages($0.items) }
-            case .note, .activate, .deactivate: return []
+            case .note, .activate, .deactivate, .comment: return []
             }
         }
     }
@@ -4692,6 +4734,30 @@ enum MermaidLayout {
                         metrics: metrics)
                     if message.deactivates { finish(message.from, at: y) }
                     y += message.from == message.to ? metrics.messageGap * 1.5 : metrics.messageGap
+                case .comment(let lines):
+                    // A comment is written over the picture in the faint ink a
+                    // note's words use, not in a box: it belongs to the message
+                    // under it rather than to a participant.
+                    let lineHeight = measure(text("X", font: font, color: colour)).height
+                    for words in lines {
+                        var x = left
+                        for (bold, run) in emphasised(words) where !run.isEmpty {
+                            let line = text(
+                                run, font: bold ? scaled(theme.bodyBold, by: metrics.scale) : font,
+                                color: theme.palette.secondaryText)
+                            let size = measure(line)
+                            body.append(
+                                .glyphs(
+                                    line,
+                                    origin: CGPoint(x: x, y: y + size.height - descent(line))))
+                            x += size.width
+                        }
+                        reach = max(reach, x - right)
+                        y += lineHeight + 2 * metrics.scale
+                    }
+                    // The message this belongs to writes its own words above its
+                    // arrow, so the room for them is left here.
+                    y += lineHeight + metrics.messageGap * 0.25
                 case .note(let note):
                     let drawn = self.note(
                         note, centres: centres, boxWidth: boxWidth, y: y, theme: theme,
@@ -5731,6 +5797,18 @@ enum MermaidLayout {
     private static func scaled(_ font: CTFont, by scale: CGFloat) -> CTFont {
         guard scale != 1 else { return font }
         return CTFontCreateCopyWithAttributes(font, CTFontGetSize(font) * scale, nil, nil)
+    }
+
+    /// A comment's words split into runs, each with whether it is emphasised.
+    ///
+    /// ZenUML renders Markdown inside a comment, and `**bold**` is the part of
+    /// it a reader would miss: printed as written, the stars are noise, and
+    /// dropped without a change of weight the author's emphasis is gone. A
+    /// marker nobody closed is not emphasis, so the words are left as typed.
+    private static func emphasised(_ words: String) -> [(bold: Bool, run: String)] {
+        let parts = words.components(separatedBy: "**")
+        guard parts.count > 2, parts.count % 2 == 1 else { return [(false, words)] }
+        return parts.enumerated().map { (index, part) in (index % 2 == 1, part) }
     }
 
     private static func text(_ string: String, font: CTFont, color: CGColor) -> CTLine {
