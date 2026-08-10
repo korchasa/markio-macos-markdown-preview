@@ -1,19 +1,23 @@
 /**
- * `deno task app` — release build packaged as a proper Markio2.app bundle.
+ * `deno task app` — release build packaged as a proper Markio.app bundle.
  *
  * A bundle (Info.plist + bundle id) is what makes macOS keep a single instance
  * and route every open into it, one window per document. `prod` and `dist`
  * build on this.
+ *
+ * Two families of name meet here. `swift build` writes its products under the
+ * target names — Markio2, Markio2QuickLook — while what ships is named Markio.
+ * Both come from `identity.ts` so the difference is stated once rather than
+ * spelled out in string literals that can drift apart.
  */
 
 import { run, section } from "./lib.ts";
+import { APP_NAME, APP_PRODUCT, QL_NAME, QL_PLIST, QL_PRODUCT } from "./identity.ts";
 
-export const APP_NAME = "Markio2";
 export const APP_BUNDLE = `.build/${APP_NAME}.app`;
-const RELEASE_BIN = `.build/release/${APP_NAME}`;
+const RELEASE_BIN = `.build/release/${APP_PRODUCT}`;
 
-const QL_NAME = "Markio2QuickLook";
-const QL_BIN = `.build/release/${QL_NAME}`;
+const QL_BIN = `.build/release/${QL_PRODUCT}`;
 export const QL_APPEX = `${APP_BUNDLE}/Contents/PlugIns/${QL_NAME}.appex`;
 
 export async function app(): Promise<void> {
@@ -57,7 +61,7 @@ export async function app(): Promise<void> {
   section(`Assembling ${QL_APPEX}`);
   await Deno.mkdir(`${QL_APPEX}/Contents/MacOS`, { recursive: true });
   await Deno.copyFile(QL_BIN, `${QL_APPEX}/Contents/MacOS/${QL_NAME}`);
-  await Deno.copyFile(`packaging/${QL_NAME}-Info.plist`, `${QL_APPEX}/Contents/Info.plist`);
+  await Deno.copyFile(QL_PLIST, `${QL_APPEX}/Contents/Info.plist`);
   // Ad-hoc sign the extension only. pluginkit refuses to load an unsigned or
   // unsandboxed extension even locally; the host app stays unsigned here, and
   // everything is re-signed outside this repository, nested bundle first.
@@ -67,7 +71,7 @@ export async function app(): Promise<void> {
       "--sign",
       "-",
       "--entitlements",
-      `packaging/${QL_NAME}.entitlements`,
+      `packaging/${QL_PRODUCT}.entitlements`,
       QL_APPEX,
     ],
   });

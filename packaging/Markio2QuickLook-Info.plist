@@ -3,13 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>Markio2QuickLook</string>
+	<string>MarkioQuickLook</string>
+	<!-- Registered as its own Bundle ID resource beside the host app's, and
+	     signed with its own Mac App Store profile before the app around it. -->
 	<key>CFBundleIdentifier</key>
-	<string>dev.markio.two.quicklook</string>
+	<string>dev.markio.app.quicklook</string>
 	<key>CFBundleName</key>
-	<string>Markio 2 Quick Look</string>
+	<string>Markio Quick Look</string>
 	<key>CFBundleDisplayName</key>
-	<string>Markio 2 Quick Look</string>
+	<string>Markio Quick Look</string>
 	<!-- An app extension is an XPC service in bundle-format terms. -->
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
@@ -29,10 +31,12 @@
 	<string>macosx</string>
 	<key>DTSDKName</key>
 	<string>macosx14.0</string>
+	<!-- An extension whose version disagrees with its host is rejected at
+	     ingest, so these track the app's rather than living their own life. -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>8</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSExtension</key>

@@ -3,19 +3,35 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Markio 2</string>
+	<string>Markio</string>
 	<key>CFBundleDisplayName</key>
-	<string>Markio 2</string>
+	<string>Markio</string>
 	<key>CFBundleExecutable</key>
-	<string>Markio2</string>
+	<string>Markio</string>
+	<!-- The identity the App Store record was registered under. The signing
+	     certificates and provisioning profiles held outside this repository are
+	     issued for this id and for dev.markio.app.quicklook, so changing either
+	     string leaves nothing able to sign the bundle. The Swift targets stay
+	     Markio2: this is the second implementation of one product, not a second
+	     product. `scripts/identity.ts` is the gate that keeps them in step. -->
 	<key>CFBundleIdentifier</key>
-	<string>dev.markio.two</string>
+	<string>dev.markio.app</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>8</string>
+	<!-- English only. Our own menu items ship untranslated, so declaring more
+	     locales makes AppKit render ITS standard items in the system language
+	     beside ours — a menu bar in two languages at once. One declared locale
+	     keeps the whole interface in one. -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+	</array>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>LSMinimumSystemVersion</key>
