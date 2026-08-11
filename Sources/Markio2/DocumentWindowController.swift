@@ -120,6 +120,18 @@ final class DocumentWindowController: NSWindowController {
         let separator = NSBox()
         separator.boxType = .separator
         paneDivider.boxType = .separator
+        // A separator box works out which way it runs from its own frame, and
+        // until it has one it reports an intrinsic height of a single point and
+        // holds it at 750 — far above the window's size preference at 250. The
+        // pane divider is created with no frame at all and joins the layout on
+        // the switch to two columns, so that one point is what the window's
+        // height got fitted to: 200 of reading area over the 30-point bottom
+        // bar. Both boxes are told outright not to ask for a height; their
+        // width is given below.
+        for box in [separator, paneDivider] {
+            box.setContentHuggingPriority(.init(1), for: .vertical)
+            box.setContentCompressionResistancePriority(.init(1), for: .vertical)
+        }
 
         let bottomBar = buildBottomBar()
 

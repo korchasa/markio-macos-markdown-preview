@@ -29,13 +29,16 @@ final class DocumentWindowTests: XCTestCase {
         super.tearDown()
     }
 
-    private func window() throws -> NSWindow {
+    private func controller() throws -> DocumentWindowController {
         let document = MarkdownDocument()
         try document.read(
             from: Data("# One\n\nTwo paragraphs, so there is something to lay out.\n".utf8),
             ofType: "net.daringfireball.markdown")
-        let controller = DocumentWindowController(document: document)
-        return try XCTUnwrap(controller.window)
+        return DocumentWindowController(document: document)
+    }
+
+    private func window() throws -> NSWindow {
+        try XCTUnwrap(try controller().window)
     }
 
     /// A drag on a window edge reaches the layout as a size constraint at
@@ -72,5 +75,33 @@ final class DocumentWindowTests: XCTestCase {
         window.layoutIfNeeded()
         // 810 of reading area and the 30-point bottom bar.
         XCTAssertEqual(content.frame.height, 840, accuracy: 1)
+    }
+
+    /// Putting the baseline in a column of its own must not shrink the window.
+    ///
+    /// The divider between the two columns is a separator box, and a separator
+    /// box that has no frame yet reports an intrinsic height of one point and
+    /// holds it at 750 — above the window's own size preference at 250. So the
+    /// window used to be fitted to that one point and fell to the required
+    /// floor: 200 points of reading area over the 30-point bottom bar, a title
+    /// bar above a sliver, below even the window's declared minimum of 320. The
+    /// store's comparison screenshot came out of that — two columns of content
+    /// along the bottom of an empty page.
+    func testSideBySideDoesNotCollapseTheWindow() throws {
+        let controller = try controller()
+        let window = try XCTUnwrap(controller.window)
+        let content = try XCTUnwrap(window.contentView)
+        window.layoutIfNeeded()
+        let before = content.frame.height
+        XCTAssertGreaterThan(before, 500, "the window has to start tall to prove anything")
+
+        let baseline = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).md")
+        try Data("# One\n\nOne paragraph, so the two versions differ.\n".utf8).write(to: baseline)
+        defer { try? FileManager.default.removeItem(at: baseline) }
+
+        controller.compare(with: baseline, sideBySide: true)
+        window.layoutIfNeeded()
+        XCTAssertEqual(content.frame.height, before, accuracy: 1)
     }
 }

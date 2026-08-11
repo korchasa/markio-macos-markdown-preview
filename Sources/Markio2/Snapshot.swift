@@ -201,16 +201,27 @@ enum Snapshot {
                 throw Failure.noBaseline(name)
             }
             controller.compare(with: baseline, sideBySide: shot.sideBySide)
+            // Building the comparison replaces the document and reveals the
+            // block the reader was on, which is the right thing for a reader
+            // and the wrong thing here: the position came from the shot before
+            // this one, and in the merged document it lands past the end. The
+            // scroll below therefore has to happen after the rebuild, not
+            // instead of it.
+            window.layoutIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
+
+        // Every shot says where it starts, so none of them inherits a position
+        // from the one before.
         if let anchor = shot.anchor {
             controller.jumpToAnchor(anchor)
-        } else if shot.compare == nil {
+        } else {
             controller.scrollToTop()
         }
 
         window.layoutIfNeeded()
-        // One turn of the run loop, so a scroll or a rebuilt comparison has
-        // landed before the picture is taken.
+        // One turn of the run loop, so the scroll has landed — including in the
+        // baseline column, which follows the main one through a notification.
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     }
 
