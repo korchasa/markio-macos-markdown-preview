@@ -1,4 +1,4 @@
-# Markio 2 — Rules
+# Markio — Rules
 
 Read `documents/requirements.md` and `documents/design.md` before changing
 anything. This file is the rulebook; it does not repeat them.
@@ -19,7 +19,7 @@ means the change is wrong.
   looks on a small file.
 - **The app never writes a document it opens.**
 - **Signing, packaging and upload happen outside this repository.** `deno task
-  dist` produces an unsigned bundle at `.build/Markio2.app`; nothing here
+  dist` produces an unsigned bundle at `.build/Markio.app`; nothing here
   describes or performs a release, and no workflow uploads anything.
 
 ## Commands
@@ -33,7 +33,7 @@ target.
   faster — it compiles the whole module at once and rejects captures debug lets
   through, so leaving it out hides errors until someone wants a bundle.
 - `deno task test` — tests alone
-- `deno task app` — build `.build/Markio2.app`
+- `deno task app` — build `.build/Markio.app`
 - `deno task dev <file.md>` — build and open a document
 - `deno task bench` — parse cost and footprint at 1, 8 and 32 MB
 - `deno task fmt` — format Swift and the task scripts
@@ -45,7 +45,7 @@ target.
 Do not ask someone to look at the screen. Two paths draw through the same code:
 
 ```bash
-.build/Markio2.app/Contents/MacOS/Markio2 doc.md --capture=/tmp/shot.png
+.build/Markio.app/Contents/MacOS/Markio doc.md --capture=/tmp/shot.png
 .build/release/markio2-bench snapshot doc.md /tmp/shot.png 900 900 dark 1200
 ```
 

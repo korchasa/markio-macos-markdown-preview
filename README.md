@@ -1,4 +1,4 @@
-# Markio 2
+# Markio
 
 A native macOS Markdown viewer with no web view, no HTML and no JavaScript.
 
@@ -9,7 +9,7 @@ of the text living inside a renderer. The point of that is what it buys on
 large files: an 8 MB document opens as fast as an 8 KB one, and scrolling
 through a 32 MB one measures the same as scrolling through a short note.
 
-Markio 2 reads. It never writes a file it opens.
+Markio reads. It never writes a file it opens.
 
 ## What it renders
 
@@ -88,7 +88,7 @@ one accepts, and the release build is what a reader ends up running.
 
 Other verbs:
 
-- `deno task app` — build the `.app` bundle into `.build/Markio2.app`
+- `deno task app` — build the `.app` bundle into `.build/Markio.app`
 - `deno task dev <file.md>` — build and open a document
 - `deno task test` — the test suite alone
 - `deno task bench` — parse cost and memory footprint at 1, 8 and 32 MB
@@ -100,7 +100,7 @@ The app can draw its own window into a PNG, which is how rendering is checked
 without a screen:
 
 ```bash
-.build/Markio2.app/Contents/MacOS/Markio2 doc.md --capture=/tmp/shot.png
+.build/Markio.app/Contents/MacOS/Markio doc.md --capture=/tmp/shot.png
 ```
 
 Add `--capture-hover=<x>,<y>` to park the pointer first, for the controls that
