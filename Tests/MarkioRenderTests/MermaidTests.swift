@@ -3206,4 +3206,47 @@ final class MermaidTests: XCTestCase {
         let box = try XCTUnwrap(layout.box(at: 0))
         XCTAssertFalse(box.segments.isEmpty)
     }
+
+    /// Nothing a diagram writes may be printed over anything else it writes.
+    ///
+    /// Labels were only ever spread against edges sharing an end or a pair of
+    /// ends, so two that merely came close were left on top of each other, and
+    /// one pushed clear of another could land on a box instead: a state machine
+    /// with a state that goes out and comes back printed "Stop comparing" over
+    /// "Cmd+F", and then over "Searching".
+    func testNothingInAStateDiagramIsPrintedOverAnythingElse() throws {
+        let source = """
+            stateDiagram-v2
+                [*] --> Reading
+                Reading --> Searching: Cmd+F
+                Searching --> Reading: Esc
+                Reading --> Comparing: File Compare
+                Comparing --> Reading: Stop comparing
+                Reading --> [*]: Cmd+W
+            """
+        let diagram = try XCTUnwrap(MermaidDiagram.parse(source))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        // Words are drawn from their baseline, so the box they cover is worked
+        // back from the font's own ascent and descent.
+        var written: [CGRect] = []
+        for decoration in drawing.decorations {
+            guard case .glyphs(let line, let origin) = decoration else { continue }
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            var leading: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+            written.append(
+                CGRect(
+                    x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        // Three states, two ends and five transitions.
+        XCTAssertEqual(written.count, 8)
+        for first in written.indices {
+            for second in (first + 1)..<written.count {
+                XCTAssertFalse(
+                    written[first].intersects(written[second]),
+                    "\(written[first]) is printed over \(written[second])")
+            }
+        }
+    }
 }

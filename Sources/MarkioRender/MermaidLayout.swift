@@ -3494,6 +3494,11 @@ enum MermaidLayout {
         // Two labelled edges leaving one node run side by side, so their words
         // are spaced out along the line instead of landing on each other.
         var written: [Flowchart.End: Int] = [:]
+        // What an edge's words have to keep off: the boxes, and the words of
+        // every edge drawn before this one. A label pushed clear of another
+        // label is no better if it lands on a state, so the boxes are in from
+        // the start.
+        var plates: [CGRect] = placed
         // Two nodes joined both ways — a state and the state it goes back to —
         // have their words laid either side of the line rather than on top of
         // each other.
@@ -3610,11 +3615,13 @@ enum MermaidLayout {
             let drawn = self.edge(
                 edge, from: from, to: to, theme: theme, metrics: metrics,
                 order: order, side: side, lane: lane,
-                obstacles: standing(between: edge, from, to), beside: beside[index],
+                obstacles: standing(between: edge, from, to), taken: plates,
+                beside: beside[index],
                 pull: pulled[index] ?? (nil, nil),
                 fromOutline: outline(of: edge.from), toOutline: outline(of: edge.to))
             decorations += drawn.shaft
             labels += drawn.label
+            if let plate = drawn.plate { plates.append(plate) }
         }
         for box in boxes { decorations += node(box, theme: theme, metrics: metrics) }
         // An edge that skips a rank passes over whatever stands between, so its
@@ -3754,12 +3761,20 @@ enum MermaidLayout {
                 metrics.rankGap * (chart.groups.isEmpty ? 1 : 1.6),
                 labelRoom + metrics.arrowLength + 40 * metrics.scale
             )
+            // The gap between ranks already holds an edge's words. The gap
+            // between neighbours in a rank has to hold them too: a line running
+            // down between two boxes carries its label beside itself, and on 32
+            // points of clear space a long one has nowhere to go but over a box
+            // or over the next line's words. It is the label's other dimension
+            // here — the tall gap takes their height, the side gap their width.
+            let labelSpan = labels.map { down ? $0.width : $0.height }.max() ?? 0
+            let siblingGap = max(metrics.siblingGap, labelSpan + 16 * metrics.scale)
             func extent(_ unit: Int) -> CGFloat {
                 down ? sizes[unit].width : sizes[unit].height
             }
             func span(_ indices: [Int]) -> CGFloat {
                 indices.reduce(0) { $0 + extent($1) }
-                    + metrics.siblingGap * CGFloat(max(0, indices.count - 1))
+                    + siblingGap * CGFloat(max(0, indices.count - 1))
             }
             let depths = ranks.map { rank in
                 rank.map { down ? sizes[$0].height : sizes[$0].width }.max() ?? 0
@@ -3775,7 +3790,7 @@ enum MermaidLayout {
                         ? CGPoint(
                             x: cross, y: rankOffset + (depths[level] - sizes[unit].height) / 2)
                         : CGPoint(x: rankOffset + (depths[level] - sizes[unit].width) / 2, y: cross)
-                    cross += extent(unit) + metrics.siblingGap
+                    cross += extent(unit) + siblingGap
                 }
                 rankOffset += depths[level] + rankGap
             }
@@ -5203,13 +5218,14 @@ enum MermaidLayout {
     private static func edge(
         _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
         order: Int, side: CGFloat, lane: CGFloat, obstacles: [CGRect],
+        taken: [CGRect] = [],
         beside: (vertical: Bool, at: CGFloat)? = nil,
         pull: (out: CGFloat?, into: CGFloat?) = (nil, nil),
         fromOutline: CGPath? = nil, toOutline: CGPath? = nil
-    ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration]) {
+    ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration], plate: CGRect?) {
         // `A ~~~ B` is written to hold one box under another and nothing more,
         // so it has already done its work by the time there is a line to draw.
-        guard edge.stroke != .invisible else { return (shaft: [], label: []) }
+        guard edge.stroke != .invisible else { return (shaft: [], label: [], plate: nil) }
         let path = connection(
             from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside,
             pull: pull, fromOutline: fromOutline, toOutline: toOutline)
@@ -5252,7 +5268,7 @@ enum MermaidLayout {
         decorations += linkEnd(
             edge.tail, at: foot, from: body.first ?? end, along: backwards, color: color,
             width: width, metrics: metrics)
-        guard !edge.label.isEmpty else { return (decorations, []) }
+        guard !edge.label.isEmpty else { return (decorations, [], nil) }
         let line = text(
             edge.label,
             font: scaled(theme.controlLabel, by: metrics.scale),
@@ -5264,12 +5280,10 @@ enum MermaidLayout {
         // wider than they are they would be read as words on the box.
         if from == to {
             let apex = point(along: path, at: length(of: path) / 2).point
+            let middle = CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y)
             return (
-                decorations,
-                words(
-                    line, size: size,
-                    centred: CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y),
-                    theme: theme)
+                decorations, words(line, size: size, centred: middle, theme: theme),
+                plate(size, centred: middle)
             )
         }
         // An edge between neighbouring ranks is labelled in the middle; one that
@@ -5283,25 +5297,94 @@ enum MermaidLayout {
         let base = min(length / 2, metrics.rankGap / 2 + 6) + CGFloat(order) * (size.width + 10)
         // On a line too short to hold the words clear of both ends, the middle
         // is the least bad place: better over the line than over a box.
-        let along =
+        let wanted =
             length <= clearance * 2
             ? length / 2 : min(max(clearance, base), length - clearance)
-        let (anchor, heading) = point(along: path, at: along)
         // Sideways room is the label's own size, so two words either side of a
         // vertical line clear each other however long they are. Which side is
         // which must not depend on the way the arrow runs: two states pointing
         // at each other are one pair, and a normal that turns over with the
         // arrow puts both sets of words on the same side of it.
-        var across = CGPoint(x: -heading.y, y: heading.x)
-        if heading.y < -0.0001 || (abs(heading.y) <= 0.0001 && heading.x < 0) {
-            across = CGPoint(x: -across.x, y: -across.y)
+        func centre(at along: CGFloat, on side: CGFloat) -> CGPoint {
+            let (anchor, heading) = point(along: path, at: along)
+            var across = CGPoint(x: -heading.y, y: heading.x)
+            if heading.y < -0.0001 || (abs(heading.y) <= 0.0001 && heading.x < 0) {
+                across = CGPoint(x: -across.x, y: -across.y)
+            }
+            let step = abs(heading.y) > abs(heading.x) ? size.width + 10 : size.height + 6
+            return CGPoint(
+                x: anchor.x + across.x * side * step,
+                y: anchor.y + across.y * side * step
+            )
         }
-        let step = abs(heading.y) > abs(heading.x) ? size.width + 10 : size.height + 6
-        let middle = CGPoint(
-            x: anchor.x + across.x * side * step,
-            y: anchor.y + across.y * side * step
+        // `order` and `side` above only ever separate labels that share an end
+        // or share both ends. Two lines that merely pass close by are related by
+        // nothing, so their words used to be printed in the same place — a state
+        // that goes out and comes back had "Stop comparing" written over
+        // "Cmd+F". Here the words slide along their own line until they find
+        // room, which keeps every label on the edge it names rather than moving
+        // it somewhere clear of everything and attached to nothing.
+        let ends: (CGFloat, CGFloat) =
+            length <= clearance * 2
+            ? (length / 2, length / 2) : (clearance, length - clearance)
+        func free(_ middle: CGPoint) -> Bool {
+            let rect = plate(size, centred: middle)
+            return !taken.contains { $0.intersects(rect) }
+        }
+        /// How much of what is already there a label at this point would cover.
+        func covered(_ middle: CGPoint) -> CGFloat {
+            let rect = plate(size, centred: middle)
+            return taken.reduce(0) { total, other in
+                let over = other.intersection(rect)
+                return over.isNull ? total : total + over.width * over.height
+            }
+        }
+        // `order` and `side` above only separate labels that share an end or
+        // share both ends, and on curved lines even a pair's own offsets can
+        // fall short. Anything else — two lines that merely pass close, a label
+        // over a box — is settled here, by looking for room around the place
+        // the label wants and taking the nearest that is clear. Bounded on
+        // purpose: a label that goes hunting across the picture ends up beside
+        // no line at all, which reads worse than two words close together.
+        let natural = centre(at: wanted, on: side)
+        var middle = natural
+        if !free(middle) {
+            let hop = size.height + 6
+            var tries: [(point: CGPoint, away: CGFloat)] = []
+            for step in -6...6 {
+                let along = wanted + CGFloat(step) * hop
+                guard along >= ends.0, along <= ends.1 else { continue }
+                for lean in -6...6 {
+                    // Sliding along the line keeps the words against the line
+                    // they name; leaning away from it starts to read as a label
+                    // on whatever else is nearby, so it costs three times as
+                    // much and is only taken when sliding has failed.
+                    tries.append(
+                        (
+                            centre(at: along, on: side + CGFloat(lean) * 0.25),
+                            CGFloat(abs(step)) + CGFloat(abs(lean)) * 3
+                        ))
+                }
+            }
+            tries.sort { $0.away < $1.away }
+            if let room = tries.first(where: { free($0.point) }) {
+                middle = room.point
+            } else if let least = tries.min(by: { covered($0.point) < covered($1.point) }) {
+                // Nowhere is clear, so the least covered place wins.
+                middle = least.point
+            }
+        }
+        return (
+            decorations, words(line, size: size, centred: middle, theme: theme),
+            plate(size, centred: middle)
         )
-        return (decorations, words(line, size: size, centred: middle, theme: theme))
+    }
+
+    /// The rectangle an edge's words cover: the plate `words` draws under them.
+    private static func plate(_ size: CGSize, centred middle: CGPoint) -> CGRect {
+        CGRect(
+            x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
+            width: size.width + 6, height: size.height + 2)
     }
 
     /// An edge's words on their own plate: the label sits on the line, so it
@@ -5311,9 +5394,7 @@ enum MermaidLayout {
     ) -> [BlockBox.Decoration] {
         [
             .fill(
-                rect: CGRect(
-                    x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
-                    width: size.width + 6, height: size.height + 2),
+                rect: plate(size, centred: middle),
                 color: theme.palette.background, cornerRadius: 2),
             .glyphs(
                 line,
