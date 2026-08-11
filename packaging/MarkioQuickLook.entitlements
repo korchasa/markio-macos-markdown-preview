@@ -8,7 +8,7 @@
 
 	  There is deliberately no com.apple.security.network.client here. A
 	  sandboxed WKWebView needs it — without it the WebContent helper never
-	  launches and the preview hangs on Finder's spinner forever. Markio 2 draws
+	  launches and the preview hangs on Finder's spinner forever. Markio draws
 	  with CoreText and has no web view, so it needs no network entitlement at
 	  all, and the failure that requires one cannot happen.
 

@@ -12,4 +12,4 @@ section("Building (debug)");
 await run("swift", { args: ["build"] });
 
 section("Launching");
-await run(".build/debug/Markio2", { args: Deno.args });
+await run(".build/debug/Markio", { args: Deno.args });

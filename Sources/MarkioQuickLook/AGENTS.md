@@ -1,4 +1,4 @@
-# Markio2QuickLook — Finder's preview panel
+# MarkioQuickLook — Finder's preview panel
 
 The Quick Look preview extension. It parses the file with `MarkdownKit` and
 draws it with `MarkioRender` — the same two modules the app uses — inside a
@@ -12,7 +12,7 @@ here. There is no template to load, no web view to boot, no navigation to await:
 completion handler on the same turn. A preview cannot hang waiting for something
 that never arrives, because it waits for nothing.
 
-That is also why `packaging/Markio2QuickLook.entitlements` carries no
+That is also why `packaging/MarkioQuickLook.entitlements` carries no
 `com.apple.security.network.client`. A sandboxed `WKWebView` needs it or its
 WebContent helper never launches and Finder spins forever; a CoreText renderer
 does not.
@@ -20,7 +20,7 @@ does not.
 ## Rules
 
 - The `@objc` class name `PreviewViewController` is referenced verbatim by
-  `NSExtensionPrincipalClass` in `packaging/Markio2QuickLook-Info.plist`.
+  `NSExtensionPrincipalClass` in `packaging/MarkioQuickLook-Info.plist`.
   Renaming the class without the plist gives a preview that silently never
   loads.
 - `main.swift` is never executed. The entry point is `_NSExtensionMain`, set by
@@ -39,8 +39,8 @@ Finder. Registering the locally built bundle takes two commands, and the second
 is only needed if the system does not pick it up on its own:
 
 ```
-lsregister -f "$PWD/.build/Markio2.app"
-pluginkit -a "$PWD/.build/Markio2.app/Contents/PlugIns/Markio2QuickLook.appex"
+lsregister -f "$PWD/.build/Markio.app"
+pluginkit -a "$PWD/.build/Markio.app/Contents/PlugIns/MarkioQuickLook.appex"
 ```
 
 The proof that it worked is in the log, not on screen — but `Logger.info` is

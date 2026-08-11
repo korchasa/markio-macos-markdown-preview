@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <!--
-      Markio 2 opens files the reader chooses, one window per document, and
+      Markio opens files the reader chooses, one window per document, and
       does nothing else with the system. The sandbox therefore needs exactly
       one grant: read access to user-selected files.
 
       There is deliberately no network entitlement. A sandboxed WKWebView needs
       com.apple.security.network.client to bring up its content process even
-      when it never loads anything — Markio 2 has no web view at all, so the
+      when it never loads anything — Markio has no web view at all, so the
       grant has nothing to enable and stays out.
 
       This repository only declares these entitlements. Signing with them

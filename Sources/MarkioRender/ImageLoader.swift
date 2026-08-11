@@ -39,7 +39,7 @@ enum ImageLoader {
     }
 
     private static func decode(url: URL, pixelWidth: Int) -> CGImage? {
-        // Local files only. Markio 2 makes no network requests, so a remote
+        // Local files only. Markio makes no network requests, so a remote
         // image is simply not something it can show.
         guard url.isFileURL, let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             return nil

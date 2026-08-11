@@ -496,7 +496,7 @@ final class DocumentWindowController: NSWindowController {
     }
 
     private func updateTitle() {
-        window?.title = markdownDocument.fileURL?.path ?? "Markio 2"
+        window?.title = markdownDocument.fileURL?.path ?? "Markio"
         window?.representedURL = nil
         // The subtitle is the only sign that the marks on screen are a diff and
         // not part of the file, and it says when the diff found nothing.

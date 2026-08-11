@@ -8,7 +8,7 @@ final class MarkdownFileReaderTests: XCTestCase {
 
     override func setUpWithError() throws {
         directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("markio2-reader-\(UUID().uuidString)")
+            .appendingPathComponent("markio-reader-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 

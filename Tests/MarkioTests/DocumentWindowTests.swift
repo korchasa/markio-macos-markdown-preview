@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import Markio2
+@testable import Markio
 
 /// The document window itself: how big it opens, and what a drag on its edge is
 /// allowed to do to it.

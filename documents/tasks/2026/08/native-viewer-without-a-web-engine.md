@@ -1,4 +1,4 @@
-# Markio 2 — a native viewer with no web engine
+# Markio — a native viewer with no web engine
 
 **2026-08-08**
 
@@ -11,8 +11,8 @@ Optimize for speed and for memory on large documents.
 ## Decisions
 
 - **Five targets, not one.** MarkdownKit (pure Swift, no AppKit), MarkioRender
-  (CoreText + AppKit), Markio2 (the app), Markio2QuickLook (the Finder preview
-  extension), markio2-bench (headless). The split is what keeps a font metric
+  (CoreText + AppKit), Markio (the app), MarkioQuickLook (the Finder preview
+  extension), markio-bench (headless). The split is what keeps a font metric
   from leaking into the parser.
 - **Bytes, not `String`.** The whole scan path works on `[UInt8]` and `Int32`
   ranges. `String` is built once per visible block. This is the decision the

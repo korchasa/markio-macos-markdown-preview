@@ -1,4 +1,4 @@
-# Markio2
+# Markio
 
 The app: documents, windows, menus, preferences, live reload. Wiring only —
 anything expensive belongs in MarkioRender or MarkdownKit.

@@ -7,7 +7,7 @@ import Foundation
 /// diff, every size comes from the same drawing, and there is no 1024 px PNG in
 /// the repository that quietly stops matching the smaller ones.
 ///
-///     markio2-bench icon packaging/Assets.xcassets/AppIcon.appiconset
+///     markio-bench icon packaging/Assets.xcassets/AppIcon.appiconset
 enum Icon {
     /// The sizes macOS asks for, as (points, scale).
     private static let variants: [(point: Int, scale: Int)] = [
@@ -17,7 +17,7 @@ enum Icon {
 
     static func run(arguments: [String]) -> Int32 {
         guard let directory = arguments.first else {
-            print("usage: markio2-bench icon <AppIcon.appiconset>")
+            print("usage: markio-bench icon <AppIcon.appiconset>")
             return 2
         }
         let base = URL(fileURLWithPath: directory)
@@ -41,7 +41,7 @@ enum Icon {
             }
             let contents: [String: Any] = [
                 "images": images,
-                "info": ["version": 1, "author": "markio2-bench"],
+                "info": ["version": 1, "author": "markio-bench"],
             ]
             let json = try JSONSerialization.data(
                 withJSONObject: contents,

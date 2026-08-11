@@ -1,9 +1,9 @@
 ---
-title: Markio 2
+title: Markio
 status: draft
 ---
 
-# Markio 2
+# Markio
 
 A native macOS Markdown viewer with **no web view**, no HTML and no JavaScript.
 Everything on this page was typeset by CoreText from a parser that reads the

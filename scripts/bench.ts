@@ -8,7 +8,7 @@
 import { run, section } from "./lib.ts";
 
 section("Building (release)");
-await run("swift", { args: ["build", "-c", "release", "--product", "markio2-bench"] });
+await run("swift", { args: ["build", "-c", "release", "--product", "markio-bench"] });
 
 section("Running benchmarks");
-await run(".build/release/markio2-bench", { args: Deno.args });
+await run(".build/release/markio-bench", { args: Deno.args });

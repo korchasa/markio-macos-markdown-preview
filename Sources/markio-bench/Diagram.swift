@@ -14,7 +14,7 @@ import MarkioRender
 enum Diagram {
     static func run(arguments: [String]) -> Int32 {
         guard arguments.count >= 2 else {
-            print("usage: markio2-bench diagram <in.mmd> <out.png> [width] [dark]")
+            print("usage: markio-bench diagram <in.mmd> <out.png> [width] [dark]")
             return 2
         }
         let input = URL(fileURLWithPath: arguments[0])

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Markio2",
+    name: "Markio",
     platforms: [
         .macOS(.v14)
     ],
@@ -32,9 +32,9 @@ let package = Package(
         ),
         // The macOS app shell: windows, menus, file handling, live reload.
         .executableTarget(
-            name: "Markio2",
+            name: "Markio",
             dependencies: ["MarkdownKit", "MarkioRender"],
-            path: "Sources/Markio2",
+            path: "Sources/Markio",
             exclude: ["AGENTS.md"],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
@@ -44,9 +44,9 @@ let package = Package(
         // panel. Linked with `_NSExtensionMain` as its entry point, the way
         // Xcode links an app-extension product.
         .executableTarget(
-            name: "Markio2QuickLook",
+            name: "MarkioQuickLook",
             dependencies: ["MarkdownKit", "MarkioRender"],
-            path: "Sources/Markio2QuickLook",
+            path: "Sources/MarkioQuickLook",
             exclude: ["AGENTS.md"],
             swiftSettings: [
                 .swiftLanguageMode(.v6)
@@ -59,9 +59,9 @@ let package = Package(
         // Headless performance harness: parse/layout timings and peak memory on
         // generated documents. Kept out of the app so its cost never ships.
         .executableTarget(
-            name: "markio2-bench",
+            name: "markio-bench",
             dependencies: ["MarkdownKit", "MarkioRender"],
-            path: "Sources/markio2-bench",
+            path: "Sources/markio-bench",
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
@@ -80,9 +80,9 @@ let package = Package(
         // window controller lives in the executable target, so the tests depend
         // on the executable rather than on a module carved out to be testable.
         .testTarget(
-            name: "Markio2Tests",
-            dependencies: ["Markio2"],
-            path: "Tests/Markio2Tests"
+            name: "MarkioTests",
+            dependencies: ["Markio"],
+            path: "Tests/MarkioTests"
         ),
     ]
 )

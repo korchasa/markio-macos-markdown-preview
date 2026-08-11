@@ -7,7 +7,7 @@ import MarkdownKit
 /// search finishes in a few milliseconds; on a very large one the matches
 /// arrive in batches while the reader is already looking at the first of them.
 /// The alternative — a search index over every block's text — would cost a
-/// second copy of the document in memory, which is the one thing Markio 2 is
+/// second copy of the document in memory, which is the one thing Markio is
 /// built not to do.
 @MainActor
 public final class FindEngine {

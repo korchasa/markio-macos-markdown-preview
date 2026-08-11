@@ -6,7 +6,7 @@
  * build on this.
  *
  * Two families of name meet here. `swift build` writes its products under the
- * target names — Markio2, Markio2QuickLook — while what ships is named Markio.
+ * target names — Markio, MarkioQuickLook — while what ships is named Markio.
  * Both come from `identity.ts` so the difference is stated once rather than
  * spelled out in string literals that can drift apart.
  */

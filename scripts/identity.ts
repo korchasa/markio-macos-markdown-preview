@@ -8,25 +8,26 @@
  * change here is a change to what the store will accept, so the gate compares
  * the packaging plists against this file and fails when they drift.
  *
- * Note the deliberate split between the two kinds of name. The Swift targets
- * are `Markio2` and `Markio2QuickLook` and stay that way — `NSDocumentClass`
- * in the app's plist names the Swift module, not the file on disk. What ships
- * is named `Markio`: the bundle, its executable, and the extension inside it.
- * The repository is the second implementation; the product is not.
+ * The two kinds of name below read the same today and still mean different
+ * things. One is the Swift product `swift build` writes into `.build/release`;
+ * the other is what the bundle, its executable and the extension inside it are
+ * called. `NSDocumentClass` is built from the first, because it names the Swift
+ * module and not the file on disk — rename the bundle alone and documents stop
+ * opening, with nothing to say why.
  */
 
 import { fail, run } from "./lib.ts";
 
 /** Swift product names — what `swift build` writes into `.build/release`. */
-export const APP_PRODUCT = "Markio2";
-export const QL_PRODUCT = "Markio2QuickLook";
+export const APP_PRODUCT = "Markio";
+export const QL_PRODUCT = "MarkioQuickLook";
 
 /** Bundle names — what a reader ends up with. */
 export const APP_NAME = "Markio";
 export const QL_NAME = "MarkioQuickLook";
 
 export const APP_PLIST = "packaging/Info.plist";
-export const QL_PLIST = "packaging/Markio2QuickLook-Info.plist";
+export const QL_PLIST = "packaging/MarkioQuickLook-Info.plist";
 
 /** Every plist key whose value the store depends on, and what it must be. */
 const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
@@ -43,7 +44,7 @@ const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
       // the system language beside ours, which ship untranslated English.
       CFBundleDevelopmentRegion: "en",
       // Nested inside the document-types array, and named after the Swift
-      // module rather than the executable file — hence the 2.
+      // module rather than the executable file.
       "CFBundleDocumentTypes.0.NSDocumentClass": `${APP_PRODUCT}.MarkdownDocument`,
     },
   },

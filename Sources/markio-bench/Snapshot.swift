@@ -14,7 +14,7 @@ enum Snapshot {
     static func run(arguments: [String]) -> Int32 {
         guard arguments.count >= 2 else {
             print(
-                "usage: markio2-bench snapshot <in.md> <out.png> [width] [height] [dark] "
+                "usage: markio-bench snapshot <in.md> <out.png> [width] [height] [dark] "
                     + "[scrollY] [baseline.md]")
             return 2
         }

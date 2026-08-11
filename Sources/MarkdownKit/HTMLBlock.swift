@@ -1,6 +1,6 @@
 /// Which flavour of raw HTML block a line opened, and therefore what closes it.
 ///
-/// Markio 2 renders raw HTML as source text rather than interpreting it — there
+/// Markio renders raw HTML as source text rather than interpreting it — there
 /// is no HTML engine in the app by design. The distinction still matters for
 /// *structure*: a `<div>` block ends at a blank line, a `<!-- comment -->` ends
 /// at its closer, and getting that wrong swallows the rest of the document.

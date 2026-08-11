@@ -110,7 +110,7 @@ on the mouse. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 
 ```bash
-.build/release/markio2-bench snapshot new.md /tmp/diff.png 900 620 light 0 old.md
+.build/release/markio-bench snapshot new.md /tmp/diff.png 900 620 light 0 old.md
 ```
 
 ## What it costs
@@ -133,7 +133,7 @@ document, because only the blocks on screen are ever typeset.
 - `Sources/MarkdownKit` — the parser. Pure Swift, no AppKit, byte-level
 - `Sources/MarkioRender` — CoreText typesetting, the virtualized layout and the
   reading view
-- `Sources/Markio2` — the app: documents, windows, menus, live reload
-- `Sources/Markio2QuickLook` — the Finder preview extension
-- `Sources/markio2-bench` — headless measurement and offscreen rendering
+- `Sources/Markio` — the app: documents, windows, menus, live reload
+- `Sources/MarkioQuickLook` — the Finder preview extension
+- `Sources/markio-bench` — headless measurement and offscreen rendering
 - `documents/` — requirements, design and per-task notes

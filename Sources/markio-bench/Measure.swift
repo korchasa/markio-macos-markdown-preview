@@ -4,7 +4,7 @@ import Foundation
 /// Wall-clock timing and resident-memory sampling for the benchmark harness.
 ///
 /// Peak footprint is read from the kernel rather than inferred from allocation
-/// counts: the claim Markio 2 makes is about the memory a user's machine
+/// counts: the claim Markio makes is about the memory a user's machine
 /// actually gives up, and only `task_info` knows that number.
 enum Measure {
     /// Seconds spent in `body`, taken from the monotonic clock so a clock

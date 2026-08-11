@@ -1,4 +1,4 @@
-# Markio 2 — Design
+# Markio — Design
 
 How the viewer meets `requirements.md`.
 
@@ -9,10 +9,10 @@ Five targets, in dependency order:
 - **MarkdownKit** — the parser. Pure Swift, no AppKit, no fonts, no theme.
 - **MarkioRender** — CoreText typesetting, the virtualized layout, the reading
   view. Depends on MarkdownKit and AppKit.
-- **Markio2** — the app: documents, windows, menus, preferences, live reload.
-- **Markio2QuickLook** — the preview extension: the same two renderer modules
+- **Markio** — the app: documents, windows, menus, preferences, live reload.
+- **MarkioQuickLook** — the preview extension: the same two renderer modules
   in Finder's panel.
-- **markio2-bench** — headless measurement and offscreen rendering.
+- **markio-bench** — headless measurement and offscreen rendering.
 
 The split is what keeps the parser testable and fast: nothing in MarkdownKit
 can accidentally reach for a font metric, and nothing in the app can reach past
@@ -953,7 +953,7 @@ other.
 The search runs on a background queue with a generation token, flushes its first
 hit immediately and then in batches, and indexes nothing (PERF-6).
 
-## Markio2
+## Markio
 
 - `MarkdownDocument` is a read-only `NSDocument`. Its parse result sits behind
   a lock because `NSDocument` declares `read(from:)` nonisolated. It does
@@ -975,7 +975,7 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   AppKit asks whether to open an untitled document before
   `applicationDidFinishLaunching` runs (UI-3).
 
-## Markio2QuickLook
+## MarkioQuickLook
 
 A hand-assembled `.appex` under the app's `PlugIns`, ad-hoc signed by
 `deno task app` because pluginkit will not load an unsigned or unsandboxed
@@ -989,7 +989,7 @@ one a sandboxed `WKWebView` must have or its helper never launches.
 
 ## The icon
 
-Drawn in code (`markio2-bench icon`) into `packaging/Assets.xcassets`, compiled
+Drawn in code (`markio-bench icon`) into `packaging/Assets.xcassets`, compiled
 to `Assets.car` by `deno task app` and referenced by name. Every size is the
 same drawing scaled, expressed in fractions of the canvas, so the 16 px icon
 cannot drift from the 1024 px one. The loose `AppIcon.icns` actool emits is
@@ -1004,7 +1004,7 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
 - Tests cover the block scanner (structure dumps), the inline parser (run
   dumps), the Fenwick tree against naive prefix sums, and the parity between
   find's plain text and the renderer's.
-- `Markio2Tests` depends on the executable target itself, which is how the
+- `MarkioTests` depends on the executable target itself, which is how the
   window is testable without carving a module out of the app shell. What it
   holds is what a window has to allow: a drag on its edge, expressed the way
   AppKit expresses one — a size constraint at priority 510 — has to win against
@@ -1014,9 +1014,9 @@ deleted: it caps at 256×256 and anything preferring it gets a blurry icon.
 - `--capture=<path>` draws the real window to a PNG; `--capture-hover=<x>,<y>`
   parks the pointer first, which is the only way to see a control that appears
   on hover, and `--capture-click=<x>,<y>` clicks once, which is how folding a
-  section away is checked. `markio2-bench snapshot` draws a document offscreen at any width,
+  section away is checked. `markio-bench snapshot` draws a document offscreen at any width,
   scroll offset and appearance, and takes an optional baseline so a comparison
-  can be looked at the same way; `markio2-bench diagram` draws one Mermaid source
+  can be looked at the same way; `markio-bench diagram` draws one Mermaid source
   alone and exits 3 when the layout refuses it. All of them work without screen
   recording permission, which is what makes visual checks possible from a script.
 - The Quick Look extension is checked structurally — bundle layout, plist,

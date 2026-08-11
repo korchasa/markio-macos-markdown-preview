@@ -14,7 +14,7 @@ const MARKERS = /TODO|FIXME|HACK|XXX|swiftlint:disable|swift-format-ignore|debug
 
 /**
  * Nothing in this project may render through a web engine — that is the whole
- * point of Markio 2. The gate fails if a source file so much as imports WebKit.
+ * point of Markio. The gate fails if a source file so much as imports WebKit.
  */
 const WEB_ENGINE = /import WebKit|WKWebView|JavaScriptCore|loadHTMLString/;
 

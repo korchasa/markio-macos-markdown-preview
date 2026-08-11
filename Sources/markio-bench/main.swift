@@ -3,7 +3,7 @@ import MarkdownKit
 
 /// The performance harness.
 ///
-/// Two numbers decide whether Markio 2 is worth building: how long a large
+/// Two numbers decide whether Markio is worth building: how long a large
 /// document takes to become structure, and how much memory that structure
 /// costs. Both are reported against the raw file size, because a parse tree
 /// several times the size of the file is what makes a viewer fall over.
@@ -97,7 +97,7 @@ func percent(_ part: Int, of whole: Int) -> String {
     return String(format: "%.0f%%", Double(part) / Double(whole) * 100)
 }
 
-print("markio2-bench — parse cost and structure footprint")
+print("markio-bench — parse cost and structure footprint")
 
 if let path = arguments.first, FileManager.default.fileExists(atPath: path) {
     let data = try Data(contentsOf: URL(fileURLWithPath: path))

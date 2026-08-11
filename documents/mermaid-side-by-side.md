@@ -3,17 +3,17 @@
 Every example below is taken word for word from Mermaid's own documentation —
 [`packages/mermaid/src/docs/syntax`](https://github.com/mermaid-js/mermaid/tree/f68935690ef7/packages/mermaid/src/docs/syntax),
 commit `f68935690ef7`, 30 July 2026 — with one exception, marked where it appears. In
-every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio 2 is
+every picture Mermaid 11.16.1 is on the left, drawn through `mmdc`, and Markio is
 on the right, drawing the same source with CoreText and `CGPath`: no web view, no
 diagram library.
 
-Of the 47 examples shown here, Markio 2 draws all 47. The pictures are the
+Of the 47 examples shown here, Markio draws all 47. The pictures are the
 measure, not the count: what a comparison like this is for is the difference
 between two drawings of one source, and that is what the notes below record.
 
 The pages these come from hold 408 examples in all. Run end to end, both draw 403
-of them: there is no example Markio 2 draws that Mermaid does not, and none
-Mermaid draws that Markio 2 leaves as source. The five neither of them draws are
+of them: there is no example Markio draws that Mermaid does not, and none
+Mermaid draws that Markio leaves as source. The five neither of them draws are
 four ZenUML examples and one entity relationship diagram, all of which Mermaid
 itself refuses.
 
@@ -111,7 +111,7 @@ flowchart LR
     C -->|Two| E[Result two]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart.png)
+![Mermaid on the left, Markio on the right](images/mermaid/flowchart.png)
 
 ## Flowchart with subgraphs
 
@@ -131,7 +131,7 @@ flowchart TB
     end
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-subgraphs.png)
+![Mermaid on the left, Markio on the right](images/mermaid/flowchart-subgraphs.png)
 
 ## Flowchart with an edge to a subgraph
 
@@ -154,7 +154,7 @@ flowchart TB
     two --> c2
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-frame-edge.png)
+![Mermaid on the left, Markio on the right](images/mermaid/flowchart-frame-edge.png)
 
 ## Flowchart with a direction inside a subgraph
 
@@ -179,7 +179,7 @@ flowchart LR
     outside ---> top2
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-direction.png)
+![Mermaid on the left, Markio on the right](images/mermaid/flowchart-direction.png)
 
 ## Flowchart with markdown labels
 
@@ -198,7 +198,7 @@ flowchart LR
     markdown --> newLines
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/flowchart-markdown.png)
+![Mermaid on the left, Markio on the right](images/mermaid/flowchart-markdown.png)
 
 ## Sequence diagram
 
@@ -217,7 +217,7 @@ sequenceDiagram
     end
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/sequence.png)
+![Mermaid on the left, Markio on the right](images/mermaid/sequence.png)
 
 ## Sequence diagram that makes and ends participants
 
@@ -237,7 +237,7 @@ sequenceDiagram
     Bob->>Alice: I agree
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/sequence-create.png)
+![Mermaid on the left, Markio on the right](images/mermaid/sequence-create.png)
 
 ## Class diagram
 
@@ -255,7 +255,7 @@ classM <|.. classN
 classO .. classP
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/class.png)
+![Mermaid on the left, Markio on the right](images/mermaid/class.png)
 
 ## Class diagram with notes
 
@@ -290,7 +290,7 @@ classDiagram
     }
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/class-notes.png)
+![Mermaid on the left, Markio on the right](images/mermaid/class-notes.png)
 
 ## State diagram
 
@@ -307,7 +307,7 @@ stateDiagram
     Crash --> [*]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/state.png)
+![Mermaid on the left, Markio on the right](images/mermaid/state.png)
 
 ## State diagram with composite states
 
@@ -330,7 +330,7 @@ stateDiagram-v2
     }
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/state-composite.png)
+![Mermaid on the left, Markio on the right](images/mermaid/state-composite.png)
 
 ## Entity relationship diagram
 
@@ -356,7 +356,7 @@ erDiagram
     }
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/er.png)
+![Mermaid on the left, Markio on the right](images/mermaid/er.png)
 
 ## Entity relationship diagram with a title
 
@@ -372,7 +372,7 @@ erDiagram
     CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/er-title.png)
+![Mermaid on the left, Markio on the right](images/mermaid/er-title.png)
 
 ## User journey
 
@@ -390,7 +390,7 @@ journey
       Sit down: 5: Me
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/journey.png)
+![Mermaid on the left, Markio on the right](images/mermaid/journey.png)
 
 ## Gantt chart
 
@@ -408,7 +408,7 @@ gantt
         another task    :24d
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/gantt.png)
+![Mermaid on the left, Markio on the right](images/mermaid/gantt.png)
 
 ## Gantt chart told in minutes
 
@@ -424,7 +424,7 @@ gantt
     Final vert : vert, v2, 17:58, 4m
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/gantt-minutes.png)
+![Mermaid on the left, Markio on the right](images/mermaid/gantt-minutes.png)
 
 ## Pie chart
 
@@ -437,7 +437,7 @@ pie title Pets adopted by volunteers
     "Rats" : 15
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/pie.png)
+![Mermaid on the left, Markio on the right](images/mermaid/pie.png)
 
 ## Quadrant chart
 
@@ -460,7 +460,7 @@ quadrantChart
     Campaign F: [0.35, 0.78]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/quadrant.png)
+![Mermaid on the left, Markio on the right](images/mermaid/quadrant.png)
 
 ## Quadrant chart with points of its own colour
 
@@ -486,7 +486,7 @@ quadrantChart
   classDef class3 color: #f00fff, radius : 10
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/quadrant-styled.png)
+![Mermaid on the left, Markio on the right](images/mermaid/quadrant-styled.png)
 
 ## Requirement diagram
 
@@ -509,7 +509,7 @@ From [`requirementDiagram.md`](https://github.com/mermaid-js/mermaid/blob/f68935
     test_entity - satisfies -> test_req
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/requirement.png)
+![Mermaid on the left, Markio on the right](images/mermaid/requirement.png)
 
 ## Git graph
 
@@ -526,7 +526,7 @@ From [`gitgraph.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/pac
        commit
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/git.png)
+![Mermaid on the left, Markio on the right](images/mermaid/git.png)
 
 ## Git graph with a title
 
@@ -549,7 +549,7 @@ gitGraph
    commit
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/git-title.png)
+![Mermaid on the left, Markio on the right](images/mermaid/git-title.png)
 
 ## Git graph with a cherry-pick
 
@@ -575,7 +575,7 @@ From [`gitgraph.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/pac
         commit id:"C"
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/git-cherry-pick.png)
+![Mermaid on the left, Markio on the right](images/mermaid/git-cherry-pick.png)
 
 ## Mindmap
 
@@ -589,7 +589,7 @@ Root
       C
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap.png)
+![Mermaid on the left, Markio on the right](images/mermaid/mindmap.png)
 
 ## Mindmap with icons
 
@@ -615,7 +615,7 @@ mindmap
       Mermaid
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap-icons.png)
+![Mermaid on the left, Markio on the right](images/mermaid/mindmap-icons.png)
 
 ## Mindmap with markdown labels
 
@@ -630,7 +630,7 @@ Unicode works too: 🤓`"]
       id3[Regular labels still works]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/mindmap-markdown.png)
+![Mermaid on the left, Markio on the right](images/mermaid/mindmap-markdown.png)
 
 ## Timeline
 
@@ -646,7 +646,7 @@ timeline
     2006 : Twitter
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/timeline.png)
+![Mermaid on the left, Markio on the right](images/mermaid/timeline.png)
 
 ## Timeline running down the page
 
@@ -663,7 +663,7 @@ timeline TD
       Bullet 4 : sub-point 4a : sub-point 4b
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/timeline-down.png)
+![Mermaid on the left, Markio on the right](images/mermaid/timeline-down.png)
 
 ## ZenUML
 
@@ -679,7 +679,7 @@ zenuml
     }
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/zenuml.png)
+![Mermaid on the left, Markio on the right](images/mermaid/zenuml.png)
 
 ## Sankey diagram
 
@@ -694,7 +694,7 @@ Electricity grid,Heating and cooling - homes,113.726
 Electricity grid,H2 conversion,27.14
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/sankey.png)
+![Mermaid on the left, Markio on the right](images/mermaid/sankey.png)
 
 ## XY chart
 
@@ -709,7 +709,7 @@ xychart
     line [5000, 6000, 7500, 8200, 9500, 10500, 11000, 10200, 9200, 8500, 7000, 6000]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/xy.png)
+![Mermaid on the left, Markio on the right](images/mermaid/xy.png)
 
 ## Block diagram
 
@@ -722,7 +722,7 @@ block
   c   d   e
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/block.png)
+![Mermaid on the left, Markio on the right](images/mermaid/block.png)
 
 ## Block diagram with a block inside a block
 
@@ -745,7 +745,7 @@ columns 1
   style B fill:#969,stroke:#333,stroke-width:4px
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/block-nested.png)
+![Mermaid on the left, Markio on the right](images/mermaid/block-nested.png)
 
 ## Block diagram of fat arrows
 
@@ -762,7 +762,7 @@ block
   blockArrowId7<["Label"]>(x, down)
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/block-arrows.png)
+![Mermaid on the left, Markio on the right](images/mermaid/block-arrows.png)
 
 ## Packet diagram
 
@@ -778,7 +778,7 @@ title UDP Packet
 64-95: "Data (variable length)"
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/packet.png)
+![Mermaid on the left, Markio on the right](images/mermaid/packet.png)
 
 ## Packet diagram with a title
 
@@ -808,7 +808,7 @@ packet
 192-255: "Data (variable length)"
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/packet-title.png)
+![Mermaid on the left, Markio on the right](images/mermaid/packet-title.png)
 
 ## Kanban board
 
@@ -820,7 +820,7 @@ todo[Todo]
   id3[Update Database Function]@{ ticket: MC-2037, assigned: 'knsv', priority: 'High' }
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/kanban.png)
+![Mermaid on the left, Markio on the right](images/mermaid/kanban.png)
 
 ## Kanban board with a ticket base URL
 
@@ -852,7 +852,7 @@ kanban
     id3[Weird flickering in Firefox]
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/kanban-config.png)
+![Mermaid on the left, Markio on the right](images/mermaid/kanban-config.png)
 
 ## Architecture diagram
 
@@ -872,7 +872,7 @@ architecture-beta
     disk2:T -- B:db
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/architecture.png)
+![Mermaid on the left, Markio on the right](images/mermaid/architecture.png)
 
 ## Architecture diagram with junctions
 
@@ -896,7 +896,7 @@ architecture-beta
     bottom_gateway:T -- B:junctionRight
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/architecture-junction.png)
+![Mermaid on the left, Markio on the right](images/mermaid/architecture-junction.png)
 
 ## C4 diagram
 
@@ -921,7 +921,7 @@ From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/
     UpdateRelStyle(c3, c4, $textColor="red", $offsetY="-40", $offsetX="10")
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/c4.png)
+![Mermaid on the left, Markio on the right](images/mermaid/c4.png)
 
 ## C4 deployment diagram
 
@@ -978,7 +978,7 @@ From [`c4.md`](https://github.com/mermaid-js/mermaid/blob/f68935690ef7/packages/
     UpdateRelStyle(db, db2, $offsetY="-10")
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/c4-deployment.png)
+![Mermaid on the left, Markio on the right](images/mermaid/c4-deployment.png)
 
 ## C4 diagram, written here
 
@@ -999,7 +999,7 @@ C4Context
     Rel(parser, disk, "Maps")
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/c4-ours.png)
+![Mermaid on the left, Markio on the right](images/mermaid/c4-ours.png)
 
 ## Radar chart
 
@@ -1020,7 +1020,7 @@ radar-beta
   max 5
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/radar.png)
+![Mermaid on the left, Markio on the right](images/mermaid/radar.png)
 
 ## Radar chart with a title
 
@@ -1040,7 +1040,7 @@ radar-beta
   min 0
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/radar-title.png)
+![Mermaid on the left, Markio on the right](images/mermaid/radar-title.png)
 
 ## Treemap
 
@@ -1058,7 +1058,7 @@ treemap-beta
         "Women's": 40
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/treemap.png)
+![Mermaid on the left, Markio on the right](images/mermaid/treemap.png)
 
 ## Treemap painted by a class
 
@@ -1076,4 +1076,4 @@ treemap-beta
 classDef important fill:#f96,stroke:#333,stroke-width:2px;
 ```
 
-![Mermaid on the left, Markio 2 on the right](images/mermaid/treemap-class.png)
+![Mermaid on the left, Markio on the right](images/mermaid/treemap-class.png)

@@ -8,7 +8,7 @@ import MarkdownKit
 /// measurements as blocks are laid out; the Fenwick index keeps the total and
 /// every block's position correct throughout, in logarithmic time per update.
 ///
-/// This is the piece that decides Markio 2's memory profile. A 100 MB document
+/// This is the piece that decides Markio's memory profile. A 100 MB document
 /// costs its bytes, its block structure, and one screen of typeset text — not a
 /// DOM, not an attributed string of the whole file, not a render tree.
 @MainActor

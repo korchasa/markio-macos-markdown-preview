@@ -1,11 +1,11 @@
-# Markio 2 — Requirements
+# Markio — Requirements
 
 What the viewer must do. How it does it is `design.md`.
 
 ## Purpose
 
 Read Markdown on macOS, natively, at a speed and memory cost that does not
-change when the document gets large. Markio 2 exists because a viewer built on
+change when the document gets large. Markio exists because a viewer built on
 a web engine pays for the engine on every document: a browser process to start,
 a DOM to build, and a second copy of the text to hold. Removing the engine is
 the product, not an implementation detail.
@@ -275,7 +275,7 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
 - **BUILD-3** Every command is a `deno task`. New commands become tasks, not
   shell scripts.
 - **BUILD-4** `deno task dist` produces an unsigned `.app` at
-  `.build/Markio2.app`. Signing, packaging and upload happen outside this
+  `.build/Markio.app`. Signing, packaging and upload happen outside this
   repository, and nothing in it refers to how.
 - **BUILD-5** Rendering can be verified without a screen: the app draws its own
   window to a PNG (`--capture=<path>`, with `--capture-hover=<x>,<y>` for the

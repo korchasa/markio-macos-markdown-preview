@@ -6,7 +6,7 @@ import CoreText
 /// Deliberately not a parser: it recognises comments, strings, numbers and
 /// keywords, which is what carries almost all of the readability benefit, and
 /// it does so in one pass over the code's bytes. A real grammar per language
-/// would be a large dependency to carry — exactly the kind of weight Markio 2
+/// would be a large dependency to carry — exactly the kind of weight Markio
 /// exists to avoid — and it would run on every code block that scrolls past.
 struct SyntaxHighlighter {
     enum Token: UInt8 {

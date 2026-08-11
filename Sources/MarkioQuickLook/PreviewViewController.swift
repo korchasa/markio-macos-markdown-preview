@@ -13,7 +13,7 @@ import os
 /// is the difference between this and a preview that can hang on a spinner.
 ///
 /// The `@objc` name is pinned: `NSExtensionPrincipalClass` in
-/// `packaging/Markio2QuickLook-Info.plist` names it verbatim.
+/// `packaging/MarkioQuickLook-Info.plist` names it verbatim.
 @objc(PreviewViewController)
 // `@preconcurrency`: the SDK protocol carries no actor annotation, but Quick
 // Look calls it on the main thread and `NSViewController` is main-actor bound.

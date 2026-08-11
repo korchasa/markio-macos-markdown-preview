@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-@testable import Markio2
+@testable import Markio
 
 /// Store screenshots have one acceptable size and no tolerance around it.
 ///

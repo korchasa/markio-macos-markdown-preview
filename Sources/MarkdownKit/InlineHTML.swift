@@ -1,6 +1,6 @@
 /// Inline HTML, mapped onto text styles instead of being interpreted.
 ///
-/// Markio 2 has no HTML engine, so a tag can only mean something if the native
+/// Markio has no HTML engine, so a tag can only mean something if the native
 /// renderer already knows how to draw it. `<kbd>`, `<mark>`, `<b>`, `<i>`,
 /// `<u>`, `<s>`, `<code>`, `<sup>`, `<sub>` and `<br>` all have exact native
 /// equivalents and are honoured; every other well-formed tag is dropped,

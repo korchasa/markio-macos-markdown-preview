@@ -46,7 +46,7 @@ Do not ask someone to look at the screen. Two paths draw through the same code:
 
 ```bash
 .build/Markio.app/Contents/MacOS/Markio doc.md --capture=/tmp/shot.png
-.build/release/markio2-bench snapshot doc.md /tmp/shot.png 900 900 dark 1200
+.build/release/markio-bench snapshot doc.md /tmp/shot.png 900 900 dark 1200
 ```
 
 `--capture` draws the real window — scroll view, sidebar, bottom bar — and
@@ -57,7 +57,7 @@ permission; `screencapture` does, and does not have it.
 One Mermaid source on its own, without a document around it, is
 
 ```bash
-.build/release/markio2-bench diagram doc.mmd /tmp/shot.png 760 dark
+.build/release/markio-bench diagram doc.mmd /tmp/shot.png 760 dark
 ```
 
 which exits 3 and prints `refused` when the diagram is one the layout does not

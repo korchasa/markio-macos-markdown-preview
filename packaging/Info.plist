@@ -12,7 +12,7 @@
 	     certificates and provisioning profiles held outside this repository are
 	     issued for this id and for dev.markio.app.quicklook, so changing either
 	     string leaves nothing able to sign the bundle. The Swift targets stay
-	     Markio2: this is the second implementation of one product, not a second
+	     Markio: this is the second implementation of one product, not a second
 	     product. `scripts/identity.ts` is the gate that keeps them in step. -->
 	<key>CFBundleIdentifier</key>
 	<string>dev.markio.app</string>
@@ -54,7 +54,7 @@
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>NSDocumentClass</key>
-			<string>Markio2.MarkdownDocument</string>
+			<string>Markio.MarkdownDocument</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>net.daringfireball.markdown</string>

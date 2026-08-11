@@ -251,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
-/// A document controller that never offers to create a new document: Markio 2
+/// A document controller that never offers to create a new document: Markio
 /// reads Markdown, it does not write it.
 ///
 /// The type lookups stay `nonisolated`: they return a metatype and a constant,
