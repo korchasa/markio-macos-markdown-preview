@@ -56,6 +56,17 @@ public final class DocumentView: NSView {
     /// The diagram shown enlarged, while it is shown.
     private var enlarged: DiagramWindow?
 
+    /// The elements published to the system, and the blocks they describe.
+    ///
+    /// They have to be the same objects from one question to the next. A screen
+    /// reader asks the view for its children, then asks each child for its role
+    /// and its text; elements built fresh inside every answer are released
+    /// before the second question arrives, and the client is left holding eight
+    /// children that report nothing at all. That is exactly what the tree
+    /// showed before this cache existed.
+    var accessibleElements: [NSAccessibilityElement] = []
+    var accessibleRange: Range<Int>?
+
     private struct CodeHover: Equatable {
         var ordinal: Int
         var copyRect: CGRect
@@ -108,7 +119,7 @@ public final class DocumentView: NSView {
     }
 
     /// Ordinals whose blocks intersect a rectangle in view coordinates.
-    private func ordinals(in rect: CGRect) -> Range<Int> {
+    func ordinals(in rect: CGRect) -> Range<Int> {
         let count = layout.blockCount
         guard count > 0 else { return 0..<0 }
         let top = max(0, rect.minY - verticalPadding)
