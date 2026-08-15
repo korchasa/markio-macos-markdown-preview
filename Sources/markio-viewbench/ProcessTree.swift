@@ -175,34 +175,68 @@ final class Tracker {
     private let appPath: String
     private let helperNames: [String]
     private let foreign: Set<pid_t>
-    private let refreshInterval: TimeInterval
-    private var lastRefresh = Date.distantPast
+
+    /// Every process id already classified, so each one is examined once.
+    private var known: Set<pid_t> = []
 
     private(set) var pids: Set<pid_t> = []
 
-    init(
-        root: pid_t, appPath: String, helperNames: [String], foreign: Set<pid_t>,
-        refreshInterval: TimeInterval = 0.5
-    ) {
+    init(root: pid_t, appPath: String, helperNames: [String], foreign: Set<pid_t>) {
         self.root = root
         self.appPath = appPath
         self.helperNames = helperNames
         self.foreign = foreign
-        self.refreshInterval = refreshInterval
-        refresh()
+
+        let snapshot = ProcessTree.snapshot()
+        known = Set(snapshot.usages.keys)
+        pids = ProcessTree.subjectPids(
+            in: snapshot, root: root, appPath: appPath, helperNames: helperNames, foreign: foreign)
     }
 
-    func refresh() {
-        pids = ProcessTree.subjectPids(
-            in: ProcessTree.snapshot(), root: root, appPath: appPath, helperNames: helperNames,
-            foreign: foreign)
-        lastRefresh = Date()
+    /// Catch processes that appeared since the last look.
+    ///
+    /// Re-deriving the whole set means reading every process in the system, and
+    /// doing that on a timer was leaving a gap: a web view's content process can
+    /// appear, do the work of drawing the document and go quiet inside half a
+    /// second, and a set refreshed on that interval never sees the work at all —
+    /// the reading then says the app did nothing. Listing process ids is a
+    /// single call, so the list is taken every sample and only the ids that are
+    /// new are looked up.
+    private func discoverNewProcesses() {
+        let current = ProcessTree.allPids()
+        for pid in current where !known.contains(pid) {
+            known.insert(pid)
+            guard !foreign.contains(pid) else { continue }
+            if let path = ProcessTree.path(of: pid),
+                path.hasPrefix(appPath) || helperNames.contains(where: { path.contains($0) })
+            {
+                pids.insert(pid)
+            } else if let parent = ProcessTree.parent(of: pid), pids.contains(parent) {
+                pids.insert(pid)
+            }
+        }
     }
 
     /// The subject's cost right now, plus the machine's, for the noise guard.
+    ///
+    /// A process that has exited keeps its share: `usage` no longer answers for
+    /// it, and dropping it would make the subject's cumulative CPU time fall,
+    /// which reads as negative work.
     func sample() -> (subject: Usage, machineBusySeconds: Double) {
-        let now = Date()
-        if now.timeIntervalSince(lastRefresh) >= refreshInterval { refresh() }
-        return (ProcessTree.total(of: pids), SystemCpu.busySeconds())
+        discoverNewProcesses()
+        var total = Usage.zero
+        for pid in pids {
+            if let usage = ProcessTree.usage(of: pid) {
+                retired[pid] = usage
+                total = total + usage
+            } else if let last = retired[pid] {
+                total = total + last
+            }
+        }
+        return (total, SystemCpu.busySeconds())
     }
+
+    /// The last reading of each process, kept so a helper that exits does not
+    /// take its work out of the total.
+    private var retired: [pid_t: Usage] = [:]
 }

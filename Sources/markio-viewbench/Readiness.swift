@@ -30,8 +30,15 @@ enum Readiness {
     /// walking all of it would time the walk instead of the app. The needle is
     /// taken from the first screenful, so a breadth-first walk reaches it early
     /// or the document is not drawn yet.
-    static func showsText(_ needle: String, pid: pid_t, nodeBudget: Int = 4000) -> Bool {
+    static func showsText(_ needle: String, pid: pid_t, nodeBudget: Int = 600) -> Bool {
         let application = AXUIElementCreateApplication(pid)
+
+        // Every attribute read is a round trip to the app, answered on its main
+        // thread — the very thread that is busy drawing the document. Without a
+        // timeout the probe waits as long as the app takes, which would time
+        // the probe instead of the app and can hang the run outright.
+        AXUIElementSetMessagingTimeout(application, 0.25)
+
         var queue: [AXUIElement] = [application]
         var visited = 0
 

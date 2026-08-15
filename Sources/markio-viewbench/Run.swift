@@ -31,6 +31,10 @@ struct Limits {
     var idleFor = 1.0
     var timeout = 240.0
     var sampleInterval = 0.05
+    /// The accessibility walk is far more expensive than a footprint reading —
+    /// every node is a round trip to the app — so it runs on its own, slower
+    /// clock. This is the granularity of an `ax-ready` result.
+    var axPollInterval = 0.1
     var warmupSettle = 30.0
     /// A run is thrown away when this much of the machine went to other work.
     var foreignCpuShare = 0.15
@@ -199,12 +203,18 @@ enum Run {
     ) -> Outcome {
         let start = Date()
         var peak = 0
+        var lastPoll = Date.distantPast
         while Date().timeIntervalSince(start) < limits.timeout {
-            if Readiness.showsText(needle, pid: pid) {
-                return Outcome(
-                    seconds: Date().timeIntervalSince(start), peakFootprint: peak, timedOut: false)
-            }
             peak = max(peak, tracker.sample().subject.footprintBytes)
+            let now = Date()
+            if now.timeIntervalSince(lastPoll) >= limits.axPollInterval {
+                lastPoll = now
+                if Readiness.showsText(needle, pid: pid) {
+                    return Outcome(
+                        seconds: Date().timeIntervalSince(start), peakFootprint: peak,
+                        timedOut: false)
+                }
+            }
             Thread.sleep(forTimeInterval: limits.sampleInterval)
         }
         return Outcome(seconds: limits.timeout, peakFootprint: peak, timedOut: true)
