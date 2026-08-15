@@ -66,6 +66,18 @@ let package = Package(
                 .swiftLanguageMode(.v6)
             ]
         ),
+        // Comparative harness: what one document costs a finished Mac app —
+        // this one or any other — measured from the outside. It shares nothing
+        // with markio-bench: no parser, no MarkdownKit, and a procedure built
+        // around driving applications and throwing away readings the machine
+        // spoiled.
+        .executableTarget(
+            name: "markio-viewbench",
+            path: "Sources/markio-viewbench",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
         .testTarget(
             name: "MarkdownKitTests",
             dependencies: ["MarkdownKit"],

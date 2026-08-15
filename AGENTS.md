@@ -36,6 +36,8 @@ target.
 - `deno task app` — build `.build/Markio.app`
 - `deno task dev <file.md>` — build and open a document
 - `deno task bench` — parse cost and footprint at 1, 8 and 32 MB
+- `deno task viewbench` — the same document through finished apps, this one and
+  any other; `documents/viewbench.md` holds the procedure and its limits
 - `deno task fmt` — format Swift and the task scripts
 - `deno task dist` — the unsigned bundle
 - `deno task clean`
