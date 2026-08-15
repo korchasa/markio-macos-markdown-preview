@@ -56,6 +56,33 @@ enum Readiness {
         return false
     }
 
+    /// Print an app's accessibility tree. A probe that finds nothing and an app
+    /// that publishes nothing look identical from the outside; this is what
+    /// tells them apart.
+    static func dump(pid: pid_t, depth: Int = 6, nodeBudget: Int = 400) -> String {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 1.0)
+        var lines: [String] = []
+        var visited = 0
+
+        func walk(_ element: AXUIElement, level: Int) {
+            guard level <= depth, visited < nodeBudget else { return }
+            visited += 1
+            let role = string(of: element, attribute: kAXRoleAttribute) ?? "?"
+            let value = string(of: element, attribute: kAXValueAttribute)
+            let title = string(of: element, attribute: kAXTitleAttribute)
+            let text = (value ?? title ?? "").prefix(60).replacingOccurrences(of: "\n", with: " ")
+            let children = self.children(of: element)
+            lines.append(
+                String(repeating: "  ", count: level)
+                    + "\(role) [\(children.count)] \(text)")
+            for child in children { walk(child, level: level + 1) }
+        }
+
+        walk(application, level: 0)
+        return lines.joined(separator: "\n")
+    }
+
     private static func string(of element: AXUIElement, attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success

@@ -110,6 +110,18 @@ Each is here because leaving it out biases the comparison:
 - Let the machine cool: check that the first runs are not rejected for
   throttling.
 
+## When a probe finds nothing
+
+```bash
+.build/release/markio-viewbench dump <pid>
+```
+
+prints a running app's accessibility tree. A probe that cannot see and an app
+that says nothing look identical from outside, and only the tree tells them
+apart. It is what showed that this app's own document elements were answering
+neither their role nor their text, because they were being rebuilt inside every
+query and released before the next one arrived.
+
 `MARKIO_VIEWBENCH_TRACE=1` prints every sample with the processes being charged
 to the subject. A run that never ends looks the same from outside as a slow app,
 and that listing is what tells the two apart.

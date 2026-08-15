@@ -85,6 +85,21 @@ guard let planPath = arguments.first else {
         Data("usage: markio-viewbench <plan.json> [out.json]\n".utf8))
     exit(2)
 }
+// `dump <pid>` prints a running app's accessibility tree, which is the only way
+// to tell a probe that cannot see from an app that does not speak.
+if planPath == "dump" {
+    guard arguments.count > 1, let pid = pid_t(arguments[1]) else {
+        FileHandle.standardError.write(Data("usage: markio-viewbench dump <pid>\n".utf8))
+        exit(2)
+    }
+    guard Readiness.isTrusted(prompting: true) else {
+        FileHandle.standardError.write(Data("error: needs Accessibility permission\n".utf8))
+        exit(1)
+    }
+    print(Readiness.dump(pid: pid))
+    exit(0)
+}
+
 let outputPath = arguments.count > 1 ? arguments[1] : "viewbench.json"
 
 let planData: Data
