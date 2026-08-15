@@ -12,9 +12,9 @@ import Foundation
 /// The plan names the apps, the documents and how many rounds to run. Every
 /// control the procedure depends on is in the code rather than in the operator:
 /// subjects are interleaved and shuffled so a machine that drifts drifts across
-/// all of them equally, each subject is reset and brought to the front before
-/// it is timed, and a run taken while the machine was busy or throttling is
-/// rejected instead of averaged in.
+/// all of them equally, each subject is reset before it is timed, and a run
+/// taken while the machine was busy, throttling, or with the subject's window
+/// out of sight is rejected instead of averaged in.
 
 struct Plan: Decodable {
     struct SubjectSpec: Decodable {
@@ -47,6 +47,9 @@ struct Statistic: Encodable {
     /// Runs where the document cost the app less work than the probe can see.
     /// They carry no duration, so they are counted rather than averaged in.
     var belowFloor: Int
+    /// Runs where the document never became readable inside the timeout. The
+    /// worst thing an app can do, so it is reported rather than dropped.
+    var didNotFinish: Int
     var medianSeconds: Double?
     var fastestSeconds: Double?
     var medianCpuMilliseconds: Double?
@@ -206,7 +209,7 @@ for subject in subjects {
                     && $0.probe == probe
             }
             let good = all.filter(\.admissible)
-            let timed = good.filter { !$0.belowFloor }
+            let timed = good.filter { !$0.belowFloor && !$0.didNotFinish }
             let seconds = timed.map(\.seconds)
             statistics.append(
                 Statistic(
@@ -215,7 +218,8 @@ for subject in subjects {
                     probe: probe,
                     runs: good.count,
                     rejected: all.count - good.count,
-                    belowFloor: good.count - timed.count,
+                    belowFloor: good.filter(\.belowFloor).count,
+                    didNotFinish: good.filter(\.didNotFinish).count,
                     medianSeconds: median(seconds),
                     fastestSeconds: seconds.min(),
                     medianCpuMilliseconds: median(good.map { $0.cpuSeconds * 1000 }),
@@ -257,7 +261,8 @@ for statistic in statistics.sorted(by: { ($0.document, $0.subject) < ($1.documen
             + "\(statistic.subject.padding(toLength: 12, withPad: " ", startingAt: 0)) "
             + "\(statistic.probe.rawValue.padding(toLength: 10, withPad: " ", startingAt: 0)) "
             + "median \(seconds)  cpu \(cpu)  peak \(peak)  "
-            + "n=\(statistic.runs) rejected=\(statistic.rejected)")
+            + "n=\(statistic.runs) rejected=\(statistic.rejected)"
+            + (statistic.didNotFinish > 0 ? " unreadable=\(statistic.didNotFinish)" : ""))
 }
 for note in notes { print("\nnote: \(note)") }
 print("\nwritten to \(outputPath)")

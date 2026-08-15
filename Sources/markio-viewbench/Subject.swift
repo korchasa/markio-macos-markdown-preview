@@ -14,7 +14,10 @@ import Foundation
 ///   unsigned bundles and the report says which subjects got it.
 /// - A window that is not frontmost is throttled by App Nap, so a subject
 ///   measured in the background loses for a reason that has nothing to do with
-///   how it renders.
+///   how it renders. The subject is not activated to avoid that — an hour of
+///   runs seizing the keyboard makes the machine unusable — so App Nap is
+///   switched off per subject instead, and what activation cannot be replaced
+///   by is caught afterwards by measuring how much of the window was in sight.
 struct Subject {
     let name: String
     let originalPath: String
@@ -94,9 +97,16 @@ struct Subject {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
+    /// Open a document without taking the front.
+    ///
+    /// `-g` is the whole point: an hour of runs that each seize the keyboard
+    /// makes the machine unusable while the benchmark is going. What activation
+    /// used to buy — a window that keeps drawing — is bought instead by leaving
+    /// App Nap off and by refusing any run whose window turned out to be
+    /// buried, which `WindowVisibility` decides.
     @discardableResult
     func open(document: String) -> Int32 {
-        Shell.run("/usr/bin/open", ["-a", runPath, document]).status
+        Shell.run("/usr/bin/open", ["-g", "-a", runPath, document]).status
     }
 
     var runningPid: pid_t? {
@@ -126,11 +136,10 @@ struct Subject {
         }
     }
 
-    /// App Nap throttles a background app, so the subject has to hold the front
-    /// for the whole measurement.
-    func activate() {
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first?
-            .activate(options: [])
+    /// How much of the subject's window is in sight, for the run's validity.
+    func visibleFraction() -> Double? {
+        guard let pid = runningPid else { return nil }
+        return WindowVisibility.visibleFraction(pid: pid)
     }
 
     private static func readInfoPlist(appPath: String) throws -> [String: Any] {

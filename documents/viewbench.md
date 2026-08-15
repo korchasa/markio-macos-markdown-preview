@@ -88,9 +88,18 @@ Each is here because leaving it out biases the comparison:
   would confound the app with whatever the machine was doing that hour.
 - **A warmup document is opened first,** so launching the app is paid for
   outside the measurement.
-- **The subject is brought to the front,** because App Nap throttles a
-  background app and a subject measured behind another window loses for a
-  reason unrelated to rendering.
+- **The subject is never brought to the front,** because an hour of runs that
+  each seize the keyboard makes the machine unusable while the benchmark is
+  going. App Nap is switched off for each subject instead. The cost of not
+  activating is that AppKit stops sending display cycles to a window nothing
+  can see, which looks exactly like an app that will not render — so the window
+  is measured: a run whose subject was more than 80% covered, or which had no
+  window on the current Space at all, is refused within a few seconds rather
+  than after the timeout.
+
+  This is the one thing the machine has to be set up for. A full-screen
+  application on the active Space hides every subject window behind it and
+  every run is refused. Leave an ordinary desktop with room to see.
 - **Saved application state is cleared,** and for a bundle that can be modified
   the harness runs a copy under a fresh bundle identifier, which the system has
   never seen and has nothing to restore into. Markio restores its previous

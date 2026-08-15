@@ -21,6 +21,8 @@ struct RunResult: Encodable {
     var foreignCpuShare: Double
     var cpuSpeedLimit: Int
     var belowFloor: Bool
+    /// The document never became readable inside the timeout.
+    var didNotFinish: Bool
     var admissible: Bool
     var rejection: String?
 }
@@ -38,6 +40,9 @@ struct Limits {
     var warmupSettle = 30.0
     /// A run is thrown away when this much of the machine went to other work.
     var foreignCpuShare = 0.15
+    /// And when less than this much of its window was in sight, since a covered
+    /// window is not sent display cycles at all.
+    var visibleFraction = 0.2
 }
 
 /// The helper processes a web-view app brings up. They are children of launchd
@@ -71,7 +76,6 @@ enum Run {
             throw Failure("\(subject.name) did not launch")
         }
         try subject.verifyLaunchedBundle()
-        subject.activate()
 
         let tracker = Tracker(
             root: pid, appPath: subject.runPath, helperNames: helperNames, foreign: foreign)
@@ -83,7 +87,44 @@ enum Run {
         let speedLimitBefore = Environment.cpuSpeedLimit()
 
         subject.open(document: document)
-        subject.activate()
+
+        // Asked and answered before the probe starts, not after it gives up. A
+        // buried window is never sent display cycles, so every run would burn
+        // the whole timeout — four minutes each, for an hour of runs — to
+        // discover the same thing this costs a second to learn.
+        // Polled rather than read once: a window a second after `open` may not
+        // exist yet, and "no window on screen" has to mean the window is not
+        // coming, not that it has not arrived. A full-screen app on the current
+        // Space produces exactly this — the subject's window is on another
+        // Space and appears in no on-screen list at all.
+        var visibility: Double?
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 0.5)
+            let reading = subject.visibleFraction()
+            visibility = max(visibility ?? 0, reading ?? 0)
+            if (reading ?? 0) >= limits.visibleFraction { break }
+        }
+        if let visible = visibility, visible < limits.visibleFraction {
+            subject.quit()
+            return RunResult(
+                subject: subject.name,
+                document: (document as NSString).lastPathComponent,
+                probe: probe,
+                seconds: 0,
+                cpuSeconds: 0,
+                peakFootprintBytes: 0,
+                settledFootprintBytes: 0,
+                baselineFootprintBytes: baseline.subject.footprintBytes,
+                foreignCpuShare: 0,
+                cpuSpeedLimit: speedLimitBefore,
+                belowFloor: false,
+                didNotFinish: false,
+                admissible: false,
+                rejection: String(
+                    format: "the subject's window was %.0f%% covered — leave it in sight",
+                    (1 - visible) * 100)
+            )
+        }
 
         let outcome: Outcome
         switch probe {
@@ -96,6 +137,8 @@ enum Run {
 
         let final = tracker.sample()
         let speedLimitAfter = Environment.cpuSpeedLimit()
+        // Read before quitting, while the window still exists.
+        let visible = subject.visibleFraction()
         subject.quit()
 
         let cpuSeconds = final.subject.cpuSeconds - baseline.subject.cpuSeconds
@@ -112,9 +155,22 @@ enum Run {
         let foreignShare = capacity > 0 ? max(0, machineBusy - cpuSeconds - harness) / capacity : 0
         let speedLimit = min(speedLimitBefore, speedLimitAfter)
 
+        // A probe that never fires is a fact about the app, not a spoiled run:
+        // the document did not become readable in the time allowed. Counting it
+        // as a rejection would drop the worst result an app can produce and
+        // report the rest as if that had never happened.
         var rejection: String?
-        if outcome.timedOut {
-            rejection = "the probe did not fire within \(Int(limits.timeout)) s"
+        if let visible, visible < limits.visibleFraction {
+            // Checked before the timeout is interpreted: a buried window is not
+            // asked to draw, so calling that document unreadable would blame
+            // the app for the window layout on the desk.
+            rejection = String(
+                format: "the subject's window was %.0f%% covered — leave it in sight",
+                (1 - visible) * 100)
+        } else if visible == nil {
+            rejection = "the subject had no window on screen"
+        } else if outcome.timedOut {
+            rejection = nil
         } else if observed < 1.0 {
             // Below a second there is nothing to judge: the kernel keeps its
             // CPU totals in hundredths, so a tenth-of-a-second window turns any
@@ -141,6 +197,7 @@ enum Run {
             foreignCpuShare: foreignShare,
             cpuSpeedLimit: speedLimit,
             belowFloor: outcome.belowFloor,
+            didNotFinish: outcome.timedOut,
             admissible: rejection == nil,
             rejection: rejection
         )
