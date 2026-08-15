@@ -68,6 +68,13 @@ A run is thrown away, not averaged in, when:
 - `CPU_Speed_Limit` was below 100, meaning the machine was throttling;
 - the probe never fired inside the timeout.
 
+Two things are deliberately not counted as other work. The harness's own cost
+is part of the method and is paid identically for every subject, so charging it
+as noise would have the expensive `ax-ready` probe rejecting the readings it
+had just taken. And the busy-machine test is skipped below a second: the kernel
+keeps its CPU totals in hundredths, so over a tenth of a second any passing
+system activity looks like most of the machine.
+
 The report carries the count of rejected runs beside every figure, along with
 the median, the fastest run and the median absolute deviation. A benchmark that
 prints one number and not its spread is asking to be believed rather than

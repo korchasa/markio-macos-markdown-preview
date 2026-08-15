@@ -100,16 +100,27 @@ enum Run {
 
         let cpuSeconds = final.subject.cpuSeconds - baseline.subject.cpuSeconds
         let machineBusy = final.machineBusySeconds - baseline.machineBusySeconds
+        // The harness's own cost is part of the method, not noise from
+        // elsewhere, and it is paid identically for every subject. Counting it
+        // as foreign load made the `ax-ready` probe — which is the expensive
+        // one — reject the very runs it had just taken.
+        let harness = final.harnessCpuSeconds - baseline.harnessCpuSeconds
         // A run that finished below the floor still occupied the give-up
         // window, and that window is what the noise guard has to divide by.
         let observed = outcome.belowFloor ? 5.0 : outcome.seconds
         let capacity = observed * Double(ProcessInfo.processInfo.activeProcessorCount)
-        let foreignShare = capacity > 0 ? max(0, machineBusy - cpuSeconds) / capacity : 0
+        let foreignShare = capacity > 0 ? max(0, machineBusy - cpuSeconds - harness) / capacity : 0
         let speedLimit = min(speedLimitBefore, speedLimitAfter)
 
         var rejection: String?
         if outcome.timedOut {
             rejection = "the probe did not fire within \(Int(limits.timeout)) s"
+        } else if observed < 1.0 {
+            // Below a second there is nothing to judge: the kernel keeps its
+            // CPU totals in hundredths, so a tenth-of-a-second window turns any
+            // passing system activity into most of the machine. A run this
+            // short was not slowed by anything.
+            rejection = nil
         } else if foreignShare > limits.foreignCpuShare {
             rejection = String(
                 format: "the machine was busy with other work (%.0f%% of capacity)",

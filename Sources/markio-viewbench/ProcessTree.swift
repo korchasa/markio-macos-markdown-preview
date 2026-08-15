@@ -222,7 +222,7 @@ final class Tracker {
     /// A process that has exited keeps its share: `usage` no longer answers for
     /// it, and dropping it would make the subject's cumulative CPU time fall,
     /// which reads as negative work.
-    func sample() -> (subject: Usage, machineBusySeconds: Double) {
+    func sample() -> (subject: Usage, machineBusySeconds: Double, harnessCpuSeconds: Double) {
         discoverNewProcesses()
         var total = Usage.zero
         for pid in pids {
@@ -233,7 +233,8 @@ final class Tracker {
                 total = total + last
             }
         }
-        return (total, SystemCpu.busySeconds())
+        let own = ProcessTree.usage(of: getpid())?.cpuSeconds ?? 0
+        return (total, SystemCpu.busySeconds(), own)
     }
 
     /// The last reading of each process, kept so a helper that exits does not
