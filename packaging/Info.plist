@@ -21,7 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>8</string>
+	<string>9</string>
 	<!-- English only. Our own menu items ship untranslated, so declaring more
 	     locales makes AppKit render ITS standard items in the system language
 	     beside ours — a menu bar in two languages at once. One declared locale
