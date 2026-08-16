@@ -62,18 +62,29 @@ are run as separate passes and never combined into one number.
 
 ## What makes a reading admissible
 
-A run is thrown away, not averaged in, when:
+A whole run is thrown away only when something made it meaningless: the
+subject's window was never in sight, the screen was locked, or `CPU_Speed_Limit`
+dropped below 100 and the machine was throttling — the one kind of interference
+that changes the work itself and not just how long it took.
 
-- the machine spent more than 15% of its capacity on other work during it;
-- `CPU_Speed_Limit` was below 100, meaning the machine was throttling;
-- the probe never fired inside the timeout.
+**Contention is not that.** Work done and memory held are read from the
+subject's own processes, and neither grows because something else on the
+machine wanted a core; only the clock suffers. So a run taken while the machine
+was saturated keeps its CPU and footprint and loses its duration alone, counted
+in the report as `contended=`.
 
-Two things are deliberately not counted as other work. The harness's own cost
-is part of the method and is paid identically for every subject, so charging it
-as noise would have the expensive `ax-ready` probe rejecting the readings it
-had just taken. And the busy-machine test is skipped below a second: the kernel
-keeps its CPU totals in hundredths, so over a tenth of a second any passing
-system activity looks like most of the machine.
+Saturation is the question that matters, not activity. This desk rests at 15%
+of its ten cores with a chat window open, and a subject using one core is not
+competing with that for anything — a guard that asked "was there other work"
+refused nearly every reading for the machine's ordinary background. The guard
+asks whether more than 80% of the machine was busy, and it is not asked at all
+below a second, where the kernel's hundredth-of-a-second CPU totals turn any
+passing activity into most of the machine.
+
+A probe that never fires is also not a spoiled run. The document not becoming
+readable inside the timeout is the worst thing a viewer can do, and dropping it
+would report the rest as if that had never happened; it is carried as
+`unreadable=`.
 
 The report carries the count of rejected runs beside every figure, along with
 the median, the fastest run and the median absolute deviation. A benchmark that

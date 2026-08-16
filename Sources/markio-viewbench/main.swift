@@ -50,6 +50,9 @@ struct Statistic: Encodable {
     /// Runs where the document never became readable inside the timeout. The
     /// worst thing an app can do, so it is reported rather than dropped.
     var didNotFinish: Int
+    /// Runs whose clock was taken while the machine had no spare core. Their
+    /// work and memory still count; only their duration is set aside.
+    var contended: Int
     var medianSeconds: Double?
     var fastestSeconds: Double?
     var medianCpuMilliseconds: Double?
@@ -175,6 +178,17 @@ if !signedSubjects.isEmpty {
 }
 
 let limits = Limits()
+let restingLoad = Environment.restingLoadShare()
+FileHandle.standardError.write(
+    Data(String(format: "machine at rest: %.0f%% of capacity busy\n", restingLoad * 100).utf8))
+if restingLoad > 0.4 {
+    notes.append(
+        String(
+            format:
+                "The machine was %.0f%% busy before the benchmark started. Every reading here "
+                + "was taken against that, and a quieter machine would produce a tighter one.",
+            restingLoad * 100))
+}
 let cooldown = plan.cooldownSeconds ?? 3.0
 var results: [RunResult] = []
 
@@ -200,7 +214,10 @@ for round in 1...max(1, plan.rounds) {
                         probe: probe,
                         limits: limits)
                     results.append(result)
-                    let verdict = result.admissible ? "ok" : "rejected: \(result.rejection ?? "")"
+                    let verdict =
+                        result.admissible
+                        ? (result.contended ? "ok, clock set aside — machine saturated" : "ok")
+                        : "rejected: \(result.rejection ?? "")"
                     FileHandle.standardError.write(
                         Data(
                             String(
@@ -227,7 +244,8 @@ for subject in subjects {
                     && $0.probe == probe
             }
             let good = all.filter(\.admissible)
-            let timed = good.filter { !$0.belowFloor && !$0.didNotFinish }
+            // Work and memory survive contention; the clock does not.
+            let timed = good.filter { !$0.belowFloor && !$0.didNotFinish && !$0.contended }
             let seconds = timed.map(\.seconds)
             statistics.append(
                 Statistic(
@@ -238,6 +256,7 @@ for subject in subjects {
                     rejected: all.count - good.count,
                     belowFloor: good.filter(\.belowFloor).count,
                     didNotFinish: good.filter(\.didNotFinish).count,
+                    contended: good.filter(\.contended).count,
                     medianSeconds: median(seconds),
                     fastestSeconds: seconds.min(),
                     medianCpuMilliseconds: median(good.map { $0.cpuSeconds * 1000 }),
@@ -280,7 +299,8 @@ for statistic in statistics.sorted(by: { ($0.document, $0.subject) < ($1.documen
             + "\(statistic.probe.rawValue.padding(toLength: 10, withPad: " ", startingAt: 0)) "
             + "median \(seconds)  cpu \(cpu)  peak \(peak)  "
             + "n=\(statistic.runs) rejected=\(statistic.rejected)"
-            + (statistic.didNotFinish > 0 ? " unreadable=\(statistic.didNotFinish)" : ""))
+            + (statistic.didNotFinish > 0 ? " unreadable=\(statistic.didNotFinish)" : "")
+            + (statistic.contended > 0 ? " contended=\(statistic.contended)" : ""))
 }
 for note in notes { print("\nnote: \(note)") }
 print("\nwritten to \(outputPath)")

@@ -55,6 +55,24 @@ enum Environment {
         !Shell.run("/usr/bin/pmset", ["-g", "ps"]).output.contains("AC Power")
     }
 
+    /// What fraction of this machine is busy when nothing is being asked of it.
+    ///
+    /// Not a constant, and not small. This desk rests at 13–17% of capacity
+    /// with only a chat window and a messenger open, so a noise guard that
+    /// refuses a run above a fixed 15% refuses nearly every run for the
+    /// machine's ordinary background — which is how an hour of measurement
+    /// produced three usable readings. What matters is the rise above resting,
+    /// so resting is measured rather than assumed.
+    static func restingLoadShare(seconds: Double = 3) -> Double {
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        let before = SystemCpu.busySeconds()
+        let start = Date()
+        Thread.sleep(forTimeInterval: seconds)
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 0, cores > 0 else { return 0 }
+        return max(0, (SystemCpu.busySeconds() - before) / (elapsed * cores))
+    }
+
     /// A locked screen draws nothing at all.
     ///
     /// Every window is occluded then, so no subject ever lays its document out

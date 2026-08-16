@@ -18,11 +18,17 @@ struct RunResult: Encodable {
     var peakFootprintBytes: Int
     var settledFootprintBytes: Int
     var baselineFootprintBytes: Int
-    var foreignCpuShare: Double
+    /// How much of the machine was busy during the run, the subject included.
+    var machineBusyShare: Double
     var cpuSpeedLimit: Int
     var belowFloor: Bool
     /// The document never became readable inside the timeout.
     var didNotFinish: Bool
+    /// The machine had no spare core for the subject, so the elapsed time says
+    /// as much about the queue as about the viewer. Only the elapsed time is
+    /// affected: work done and memory held are read per process and do not
+    /// change because something else wanted the CPU too.
+    var contended: Bool
     var admissible: Bool
     var rejection: String?
 }
@@ -38,8 +44,16 @@ struct Limits {
     /// clock. This is the granularity of an `ax-ready` result.
     var axPollInterval = 0.1
     var warmupSettle = 30.0
-    /// A run is thrown away when this much of the machine went to other work.
-    var foreignCpuShare = 0.15
+    /// Above this share of the whole machine, the elapsed time stops being
+    /// about the viewer and starts being about the queue.
+    ///
+    /// The question a noise guard has to ask is whether the subject got a core,
+    /// not whether anything else on the machine was running. This desk rests at
+    /// 15% of its ten cores with a chat window open, and a subject that uses
+    /// one of them is not competing with that for anything. Asking the older
+    /// question — is there other work — refused nearly every reading for the
+    /// machine's ordinary background.
+    var saturation = 0.8
     /// And when less than this much of its window was in sight, since a covered
     /// window is not sent display cycles at all.
     var visibleFraction = 0.2
@@ -111,17 +125,22 @@ enum Run {
 
         let cpuSeconds = final.subject.cpuSeconds - baseline.subject.cpuSeconds
         let machineBusy = final.machineBusySeconds - baseline.machineBusySeconds
-        // The harness's own cost is part of the method, not noise from
-        // elsewhere, and it is paid identically for every subject. Counting it
-        // as foreign load made the `ax-ready` probe — which is the expensive
-        // one — reject the very runs it had just taken.
-        let harness = final.harnessCpuSeconds - baseline.harnessCpuSeconds
         // A run that finished below the floor still occupied the give-up
-        // window, and that window is what the noise guard has to divide by.
+        // window, and that window is what the shares below divide by.
         let observed = outcome.belowFloor ? 5.0 : outcome.seconds
         let capacity = observed * Double(ProcessInfo.processInfo.activeProcessorCount)
-        let foreignShare = capacity > 0 ? max(0, machineBusy - cpuSeconds - harness) / capacity : 0
+        let busyShare = capacity > 0 ? machineBusy / capacity : 0
         let speedLimit = min(speedLimitBefore, speedLimitAfter)
+
+        // Contention spoils the clock and nothing else. Work done and memory
+        // held are read from the subject's own processes and do not grow
+        // because something else wanted a core — so a contended run keeps its
+        // CPU and footprint and loses only its duration.
+        //
+        // Under a second the question cannot be asked at all: the kernel keeps
+        // its CPU totals in hundredths, so a tenth-of-a-second window turns any
+        // passing activity into most of the machine.
+        let contended = observed >= 1.0 && busyShare > limits.saturation
 
         // A probe that never fires is a fact about the app, not a spoiled run:
         // the document did not become readable in the time allowed. Counting it
@@ -133,19 +152,9 @@ enum Run {
             // is not asked to draw, so calling that document unreadable would
             // blame the app for the arrangement of windows on the desk.
             rejection = buried
-        } else if outcome.timedOut {
-            rejection = nil
-        } else if observed < 1.0 {
-            // Below a second there is nothing to judge: the kernel keeps its
-            // CPU totals in hundredths, so a tenth-of-a-second window turns any
-            // passing system activity into most of the machine. A run this
-            // short was not slowed by anything.
-            rejection = nil
-        } else if foreignShare > limits.foreignCpuShare {
-            rejection = String(
-                format: "the machine was busy with other work (%.0f%% of capacity)",
-                foreignShare * 100)
         } else if speedLimit < 100 {
+            // Throttling is the one kind of interference that does change the
+            // work itself, so it takes the whole reading with it.
             rejection = "the machine was throttling (CPU_Speed_Limit \(speedLimit))"
         }
 
@@ -158,10 +167,11 @@ enum Run {
             peakFootprintBytes: outcome.peakFootprint,
             settledFootprintBytes: final.subject.footprintBytes,
             baselineFootprintBytes: baseline.subject.footprintBytes,
-            foreignCpuShare: foreignShare,
+            machineBusyShare: busyShare,
             cpuSpeedLimit: speedLimit,
             belowFloor: outcome.belowFloor,
             didNotFinish: outcome.timedOut,
+            contended: contended,
             admissible: rejection == nil,
             rejection: rejection
         )
