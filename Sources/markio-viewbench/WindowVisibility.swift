@@ -2,19 +2,17 @@ import AppKit
 
 /// How much of a subject's window is actually in sight.
 ///
-/// The harness used to bring each subject to the front before timing it, which
-/// keeps App Nap off and the window drawing — and takes the keyboard away from
-/// whoever is at the machine, once per run, for an hour. Launching without
-/// activation gives that back, but it introduces a failure that looks exactly
-/// like a slow application: AppKit stops sending display cycles to a window
-/// that is entirely covered, so the document is never laid out, the probe never
-/// fires, and the app is reported as unreadable when it simply was not asked to
-/// draw.
+/// Each subject is brought to the front before it is timed, but being asked to
+/// come forward and being in sight are not the same thing, and the difference
+/// is invisible in the result: AppKit sends no display cycles to a window that
+/// is entirely covered, so the document is never laid out, the probe never
+/// fires, and the app is reported as unreadable when it was simply never asked
+/// to draw.
 ///
-/// So the window is measured instead of commanded. A run whose subject was
+/// So the window is measured as well as commanded. A run whose subject was
 /// buried is refused rather than believed.
 enum WindowVisibility {
-    /// The fraction of the subject's largest window that nothing covers, or
+    /// The fraction of the subject's frontmost window that nothing covers, or
     /// nil when it has no ordinary window on screen at all.
     static func visibleFraction(pid: pid_t, samples: Int = 20) -> Double? {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
@@ -22,25 +20,32 @@ enum WindowVisibility {
             let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
         else { return nil }
 
-        // The list runs front to back, so everything before the subject is a
-        // window standing in front of it.
+        // The list runs front to back, so the subject's frontmost window is its
+        // first entry, and everything before that entry stands in front of it.
+        //
+        // Frontmost, not largest. Each run opens a warmup document and then the
+        // one being measured, which leaves the app with two windows of the same
+        // size — and picking the larger one picked the one behind, reporting
+        // every subject as completely covered by itself.
         var subjectRect: CGRect?
         var subjectIndex = 0
         for (index, info) in list.enumerated() {
             guard let owner = info[kCGWindowOwnerPID as String] as? pid_t, owner == pid,
                 let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
-                let rect = bounds(of: info)
+                let rect = bounds(of: info), rect.width > 1, rect.height > 1
             else { continue }
-            if subjectRect.map({ rect.area > $0.area }) ?? true {
-                subjectRect = rect
-                subjectIndex = index
-            }
+            subjectRect = rect
+            subjectIndex = index
+            break
         }
-        guard let rect = subjectRect, rect.width > 1, rect.height > 1 else { return nil }
+        guard let rect = subjectRect else { return nil }
 
         let covers = list.prefix(subjectIndex).compactMap { info -> CGRect? in
             guard let layer = info[kCGWindowLayer as String] as? Int, layer >= 0,
-                (info[kCGWindowAlpha as String] as? Double ?? 1) > 0.1
+                (info[kCGWindowAlpha as String] as? Double ?? 1) > 0.1,
+                // The subject's own windows are not something hiding it from
+                // the reader — the app is right there, drawing.
+                (info[kCGWindowOwnerPID as String] as? pid_t) != pid
             else { return nil }
             return bounds(of: info)
         }
@@ -82,8 +87,4 @@ enum WindowVisibility {
         guard let dictionary = info[kCGWindowBounds as String] as? [String: Any] else { return nil }
         return CGRect(dictionaryRepresentation: dictionary as CFDictionary)
     }
-}
-
-extension CGRect {
-    fileprivate var area: CGFloat { width * height }
 }
