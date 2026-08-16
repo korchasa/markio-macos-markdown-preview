@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// The machine the numbers came from, and the two conditions that make a
@@ -52,6 +53,36 @@ enum Environment {
     /// up as a slower subject rather than as a warning.
     static func isOnBattery() -> Bool {
         !Shell.run("/usr/bin/pmset", ["-g", "ps"]).output.contains("AC Power")
+    }
+
+    /// A locked screen draws nothing at all.
+    ///
+    /// Every window is occluded then, so no subject ever lays its document out
+    /// and every probe runs to its timeout. From inside a run this is
+    /// indistinguishable from an application that cannot open the file, and it
+    /// is how an hour of measurements turns into an hour of zeroes — so it is
+    /// asked about by name rather than inferred from the wreckage.
+    static func screenIsLocked() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+        return session["CGSSessionScreenIsLocked"] as? Int == 1
+    }
+
+    /// Block until someone unlocks the machine, saying so once a minute.
+    static func waitForUnlockedScreen() {
+        guard screenIsLocked() else { return }
+        FileHandle.standardError.write(
+            Data("the screen is locked — nothing is drawn while it is, waiting…\n".utf8))
+        var announced = Date()
+        while screenIsLocked() {
+            Thread.sleep(forTimeInterval: 5)
+            if Date().timeIntervalSince(announced) >= 60 {
+                announced = Date()
+                FileHandle.standardError.write(Data("still waiting for the screen…\n".utf8))
+            }
+        }
+        // The desk takes a moment to come back; measuring into that is measuring
+        // the wallpaper being redrawn.
+        Thread.sleep(forTimeInterval: 5)
     }
 
     private static func sysctl(_ name: String) -> String {

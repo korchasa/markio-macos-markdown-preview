@@ -59,6 +59,25 @@ enum WindowVisibility {
         return Double(seen) / Double(samples * samples)
     }
 
+    /// Whether there is anywhere on this desk for a subject's window to be seen.
+    ///
+    /// A full-screen application owns its Space outright: every other window
+    /// lives on a different Space and appears in no on-screen list, so no
+    /// subject is ever drawn and every run is refused. Worth learning before an
+    /// hour of runs rather than after the first one.
+    static func deskIsUsable() -> Bool {
+        guard let screen = NSScreen.screens.first else { return true }
+        let full = screen.frame
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+        return !list.contains { info in
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                let rect = bounds(of: info)
+            else { return false }
+            return rect.width >= full.width && rect.height >= full.height
+        }
+    }
+
     private static func bounds(of info: [String: Any]) -> CGRect? {
         guard let dictionary = info[kCGWindowBounds as String] as? [String: Any] else { return nil }
         return CGRect(dictionaryRepresentation: dictionary as CFDictionary)

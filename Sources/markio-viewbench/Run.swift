@@ -86,59 +86,27 @@ enum Run {
         let baseline = tracker.sample()
         let speedLimitBefore = Environment.cpuSpeedLimit()
 
-        subject.open(document: document)
+        // The window is kept in sight by the probe itself rather than checked
+        // before it starts, so the clock runs from the moment the document was
+        // opened. Checking first cost the reading its first half-second, which
+        // for a fast viewer is most of what there was to measure.
+        let sightline = Sightline(subject: subject, pid: pid, threshold: limits.visibleFraction)
 
-        // Asked and answered before the probe starts, not after it gives up. A
-        // buried window is never sent display cycles, so every run would burn
-        // the whole timeout — four minutes each, for an hour of runs — to
-        // discover the same thing this costs a second to learn.
-        // Polled rather than read once: a window a second after `open` may not
-        // exist yet, and "no window on screen" has to mean the window is not
-        // coming, not that it has not arrived. A full-screen app on the current
-        // Space produces exactly this — the subject's window is on another
-        // Space and appears in no on-screen list at all.
-        var visibility: Double?
-        for _ in 0..<6 {
-            Thread.sleep(forTimeInterval: 0.5)
-            let reading = subject.visibleFraction()
-            visibility = max(visibility ?? 0, reading ?? 0)
-            if (reading ?? 0) >= limits.visibleFraction { break }
-        }
-        if let visible = visibility, visible < limits.visibleFraction {
-            subject.quit()
-            return RunResult(
-                subject: subject.name,
-                document: (document as NSString).lastPathComponent,
-                probe: probe,
-                seconds: 0,
-                cpuSeconds: 0,
-                peakFootprintBytes: 0,
-                settledFootprintBytes: 0,
-                baselineFootprintBytes: baseline.subject.footprintBytes,
-                foreignCpuShare: 0,
-                cpuSpeedLimit: speedLimitBefore,
-                belowFloor: false,
-                didNotFinish: false,
-                admissible: false,
-                rejection: String(
-                    format: "the subject's window was %.0f%% covered — leave it in sight",
-                    (1 - visible) * 100)
-            )
-        }
+        subject.open(document: document)
 
         let outcome: Outcome
         switch probe {
         case .cpuIdle:
             outcome = waitForIdle(
-                tracker: tracker, limits: limits, deadline: limits.timeout, requireWork: true)
+                tracker: tracker, limits: limits, deadline: limits.timeout, requireWork: true,
+                sightline: sightline)
         case .axReady:
-            outcome = waitForText(readyText, pid: pid, tracker: tracker, limits: limits)
+            outcome = waitForText(
+                readyText, pid: pid, tracker: tracker, limits: limits, sightline: sightline)
         }
 
         let final = tracker.sample()
         let speedLimitAfter = Environment.cpuSpeedLimit()
-        // Read before quitting, while the window still exists.
-        let visible = subject.visibleFraction()
         subject.quit()
 
         let cpuSeconds = final.subject.cpuSeconds - baseline.subject.cpuSeconds
@@ -160,15 +128,11 @@ enum Run {
         // as a rejection would drop the worst result an app can produce and
         // report the rest as if that had never happened.
         var rejection: String?
-        if let visible, visible < limits.visibleFraction {
-            // Checked before the timeout is interpreted: a buried window is not
-            // asked to draw, so calling that document unreadable would blame
-            // the app for the window layout on the desk.
-            rejection = String(
-                format: "the subject's window was %.0f%% covered — leave it in sight",
-                (1 - visible) * 100)
-        } else if visible == nil {
-            rejection = "the subject had no window on screen"
+        if let buried = outcome.buried {
+            // Read before the timeout is interpreted: a window nothing can see
+            // is not asked to draw, so calling that document unreadable would
+            // blame the app for the arrangement of windows on the desk.
+            rejection = buried
         } else if outcome.timedOut {
             rejection = nil
         } else if observed < 1.0 {
@@ -212,6 +176,8 @@ enum Run {
         /// duration, and reporting the give-up window as one would say the app
         /// took five seconds when it took none.
         var belowFloor = false
+        /// The window was never in sight, so nothing was ever drawn in it.
+        var buried: String?
     }
 
     /// Sample the subject until it stops working.
@@ -220,7 +186,8 @@ enum Run {
     /// up, so without waiting for activity to rise first, an app that takes a
     /// moment to start reads as instant.
     private static func waitForIdle(
-        tracker: Tracker, limits: Limits, deadline: Double, requireWork: Bool
+        tracker: Tracker, limits: Limits, deadline: Double, requireWork: Bool,
+        sightline: Sightline? = nil
     ) -> Outcome {
         let start = Date()
         var peak = 0
@@ -229,6 +196,10 @@ enum Run {
         var working = !requireWork
 
         while Date().timeIntervalSince(start) < deadline {
+            if let rejection = sightline?.check(elapsed: Date().timeIntervalSince(start)) {
+                return Outcome(
+                    seconds: 0, peakFootprint: peak, timedOut: false, buried: rejection)
+            }
             let sample = tracker.sample()
             peak = max(peak, sample.subject.footprintBytes)
             let now = Date()
@@ -267,12 +238,17 @@ enum Run {
     }
 
     private static func waitForText(
-        _ needle: String, pid: pid_t, tracker: Tracker, limits: Limits
+        _ needle: String, pid: pid_t, tracker: Tracker, limits: Limits,
+        sightline: Sightline? = nil
     ) -> Outcome {
         let start = Date()
         var peak = 0
         var lastPoll = Date.distantPast
         while Date().timeIntervalSince(start) < limits.timeout {
+            if let rejection = sightline?.check(elapsed: Date().timeIntervalSince(start)) {
+                return Outcome(
+                    seconds: 0, peakFootprint: peak, timedOut: false, buried: rejection)
+            }
             peak = max(peak, tracker.sample().subject.footprintBytes)
             let now = Date()
             if now.timeIntervalSince(lastPoll) >= limits.axPollInterval {

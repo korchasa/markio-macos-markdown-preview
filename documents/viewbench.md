@@ -90,16 +90,25 @@ Each is here because leaving it out biases the comparison:
   outside the measurement.
 - **The subject is never brought to the front,** because an hour of runs that
   each seize the keyboard makes the machine unusable while the benchmark is
-  going. App Nap is switched off for each subject instead. The cost of not
-  activating is that AppKit stops sending display cycles to a window nothing
-  can see, which looks exactly like an app that will not render — so the window
-  is measured: a run whose subject was more than 80% covered, or which had no
-  window on the current Space at all, is refused within a few seconds rather
-  than after the timeout.
+  going. App Nap is switched off for each subject instead, its window is raised
+  through accessibility — which, unlike activating the app, does not move the
+  keyboard — and it is given the same position and size as every other subject,
+  since how much of a document gets laid out depends on how big the window is.
 
-  This is the one thing the machine has to be set up for. A full-screen
-  application on the active Space hides every subject window behind it and
-  every run is refused. Leave an ordinary desktop with room to see.
+  What that cannot fix is refused rather than believed. A window nothing can
+  see is sent no display cycles, so the document is never laid out and the app
+  reads as unable to open it; a run whose subject stayed more than 80% covered
+  for three seconds after being raised is thrown out. A subject that has not
+  shown a window *yet* is not thrown out — some take twenty seconds over a
+  large document, and that is the reading, not a fault.
+
+  Two states of the machine make every run impossible, and both are named
+  rather than left to look like broken applications. **A locked screen** draws
+  nothing at all; the benchmark waits for it, between runs as well as at the
+  start, so a machine that locks itself halfway through an hour resumes instead
+  of filling the report with zeroes. **A full-screen application** owns its
+  Space outright, putting every subject window on another one, and the run
+  stops before it starts with a note to leave full screen.
 - **Saved application state is cleared,** and for a bundle that can be modified
   the harness runs a copy under a fresh bundle identifier, which the system has
   never seen and has nothing to restore into. Markio restores its previous
@@ -114,6 +123,9 @@ Each is here because leaving it out biases the comparison:
 ## Before a run that is going to be quoted
 
 - Mains power. On battery macOS trades speed for charge and the report says so.
+- An unlocked screen for the whole hour, on an ordinary desktop rather than a
+  full-screen app. Turn off the screen saver and display sleep first; the
+  benchmark waits rather than lying, but a run that waits is a run not taken.
 - Quit other applications, browsers first — every rejected run is a run wasted.
 - Turn off Wi-Fi if any subject checks for updates on launch.
 - Let the machine cool: check that the first runs are not rejected for

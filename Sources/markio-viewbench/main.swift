@@ -133,6 +133,21 @@ if plan.probes.contains(.axReady) && !Readiness.isTrusted(prompting: true) {
     exit(1)
 }
 
+Environment.waitForUnlockedScreen()
+
+if !WindowVisibility.deskIsUsable() {
+    FileHandle.standardError.write(
+        Data(
+            """
+            error: a full-screen application is holding this Space, so every
+                   subject's window would open on another one and never be
+                   drawn. Leave full screen, or switch to an ordinary desktop,
+                   and run it again.
+
+            """.utf8))
+    exit(1)
+}
+
 let staging = NSTemporaryDirectory() + "markio-viewbench"
 var subjects: [Subject] = []
 for spec in plan.subjects {
@@ -169,6 +184,9 @@ for round in 1...max(1, plan.rounds) {
     for document in plan.documents {
         for probe in plan.probes {
             for subject in subjects.shuffled() {
+                // Checked between runs as well as at the start: a machine left
+                // alone locks itself partway through an hour of measurements.
+                Environment.waitForUnlockedScreen()
                 FileHandle.standardError.write(
                     Data(
                         "round \(round) · \(subject.name) · \(document.name) · \(probe.rawValue)\n"
