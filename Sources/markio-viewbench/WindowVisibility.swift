@@ -12,9 +12,23 @@ import AppKit
 /// So the window is measured as well as commanded. A run whose subject was
 /// buried is refused rather than believed.
 enum WindowVisibility {
+    /// What a look at the desk says about one subject.
+    struct Reading {
+        /// The fraction of its frontmost window that nothing covers.
+        var visible: Double
+        /// Who is standing in front of it, largest first. Without this a
+        /// refused run says only that the window was hidden, and the operator
+        /// has no idea what to move.
+        var coveredBy: [String]
+    }
+
     /// The fraction of the subject's frontmost window that nothing covers, or
     /// nil when it has no ordinary window on screen at all.
     static func visibleFraction(pid: pid_t, samples: Int = 20) -> Double? {
+        look(pid: pid, samples: samples)?.visible
+    }
+
+    static func look(pid: pid_t, samples: Int = 20) -> Reading? {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard
             let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
@@ -40,28 +54,42 @@ enum WindowVisibility {
         }
         guard let rect = subjectRect else { return nil }
 
-        let covers = list.prefix(subjectIndex).compactMap { info -> CGRect? in
-            guard let layer = info[kCGWindowLayer as String] as? Int, layer >= 0,
+        let covers = list.prefix(subjectIndex).compactMap { info -> (CGRect, String)? in
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
                 (info[kCGWindowAlpha as String] as? Double ?? 1) > 0.1,
+                // The Dock's window is the size of the screen and sits on the
+                // ordinary layer, so counting it made every subject 100%
+                // covered whenever it happened to be ahead in the list. macOS
+                // does not treat a window under the Dock as occluded, and
+                // neither does a reader.
+                (info[kCGWindowOwnerName as String] as? String) != "Dock",
                 // The subject's own windows are not something hiding it from
                 // the reader — the app is right there, drawing.
-                (info[kCGWindowOwnerPID as String] as? pid_t) != pid
+                (info[kCGWindowOwnerPID as String] as? pid_t) != pid,
+                let rect = bounds(of: info)
             else { return nil }
-            return bounds(of: info)
+            return (rect, info[kCGWindowOwnerName as String] as? String ?? "something unnamed")
         }
 
         // A grid over the window is enough: the question is whether the reader
         // can see it, not its exact area to the pixel.
         var seen = 0
+        var blame: [String: Int] = [:]
         for row in 0..<samples {
             for column in 0..<samples {
                 let point = CGPoint(
                     x: rect.minX + rect.width * (Double(column) + 0.5) / Double(samples),
                     y: rect.minY + rect.height * (Double(row) + 0.5) / Double(samples))
-                if !covers.contains(where: { $0.contains(point) }) { seen += 1 }
+                if let cover = covers.first(where: { $0.0.contains(point) }) {
+                    blame[cover.1, default: 0] += 1
+                } else {
+                    seen += 1
+                }
             }
         }
-        return Double(seen) / Double(samples * samples)
+        return Reading(
+            visible: Double(seen) / Double(samples * samples),
+            coveredBy: blame.sorted { $0.value > $1.value }.map(\.key))
     }
 
     /// Whether there is anywhere on this desk for a subject's window to be seen.

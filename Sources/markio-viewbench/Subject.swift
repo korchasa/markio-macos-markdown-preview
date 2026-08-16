@@ -146,10 +146,10 @@ struct Subject {
         }
     }
 
-    /// How much of the subject's window is in sight, for the run's validity.
-    func visibleFraction() -> Double? {
+    /// How much of the subject's window is in sight, and behind what.
+    func look() -> WindowVisibility.Reading? {
         guard let pid = runningPid else { return nil }
-        return WindowVisibility.visibleFraction(pid: pid)
+        return WindowVisibility.look(pid: pid)
     }
 
     private static func readInfoPlist(appPath: String) throws -> [String: Any] {

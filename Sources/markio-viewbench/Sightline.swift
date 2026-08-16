@@ -49,7 +49,7 @@ final class Sightline {
             WindowControl.normalize(pid: pid)
         }
 
-        guard let reading = subject.visibleFraction() else {
+        guard let look = subject.look() else {
             // No window on screen at all. Before the first sighting that is not
             // a hidden window, it is an application still starting, and some
             // take twenty seconds over a large document — refusing here would
@@ -59,21 +59,22 @@ final class Sightline {
             return inSight ? "the subject's window left the screen mid-run" : nil
         }
 
-        if reading >= threshold {
+        if look.visible >= threshold {
             inSight = true
             coveredSince = nil
             return nil
         }
+        let behind = look.coveredBy.prefix(2).joined(separator: " and ")
         if inSight {
             return String(
-                format: "the subject's window was covered mid-run (%.0f%% of it hidden)",
-                (1 - reading) * 100)
+                format: "the subject's window was covered mid-run (%.0f%% of it, by %@)",
+                (1 - look.visible) * 100, behind)
         }
         let since = coveredSince ?? Date()
         coveredSince = since
         guard Date().timeIntervalSince(since) >= grace else { return nil }
         return String(
-            format: "the subject's window was %.0f%% covered — leave it in sight",
-            (1 - reading) * 100)
+            format: "the subject's window was %.0f%% covered by %@ — leave it in sight",
+            (1 - look.visible) * 100, behind)
     }
 }
