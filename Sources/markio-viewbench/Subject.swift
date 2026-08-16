@@ -97,16 +97,26 @@ struct Subject {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
-    /// Open a document without taking the front.
+    /// Open a document, taking the front.
     ///
-    /// `-g` is the whole point: an hour of runs that each seize the keyboard
-    /// makes the machine unusable while the benchmark is going. What activation
-    /// used to buy — a window that keeps drawing — is bought instead by leaving
-    /// App Nap off and by refusing any run whose window turned out to be
-    /// buried, which `WindowVisibility` decides.
+    /// Opening in the background was tried and does not work, for a reason that
+    /// is not about this benchmark: macOS keeps the active application's
+    /// windows above every inactive one's, and accessibility can only raise a
+    /// window within its own application. Measured directly, a raised subject
+    /// sat at depth 20 of 68 with the active app's window still on top of it.
+    /// A window nothing can see is sent no display cycles, so the document is
+    /// never laid out — the reading becomes a fact about the desk rather than
+    /// about the viewer.
     @discardableResult
     func open(document: String) -> Int32 {
-        Shell.run("/usr/bin/open", ["-g", "-a", runPath, document]).status
+        Shell.run("/usr/bin/open", ["-a", runPath, document]).status
+    }
+
+    /// Bring the subject forward, in case something else has taken the front
+    /// since the document was opened.
+    func activate() {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+            .first?.activate()
     }
 
     var runningPid: pid_t? {

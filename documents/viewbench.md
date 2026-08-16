@@ -88,19 +88,22 @@ Each is here because leaving it out biases the comparison:
   would confound the app with whatever the machine was doing that hour.
 - **A warmup document is opened first,** so launching the app is paid for
   outside the measurement.
-- **The subject is never brought to the front,** because an hour of runs that
-  each seize the keyboard makes the machine unusable while the benchmark is
-  going. App Nap is switched off for each subject instead, its window is raised
-  through accessibility — which, unlike activating the app, does not move the
-  keyboard — and it is given the same position and size as every other subject,
-  since how much of a document gets laid out depends on how big the window is.
+- **The subject is brought to the front,** which costs the machine its keyboard
+  for the length of the benchmark and cannot be avoided. Running the subjects
+  in the background was tried: macOS keeps the active application's windows
+  above every inactive one's, and accessibility can only raise a window within
+  its own application, so a raised subject was measured sitting at depth 20 of
+  68 with the active window still on top. A window nothing can see is sent no
+  display cycles, the document is never laid out, and the reading becomes a
+  fact about the desk rather than about the viewer.
 
-  What that cannot fix is refused rather than believed. A window nothing can
-  see is sent no display cycles, so the document is never laid out and the app
-  reads as unable to open it; a run whose subject stayed more than 80% covered
-  for three seconds after being raised is thrown out. A subject that has not
-  shown a window *yet* is not thrown out — some take twenty seconds over a
-  large document, and that is the reading, not a fault.
+  Being in front is still checked rather than assumed, since something else may
+  take it: a run whose subject stayed more than 80% covered for three seconds
+  is thrown out. A subject that has not shown a window *yet* is not thrown out
+  — some take twenty seconds over a large document, and that is the reading,
+  not a fault. App Nap is switched off as well, and every subject is given the
+  same window position and size, since how much of a document gets laid out
+  depends on how big the window is.
 
   Two states of the machine make every run impossible, and both are named
   rather than left to look like broken applications. **A locked screen** draws

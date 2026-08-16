@@ -44,7 +44,10 @@ final class Sightline {
             return "the screen was locked, so nothing was drawn"
         }
 
-        if !inSight { WindowControl.normalize(pid: pid) }
+        if !inSight {
+            subject.activate()
+            WindowControl.normalize(pid: pid)
+        }
 
         guard let reading = subject.visibleFraction() else {
             // No window on screen at all. Before the first sighting that is not
