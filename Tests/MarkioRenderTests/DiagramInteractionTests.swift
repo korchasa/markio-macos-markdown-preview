@@ -166,3 +166,25 @@ final class DiagramWindowSizeTests: XCTestCase {
         XCTAssertEqual(DiagramWindow.panelSize(picture: .zero, room: room), .zero)
     }
 }
+
+/// How sharp the enlarged picture is kept as the reader zooms into it.
+@MainActor
+final class DiagramZoomTests: XCTestCase {
+    func testTheBitmapIsDrawnDenserAsTheZoomGrows() {
+        // Whole steps, so a slow pinch does not redraw at every frame.
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 1), 2)
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 1.5), 3)
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 2), 4)
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 3.2), 7)
+    }
+
+    func testTheDensityNeverFallsBelowTheScreenNorRunsAway() {
+        // Below 1 the picture is shown smaller than it was drawn, and drawing
+        // it thinner than the screen would help nobody.
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 0.3), 2)
+        // A diagram blown up eight times is already unreadable in the other
+        // direction; past here the bitmap would only cost memory.
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 8), 8)
+        XCTAssertEqual(DiagramWindow.bitmapScale(for: 40), 8)
+    }
+}
