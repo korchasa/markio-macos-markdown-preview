@@ -171,6 +171,33 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertGreaterThan(panel.frame.width, 0)
         XCTAssertGreaterThan(panel.frame.height, 0)
     }
+
+    func testAnEnlargedDiagramCanBePutAwayTheTwoWaysAReaderWillTry() throws {
+        let host = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),
+            styleMask: [.titled], backing: .buffered, defer: true)
+
+        // ⌘W arrives as the Close item asking the key window to close itself. A
+        // borderless panel that does not declare itself closable refuses, which
+        // is why the command did nothing over an enlarged diagram.
+        let byCommand = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        XCTAssertTrue(byCommand.styleMask.contains(.closable))
+        byCommand.performClose(nil)
+        XCTAssertFalse(byCommand.isVisible)
+
+        // Escape reaches a window as an ordinary key press; nothing turns it
+        // into `cancelOperation` unless a text view is in the way.
+        let byEscape = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        let escape = try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: byEscape.windowNumber, context: nil, characters: "\u{1b}",
+                charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
+        byEscape.keyDown(with: escape)
+        XCTAssertFalse(byEscape.isVisible)
+    }
 }
 
 /// The shape of the window a diagram is enlarged into.

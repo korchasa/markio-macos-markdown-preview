@@ -33,7 +33,11 @@ final class DiagramWindow: NSPanel {
 
         let panel = DiagramWindow(
             contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.borderless, .nonactivatingPanel],
+            // Closable, though a borderless panel draws no button for it: the
+            // Close item in the File menu asks the key window to close itself,
+            // and a window that does not declare it refuses — which left ⌘W
+            // doing nothing over an enlarged diagram.
+            styleMask: [.borderless, .nonactivatingPanel, .closable],
             backing: .buffered,
             defer: false
         )
@@ -100,7 +104,16 @@ final class DiagramWindow: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { close() }
 
+    override func performClose(_ sender: Any?) { close() }
+
     override func keyDown(with event: NSEvent) {
+        // Escape reaches a window as a plain key press. Only a text view turns
+        // one into `cancelOperation`, so a panel that waits for that call waits
+        // for ever.
+        if event.charactersIgnoringModifiers == "\u{1b}" {
+            close()
+            return
+        }
         guard let canvas else { return super.keyDown(with: event) }
         // The three commands every viewer on this system answers to.
         if event.modifierFlags.contains(.command) {
