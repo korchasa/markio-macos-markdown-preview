@@ -33,11 +33,7 @@ final class DiagramWindow: NSPanel {
 
         let panel = DiagramWindow(
             contentRect: CGRect(origin: .zero, size: size),
-            // Closable, though a borderless panel draws no button for it: the
-            // Close item in the File menu asks the key window to close itself,
-            // and a window that does not declare it refuses — which left ⌘W
-            // doing nothing over an enlarged diagram.
-            styleMask: [.borderless, .nonactivatingPanel, .closable],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -46,7 +42,6 @@ final class DiagramWindow: NSPanel {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .floating
-        panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = true
         panel.canvas = canvas
         panel.contentView = canvas
@@ -104,7 +99,19 @@ final class DiagramWindow: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { close() }
 
-    override func performClose(_ sender: Any?) { close() }
+    /// A click anywhere on the picture puts it away, which is what a reader who
+    /// opened it with a click reaches for first.
+    override func mouseDown(with event: NSEvent) { close() }
+
+    /// And a click on the document behind it: the document window taking the
+    /// key status is what that click looks like from here.
+    override func resignKey() {
+        super.resignKey()
+        // Not from inside the change of key window itself — closing a window
+        // while AppKit is still settling which one is key unwinds a state it
+        // is in the middle of setting.
+        DispatchQueue.main.async { [weak self] in self?.close() }
+    }
 
     override func keyDown(with event: NSEvent) {
         // Escape reaches a window as a plain key press. Only a text view turns
@@ -126,9 +133,6 @@ final class DiagramWindow: NSPanel {
                 return
             case "0":
                 canvas.showWhole()
-                return
-            case "w":
-                close()
                 return
             default:
                 break

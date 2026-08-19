@@ -172,22 +172,14 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertGreaterThan(panel.frame.height, 0)
     }
 
-    func testAnEnlargedDiagramCanBePutAwayTheTwoWaysAReaderWillTry() throws {
+    func testAnEnlargedDiagramIsPutAwayByEscapeAndByAClick() throws {
         let host = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),
             styleMask: [.titled], backing: .buffered, defer: true)
 
-        // ⌘W arrives as the Close item asking the key window to close itself. A
-        // borderless panel that does not declare itself closable refuses, which
-        // is why the command did nothing over an enlarged diagram.
-        let byCommand = try XCTUnwrap(
-            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
-        XCTAssertTrue(byCommand.styleMask.contains(.closable))
-        byCommand.performClose(nil)
-        XCTAssertFalse(byCommand.isVisible)
-
-        // Escape reaches a window as an ordinary key press; nothing turns it
-        // into `cancelOperation` unless a text view is in the way.
+        // Escape reaches a window as an ordinary key press. Only a text view in
+        // the responder chain turns one into `cancelOperation`, so a panel that
+        // waits for that call waits for ever.
         let byEscape = try XCTUnwrap(
             DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
         let escape = try XCTUnwrap(
@@ -197,6 +189,35 @@ final class DiagramInteractionTests: XCTestCase {
                 charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53))
         byEscape.keyDown(with: escape)
         XCTAssertFalse(byEscape.isVisible)
+
+        // A click on the picture, which is what a reader who opened it with a
+        // click reaches for. The image view does not answer a click of its own,
+        // so it travels up to the panel.
+        let byClick = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        let picture = try XCTUnwrap(
+            byClick.contentView.map { view -> NSView? in
+                var found: NSView?
+                func walk(_ view: NSView) {
+                    if view is NSImageView { found = view }
+                    view.subviews.forEach(walk)
+                }
+                walk(view)
+                return found
+            } ?? nil)
+        let click = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: byClick.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                pressure: 1))
+        picture.mouseDown(with: click)
+        XCTAssertFalse(byClick.isVisible)
+
+        // ⌘W belongs to the document window, so the panel leaves it alone.
+        let untouched = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        defer { untouched.close() }
+        XCTAssertFalse(untouched.styleMask.contains(.closable))
     }
 }
 
