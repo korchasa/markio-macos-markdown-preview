@@ -62,6 +62,48 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertLessThanOrEqual(drawn.maxY, drawing.size.height)
     }
 
+    func testADiagramFarWiderThanTheColumnStillEndsInsideIt() throws {
+        // Sixteen participants passing wordy messages to each other measure some
+        // six thousand points across. The layout answers that by drawing the
+        // picture smaller, which stops being proportional once the type is down
+        // near a point — and the leftover used to hang past the column and be
+        // cut off by its edge. Whatever the layout cannot fit is squeezed as
+        // drawn instead, so the picture ends inside the column at any width.
+        var lines = ["sequenceDiagram"]
+        let names = (1...16).map { "Participant number \($0)" }
+        for name in names { lines.append("    participant P\(name.count)\(name) as \(name)") }
+        for index in 0..<(names.count - 1) {
+            lines.append(
+                "    P\(names[index].count)\(names[index])->>"
+                    + "P\(names[index + 1].count)\(names[index + 1]): "
+                    + "a message with a good many more words in it than a short label"
+                    + " would ever need")
+        }
+        let text = "```mermaid\n" + lines.joined(separator: "\n") + "\n```"
+
+        for column in [400.0, 520.0, 700.0] as [CGFloat] {
+            let layout = DocumentLayout(
+                document: Document(text: text), theme: Theme(isDark: false), columnWidth: column)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            let region = try XCTUnwrap(box.codeRegion)
+            XCTAssertTrue(region.isDiagram)
+            var drawn = CGRect.null
+            for decoration in box.decorations {
+                switch decoration {
+                case .fill(let rect, _, _), .stroke(let rect, _, _), .image(_, let rect):
+                    drawn = drawn.union(rect)
+                case .path(let path, _, _, _):
+                    drawn = drawn.union(path.boundingBoxOfPath)
+                case .glyphs(let line, let origin):
+                    let bounds = CTLineGetBoundsWithOptions(line, [])
+                    drawn = drawn.union(bounds.offsetBy(dx: origin.x, dy: origin.y))
+                }
+            }
+            XCTAssertFalse(drawn.isNull, "column \(column)")
+            XCTAssertLessThanOrEqual(drawn.maxX, region.rect.maxX + 0.5, "column \(column)")
+        }
+    }
+
     /// A board is read by glancing across its columns, so a long title makes a
     /// taller card and not a column as wide as the sentence.
     func testALongCardTitleMakesATallerCardAndNotAWiderBoard() throws {

@@ -118,8 +118,10 @@ public enum DocumentRenderer {
         // Laid out again at its own size, a picture may come back a little wider
         // than the measurement that asked for that size — a word laid beside a
         // line moves with the line. A bitmap cut to the earlier figure clips it.
-        let size = CGSize(
-            width: min(width, max(tight, drawing.size.width)), height: drawing.size.height)
+        // The bitmap holds whatever was drawn. Capping it at the width that was
+        // asked for cut the right-hand side off every diagram too big to fit
+        // there — which is exactly the diagram somebody wants enlarged.
+        let size = CGSize(width: max(tight, drawing.size.width), height: drawing.size.height)
         guard size.width > 0, size.height > 0,
             let context = CGContext(
                 data: nil,
@@ -143,6 +145,50 @@ public enum DocumentRenderer {
             CTLineDraw(line, context)
         }
         return context.makeImage()
+    }
+
+    /// A picture still too wide for its column after the layout has shrunk it,
+    /// squeezed geometrically until it fits.
+    ///
+    /// The layout shrinks a diagram by drawing it again at a smaller type size,
+    /// and that stops being proportional once the type is down near a point:
+    /// the widths stop following the size and the picture stays wider than the
+    /// column. A diagram that reaches across four thousand points is unreadable
+    /// at any column width anyway — what the page owes the reader there is the
+    /// whole shape, with the words read in the enlarged window — so whatever
+    /// the layout could not fit is scaled as drawn, which fits exactly and
+    /// keeps the proportions the diagram was laid out with.
+    static func squeezed(
+        _ drawing: MermaidLayout.Drawing, theme: Theme, into width: CGFloat, scale: CGFloat = 2
+    ) -> (image: CGImage, size: CGSize)? {
+        guard drawing.size.width > 0, drawing.size.height > 0, width > 0 else { return nil }
+        let factor = width / drawing.size.width
+        let size = CGSize(width: width, height: (drawing.size.height * factor).rounded(.up))
+        guard
+            let context = CGContext(
+                data: nil,
+                width: Int(size.width * scale),
+                height: Int(size.height * scale),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+            )
+        else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        context.setFillColor(theme.palette.codeBackground)
+        context.fill(CGRect(origin: .zero, size: size))
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        context.scaleBy(x: factor, y: factor)
+        context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        shapes(drawing.decorations, in: context)
+        for case .glyphs(let line, let origin) in drawing.decorations {
+            context.textPosition = origin
+            CTLineDraw(line, context)
+        }
+        guard let image = context.makeImage() else { return nil }
+        return (image, size)
     }
 
     /// The band behind a block that changed between the compared versions.

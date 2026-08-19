@@ -528,7 +528,21 @@ struct BlockLayoutEngine {
         /// diagram by what its author wrote and Copy still yields the source —
         /// which is the only form of a diagram worth putting on a clipboard.
         mutating func layoutDiagram(_ diagram: MermaidDiagram, language: String) {
-            let drawing = MermaidLayout.draw(diagram, theme: theme, width: available)
+            var drawing = MermaidLayout.draw(diagram, theme: theme, width: available)
+            // What the layout could not shrink into the column is squeezed as
+            // drawn, so the fence never shows a picture with its right-hand
+            // side cut off by the edge of the column.
+            if drawing.size.width > available + 0.5,
+                let squeezed = DocumentRenderer.squeezed(drawing, theme: theme, into: available)
+            {
+                drawing = MermaidLayout.Drawing(
+                    decorations: [
+                        .image(squeezed.image, rect: CGRect(origin: .zero, size: squeezed.size))
+                    ],
+                    size: squeezed.size,
+                    contentWidth: squeezed.size.width
+                )
+            }
             let frame = CGRect(x: indent, y: y, width: available, height: drawing.size.height)
             decorations.append(
                 .fill(

@@ -39,16 +39,35 @@ enum MermaidLayout {
         let padding: CGFloat = 16
     }
 
+    /// The smallest a diagram is drawn before it is left to run wide.
+    ///
+    /// A picture shrunk past this is a grey smudge, but a picture cut off at
+    /// the column edge is a lie about what the document says — so it shrinks
+    /// this far and no further, and whatever is still too wide is shown whole
+    /// and small rather than cropped.
+    static let minimumScale: CGFloat = 0.08
+
     static func draw(_ diagram: MermaidDiagram, theme: Theme, width: CGFloat) -> Drawing {
-        let first = settled(
+        var drawing = settled(
             draw(diagram, theme: theme, width: width, metrics: Metrics()), width: width)
         let room = width - Metrics().padding * 2
-        guard first.contentWidth > room, first.contentWidth > 0 else { return first }
-        // Never below two thirds: past that the labels stop being readable, and
-        // a diagram that runs a little wide is better than one nobody can read.
-        let scale = max(0.66, room / first.contentWidth)
-        return settled(
-            draw(diagram, theme: theme, width: width, metrics: Metrics(scale: scale)), width: width)
+        guard room > 0 else { return drawing }
+        // Laying the diagram out again at a smaller scale does not shrink it by
+        // exactly that scale — a label that stops wrapping takes a whole line
+        // with it — so the fit is approached in a few passes rather than
+        // guessed once and cropped when the guess falls short.
+        var scale: CGFloat = 1
+        var pass = 0
+        while drawing.contentWidth > room, drawing.contentWidth > 0, scale > minimumScale,
+            pass < 6
+        {
+            scale = max(minimumScale, scale * room / drawing.contentWidth)
+            drawing = settled(
+                draw(diagram, theme: theme, width: width, metrics: Metrics(scale: scale)),
+                width: width)
+            pass += 1
+        }
+        return drawing
     }
 
     private static func draw(
@@ -192,10 +211,15 @@ enum MermaidLayout {
         guard let box = bounds(of: drawing.decorations) else { return drawing }
         let padding = Metrics().padding
         drawing.contentWidth = max(drawing.contentWidth, box.width)
+        // The shift is signed. A kind centres its picture inside the width it
+        // was given using its own measurement, so a part that reaches further
+        // right than that measurement knew about — a bowed line, an overlong
+        // word — lands past the right-hand edge with room still free on the
+        // left. Sliding only rightwards left that case cropped.
         let wanted = max(padding, (width - box.width) / 2)
-        let right = box.minX < wanted ? wanted - box.minX : 0
+        let right = wanted - box.minX
         let down = box.minY < padding ? padding - box.minY : 0
-        if right > 0.5 || down > 0.5 {
+        if abs(right) > 0.5 || down > 0.5 {
             drawing.decorations = drawing.decorations.map { moved($0, right: right, down: down) }
         }
         drawing.size.height = max(drawing.size.height, box.maxY + down + padding)
