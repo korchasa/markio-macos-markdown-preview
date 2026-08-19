@@ -39,7 +39,7 @@ const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
       CFBundleName: APP_NAME,
       CFBundleDisplayName: APP_NAME,
       CFBundleShortVersionString: "1.0",
-      CFBundleVersion: "8",
+      CFBundleVersion: "9",
       // One declared locale, or AppKit renders its own standard menu items in
       // the system language beside ours, which ship untranslated English.
       CFBundleDevelopmentRegion: "en",
@@ -58,7 +58,7 @@ const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
       // An extension whose version disagrees with its host is rejected at
       // ingest, so these track the app's rather than living their own life.
       CFBundleShortVersionString: "1.0",
-      CFBundleVersion: "8",
+      CFBundleVersion: "9",
     },
   },
 ];

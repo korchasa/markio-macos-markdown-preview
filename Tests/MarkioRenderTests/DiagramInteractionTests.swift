@@ -130,3 +130,39 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertGreaterThan(panel.frame.height, 0)
     }
 }
+
+/// The shape of the window a diagram is enlarged into.
+@MainActor
+final class DiagramWindowSizeTests: XCTestCase {
+    private let room = CGSize(width: 1400, height: 800)
+
+    func testAPictureNarrowerThanTheRoomKeepsItsOwnShape() {
+        // The renderer treats the width it is given as a limit, so a small
+        // diagram comes back at its own size. Before this, the panel took the
+        // width that had been asked for and the picture was stretched into it.
+        let picture = CGSize(width: 420, height: 300)
+        let size = DiagramWindow.panelSize(picture: picture, room: room)
+        XCTAssertEqual(size.width, 420, accuracy: 0.001)
+        XCTAssertEqual(size.height, 300, accuracy: 0.001)
+    }
+
+    func testAPictureTallerThanTheRoomShrinksOnBothSides() {
+        let picture = CGSize(width: 600, height: 1600)
+        let size = DiagramWindow.panelSize(picture: picture, room: room)
+        XCTAssertEqual(size.height, 800, accuracy: 0.001)
+        XCTAssertEqual(
+            size.width / size.height, picture.width / picture.height, accuracy: 0.001)
+    }
+
+    func testAPictureWiderThanTheRoomShrinksOnBothSides() {
+        let picture = CGSize(width: 2800, height: 700)
+        let size = DiagramWindow.panelSize(picture: picture, room: room)
+        XCTAssertEqual(size.width, 1400, accuracy: 0.001)
+        XCTAssertEqual(
+            size.width / size.height, picture.width / picture.height, accuracy: 0.001)
+    }
+
+    func testAnEmptyPictureAsksForNoWindow() {
+        XCTAssertEqual(DiagramWindow.panelSize(picture: .zero, room: room), .zero)
+    }
+}

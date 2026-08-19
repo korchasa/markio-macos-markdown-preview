@@ -18,10 +18,15 @@ final class DiagramWindow: NSPanel {
         // past the edge of the screen it is shown on.
         let room = screen.visibleFrame.insetBy(dx: 60, dy: 60)
         let width = min(max(host.frame.width * 0.9, 640), room.width)
-        guard let image = DocumentRenderer.diagram(source: source, theme: theme, width: width)
+        let scale: CGFloat = 2
+        guard
+            let image = DocumentRenderer.diagram(
+                source: source, theme: theme, width: width, scale: scale)
         else { return nil }
-        let size = CGSize(
-            width: width, height: min(room.height, CGFloat(image.height) / 2))
+        let picture = CGSize(
+            width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+        let size = panelSize(picture: picture, room: room.size)
+        guard size.width > 0, size.height > 0 else { return nil }
 
         let panel = DiagramWindow(
             contentRect: CGRect(origin: .zero, size: size),
@@ -48,6 +53,22 @@ final class DiagramWindow: NSPanel {
         )
         panel.makeKeyAndOrderFront(nil)
         return panel
+    }
+
+    /// The panel's size in points: the picture's own shape, shrunk to fit the
+    /// room it is shown in — both sides by the same factor.
+    ///
+    /// The width handed to the renderer is a limit and not a frame, so a
+    /// diagram narrower than the offered room comes back at its own size. A
+    /// panel built to the asked-for width and filled with that picture
+    /// stretched every diagram that did not happen to fill the column, and a
+    /// height clamped on its own squashed every diagram taller than the screen.
+    static func panelSize(picture: CGSize, room: CGSize) -> CGSize {
+        guard picture.width > 0, picture.height > 0, room.width > 0, room.height > 0 else {
+            return .zero
+        }
+        let fit = min(1, min(room.width / picture.width, room.height / picture.height))
+        return CGSize(width: picture.width * fit, height: picture.height * fit)
     }
 
     // A borderless panel refuses the key window by default, and without it the

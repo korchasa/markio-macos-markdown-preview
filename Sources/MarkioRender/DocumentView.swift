@@ -50,9 +50,6 @@ public final class DocumentView: NSView {
     private var hoveredCode: CodeHover?
     /// The block whose Copy was last pressed, so the pill can say so.
     private var copiedOrdinal: Int?
-    /// Which pill was pressed, so "Copied" appears on that one and not the
-    /// other: a diagram has two of them.
-    private var copiedImage = false
     /// The diagram shown enlarged, while it is shown.
     private var enlarged: DiagramWindow?
 
@@ -69,13 +66,11 @@ public final class DocumentView: NSView {
 
     private struct CodeHover: Equatable {
         var ordinal: Int
-        var copyRect: CGRect
         var badgeRect: CGRect
         var language: String
-        /// Where "Copy PNG" sits, for a fence a picture was drawn in place of.
-        var pngRect: CGRect?
-        /// The picture's own rectangle, so a click anywhere else on it enlarges
-        /// the diagram.
+        /// The picture's own rectangle: a click enlarges it, the pointer turns
+        /// into a hand over it, and a right-click there offers what can be done
+        /// with it.
         var diagramRect: CGRect?
     }
 
@@ -210,41 +205,66 @@ public final class DocumentView: NSView {
 
     // MARK: - Code block controls
 
-    /// The language badge and the Copy pill, drawn over the hovered block.
+    /// The language badge, drawn over the hovered block.
     ///
-    /// They live in the view rather than in the box because they belong to the
+    /// It lives in the view rather than in the box because it belongs to the
     /// pointer, not to the document: an offscreen render of the same block must
-    /// not have a button floating on it.
+    /// not have a label floating on it. The actions the block offers are in its
+    /// context menu, so the badge is a label and never a button.
     private func drawCodeControls(in context: CGContext) {
         guard let hover = hoveredCode else { return }
         let theme = layout.theme
         let copied = copiedOrdinal == hover.ordinal
-        if !hover.language.isEmpty {
-            drawPill(
-                hover.language,
-                in: hover.badgeRect,
-                background: theme.palette.inlineCodeBackground,
-                foreground: theme.palette.secondaryText,
-                context: context
-            )
-        }
+        guard copied || !hover.language.isEmpty else { return }
         drawPill(
-            copied && !copiedImage ? "Copied" : "Copy",
-            in: hover.copyRect,
-            background: theme.palette.keyboardBackground,
-            foreground: copied && !copiedImage ? theme.palette.link : theme.palette.secondaryText,
+            copied ? "Copied" : hover.language,
+            in: hover.badgeRect,
+            background: theme.palette.inlineCodeBackground,
+            foreground: copied ? theme.palette.link : theme.palette.secondaryText,
             context: context
         )
-        if let png = hover.pngRect {
-            drawPill(
-                copied && copiedImage ? "Copied" : "Copy PNG",
-                in: png,
-                background: theme.palette.keyboardBackground,
-                foreground: copied && copiedImage
-                    ? theme.palette.link : theme.palette.secondaryText,
-                context: context
-            )
+    }
+
+    /// What the block under the pointer offers, on a right-click.
+    ///
+    /// The block is found from the event's point and not from `hoveredCode`,
+    /// so the menu is right even when the document scrolled under a pointer
+    /// that never moved.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let hover = codeHover(at: point) else { return nil }
+        let menu = NSMenu()
+        if hover.diagramRect != nil {
+            menu.addItem(command("Copy Diagram as PNG", #selector(copyDiagramCommand(_:)), hover))
+            menu.addItem(command("Copy Diagram Source", #selector(copyCodeCommand(_:)), hover))
+            menu.addItem(.separator())
+            menu.addItem(command("Enlarge Diagram", #selector(enlargeDiagramCommand(_:)), hover))
+        } else {
+            menu.addItem(command("Copy Code", #selector(copyCodeCommand(_:)), hover))
         }
+        return menu
+    }
+
+    private func command(_ title: String, _ action: Selector, _ hover: CodeHover) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = hover.ordinal
+        return item
+    }
+
+    @objc private func copyCodeCommand(_ sender: NSMenuItem) {
+        guard let ordinal = sender.representedObject as? Int else { return }
+        copyCode(ordinal: ordinal)
+    }
+
+    @objc private func copyDiagramCommand(_ sender: NSMenuItem) {
+        guard let ordinal = sender.representedObject as? Int else { return }
+        copyDiagram(ordinal: ordinal)
+    }
+
+    @objc private func enlargeDiagramCommand(_ sender: NSMenuItem) {
+        guard let ordinal = sender.representedObject as? Int else { return }
+        enlargeDiagram(ordinal: ordinal)
     }
 
     private func drawPill(
@@ -285,32 +305,17 @@ public final class DocumentView: NSView {
 
         let height: CGFloat = 20
         let inset: CGFloat = 6
-        let copyWidth: CGFloat = 54
-        let copy = CGRect(
-            x: frame.maxX - inset - copyWidth,
-            y: frame.minY + inset,
-            width: copyWidth,
-            height: height
-        )
-        // A picture can go on the clipboard as a picture, which is what anyone
-        // pasting a diagram into a message or a document actually wants.
-        var png: CGRect?
-        if region.isDiagram {
-            png = CGRect(x: copy.minX - 6 - 76, y: copy.minY, width: 76, height: height)
-        }
         let badgeWidth = max(34, CGFloat(region.language.count) * 7 + 14)
         let badge = CGRect(
-            x: (png ?? copy).minX - 6 - badgeWidth,
-            y: copy.minY,
+            x: frame.maxX - inset - badgeWidth,
+            y: frame.minY + inset,
             width: badgeWidth,
             height: height
         )
         return CodeHover(
             ordinal: ordinal,
-            copyRect: copy,
             badgeRect: badge,
             language: region.language,
-            pngRect: png,
             diagramRect: region.isDiagram ? frame : nil
         )
     }
@@ -344,7 +349,7 @@ public final class DocumentView: NSView {
         guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setData(data, forType: .png)
-        markCopied(ordinal: ordinal, image: true)
+        markCopied(ordinal: ordinal)
     }
 
     /// Show the hovered diagram large, over the window. A second click on the
@@ -365,12 +370,11 @@ public final class DocumentView: NSView {
         guard let box = layout.box(at: ordinal) else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(box.plainText, forType: .string)
-        markCopied(ordinal: ordinal, image: false)
+        markCopied(ordinal: ordinal)
     }
 
-    private func markCopied(ordinal: Int, image: Bool) {
+    private func markCopied(ordinal: Int) {
         copiedOrdinal = ordinal
-        copiedImage = image
         needsDisplay = true
         // Long enough to read, short enough that a second copy still reads as
         // a second copy.
@@ -607,6 +611,7 @@ public final class DocumentView: NSView {
         )
         addTrackingArea(area)
         trackingArea = area
+        refreshHoverUnderPointer()
     }
 
     public override func mouseMoved(with event: NSEvent) {
@@ -615,17 +620,43 @@ public final class DocumentView: NSView {
         if hover != hoveredCode {
             hoveredCode = hover
             needsDisplay = true
+            window?.invalidateCursorRects(for: self)
         }
         let found = link(at: point)
         if found?.destination != hoveredLink?.destination {
             hoveredLink = found
             window?.invalidateCursorRects(for: self)
-            if found != nil {
-                NSCursor.pointingHand.set()
-            } else {
-                NSCursor.iBeam.set()
-            }
         }
+        applyCursor()
+    }
+
+    /// A hand over anything a click answers — a link, and a diagram, which is
+    /// the one picture in the column that opens when clicked.
+    private func applyCursor() {
+        if wantsPointingHand {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.iBeam.set()
+        }
+    }
+
+    private var wantsPointingHand: Bool {
+        hoveredLink != nil || hoveredCode?.diagramRect != nil
+    }
+
+    /// Scrolling moves the document under a pointer that did not move, so the
+    /// block beneath it changes without a `mouseMoved` ever arriving. Without
+    /// this the badge and the pointer keep describing the block that used to be
+    /// there — which is why they looked as though they worked only sometimes.
+    private func refreshHoverUnderPointer() {
+        guard let window, window.isKeyWindow else { return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard visibleRect.contains(point) else { return }
+        let hover = codeHover(at: point)
+        guard hover != hoveredCode else { return }
+        hoveredCode = hover
+        needsDisplay = true
+        window.invalidateCursorRects(for: self)
     }
 
     public override func mouseExited(with event: NSEvent) {
@@ -640,14 +671,6 @@ public final class DocumentView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        if let hover = hoveredCode, hover.copyRect.contains(point) {
-            copyCode(ordinal: hover.ordinal)
-            return
-        }
-        if let hover = hoveredCode, let png = hover.pngRect, png.contains(point) {
-            copyDiagram(ordinal: hover.ordinal)
-            return
-        }
         // A diagram has no text to select, so a click on one can mean the one
         // thing a picture in a column is always too small for.
         if let hover = hoveredCode, let diagram = hover.diagramRect, diagram.contains(point) {
@@ -677,6 +700,6 @@ public final class DocumentView: NSView {
     }
 
     public override func resetCursorRects() {
-        addCursorRect(bounds, cursor: hoveredLink == nil ? .iBeam : .pointingHand)
+        addCursorRect(bounds, cursor: wantsPointingHand ? .pointingHand : .iBeam)
     }
 }
