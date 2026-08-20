@@ -977,6 +977,19 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   the content has no height of its own and AppKit would size the window down to
   a bare title bar; explicit floor and preference constraints on the scroll view
   are what give the window a size.
+- Zoom lives on the window, not in the theme's callers: `Theme.Metrics.scaled(by:)`
+  multiplies every measurement at once — type, spacing, indents, corner radii,
+  rule thickness with a floor of half a point — and records the factor, which is
+  how the fonts built outside that scale (the control label) and the Mermaid
+  layout find it. Steps come from a fixed ladder rather than repeated
+  multiplication, so zooming in four times and out four times returns to the
+  size it started at. The starting size is the document's own if it has one,
+  otherwise `SystemTextSize.zoom`: macOS keeps a text size in Accessibility
+  settings and exposes no way to read the category, so the one public reading is
+  `NSFont.preferredFont(forTextStyle: .body)` measured against
+  `NSFont.systemFontSize` — a system that says nothing yields exactly 1. A
+  window's zoom is kept in the same record as its scroll position, because it is
+  the same kind of fact about how a document was left, and ⌘0 deletes it.
 - Live reload watches the file with a `DispatchSource` vnode source and
   re-arms after each event, because an atomic save replaces the vnode.
 - The menu bar is built in code before launch completes, so it exists before

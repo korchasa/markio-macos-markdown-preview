@@ -10,8 +10,13 @@ import CoreText
 /// the drawing context, and the theme only ever crosses the main actor.
 public struct Theme {
     public struct Metrics: Sendable {
-        /// Base body size in points; every other size is derived from it.
-        public var bodySize: CGFloat = 14
+        /// Base body size in points; every other size is derived from it, and
+        /// this is the size a zoom of 1 means.
+        ///
+        /// Larger than the 13 points macOS sets its interface in: that size is
+        /// for labels and menus read a word at a time, and this is a page read
+        /// for minutes at a stretch.
+        public var bodySize: CGFloat = 15
         public var lineHeightMultiple: CGFloat = 1.55
         public var paragraphSpacing: CGFloat = 12
         public var headingSpacingBefore: CGFloat = 24
@@ -24,8 +29,41 @@ public struct Theme {
         public var tableCellPadding: CGFloat = 7
         public var ruleThickness: CGFloat = 1
         public var blockSpacingTight: CGFloat = 3
+        /// How much larger than the default everything here has been made.
+        ///
+        /// Kept beside the sizes rather than derived from `bodySize`, because
+        /// the fonts a theme builds outside that scale — the control label —
+        /// need the factor too, and a reader who has zoomed twice should get
+        /// the same numbers as one who zoomed once by the product.
+        public private(set) var zoom: CGFloat = 1
 
         public init() {}
+
+        /// The same measurements at a different size: type, spacing, indents
+        /// and rules together.
+        ///
+        /// Scaling the type alone gives a page with the letters of one size and
+        /// the margins of another, which reads as a bug long before anybody can
+        /// name it. Line thickness is included and floored at a device pixel:
+        /// a rule that scales below one is a rule that vanishes.
+        public func scaled(by factor: CGFloat) -> Metrics {
+            guard factor > 0 else { return self }
+            var copy = self
+            copy.bodySize *= factor
+            copy.paragraphSpacing *= factor
+            copy.headingSpacingBefore *= factor
+            copy.headingSpacingAfter *= factor
+            copy.listIndent *= factor
+            copy.quoteIndent *= factor
+            copy.quoteBarWidth *= factor
+            copy.codePadding *= factor
+            copy.codeCornerRadius *= factor
+            copy.tableCellPadding *= factor
+            copy.ruleThickness = max(0.5, copy.ruleThickness * factor)
+            copy.blockSpacingTight *= factor
+            copy.zoom *= factor
+            return copy
+        }
     }
 
     public struct Palette {
@@ -87,9 +125,9 @@ public struct Theme {
         bodyBoldItalic = Theme.italic(Theme.systemFont(size: size, weight: .semibold))
         mono = Theme.monoFont(size: size * 0.92, weight: .regular)
         monoBold = Theme.monoFont(size: size * 0.92, weight: .bold)
-        controlLabel = Theme.systemFont(size: 11, weight: .medium)
+        controlLabel = Theme.systemFont(size: 11 * metrics.zoom, weight: .medium)
         footnote = Theme.systemFont(size: size * 0.9, weight: .regular)
-        // Heading scale, largest first, tuned to stay readable next to 14 pt body.
+        // Heading scale, largest first, tuned to stay readable next to the body.
         let scales: [CGFloat] = [1.9, 1.5, 1.25, 1.1, 1.0, 0.92]
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }
     }

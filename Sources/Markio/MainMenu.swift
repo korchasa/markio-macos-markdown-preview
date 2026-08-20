@@ -142,15 +142,35 @@ enum MainMenu {
         outline.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
         menu.addItem(
+            withTitle: "Zoom In",
+            action: #selector(DocumentWindowController.zoomIn(_:)),
+            keyEquivalent: "+"
+        )
+        menu.addItem(
+            withTitle: "Zoom Out",
+            action: #selector(DocumentWindowController.zoomOut(_:)),
+            keyEquivalent: "-"
+        )
+        menu.addItem(
+            withTitle: "Actual Size",
+            action: #selector(DocumentWindowController.actualSize(_:)),
+            keyEquivalent: "0"
+        )
+        menu.addItem(.separator())
+        // The plain ⌘+ and ⌘− belong to zoom, which is what a reader reaches
+        // for first and what every other viewer on this system puts there.
+        let wider = menu.addItem(
             withTitle: "Wider Column",
             action: #selector(DocumentWindowController.widenColumn(_:)),
             keyEquivalent: "+"
         )
-        menu.addItem(
+        wider.keyEquivalentModifierMask = [.command, .option]
+        let narrower = menu.addItem(
             withTitle: "Narrower Column",
             action: #selector(DocumentWindowController.narrowColumn(_:)),
             keyEquivalent: "-"
         )
+        narrower.keyEquivalentModifierMask = [.command, .option]
         return item
     }
 

@@ -125,7 +125,15 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 ## VIEW — What the reader sees
 
 - **VIEW-1** A single reading column, centred, its width set in characters and
-  adjustable from the menu and a slider in the bottom bar. The setting persists.
+  adjustable from the menu (⌥⌘+ and ⌥⌘−) and a slider in the bottom bar. The
+  setting persists.
+- **VIEW-28** Zoom, per window: ⌘+ and ⌘− step the whole page — type, spacing,
+  indents, rules and diagrams together — through a fixed ladder of sizes, so
+  stepping in and out the same number of times lands where it started. A window
+  opens at the size that document was last read at, or, for one never zoomed,
+  at the size the system asks for: macOS keeps a text size in Accessibility
+  settings, and where it says nothing the reading size stands unscaled. ⌘0
+  returns to the system size and forgets the size kept for that document.
 - **VIEW-2** Light and dark follow the system appearance and switch live.
 - **VIEW-3** A table-of-contents sidebar (⌥⌘S) showing the heading tree, with
   the section under the reader highlighted; clicking a heading jumps to it. Its
@@ -208,17 +216,21 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   they carry, nested rectangles each as big a share as its value, tiles on
   the grid their edges put them on, a closed shape per curve over a spoke per
   axis, or cells filling a grid of the width the author counted out — centred in
-  the reading column, in the current theme's
-  colours except where the diagram names its own, and with a colour per branch
+  the reading column, on a white page whatever the page around it is and in ink
+  chosen against white, except where the diagram names a Mermaid theme and gets
+  that theme's colours, and with a colour per branch
   or section where the diagram's own meaning is carried by colour. A picture too
   wide for the column is drawn smaller rather than cut off, and nothing in a
   picture is ever cut off by its own edge: a line that bows around a box and a
   word longer than the shape holding it both count towards how much room the
   drawing takes. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
-- **VIEW-27** Clicking a drawn diagram shows it large over the window, laid out
-  again at that width rather than magnified. Clicking it again, clicking the
-  enlarged picture, or pressing Escape puts it away.
+- **VIEW-27** A right-click on a drawn diagram offers Copy Diagram as PNG, Copy
+  Diagram Source and Enlarge Diagram; the pointer becomes a hand over a picture,
+  so a reader can see there is something to click. Enlarging shows the diagram
+  at its own size over the window, magnified and pannable rather than laid out
+  again at a greater width, with ⌘+, ⌘− and ⌘0 inside it. A click on the picture,
+  a click on the document behind it, or Escape puts it away.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

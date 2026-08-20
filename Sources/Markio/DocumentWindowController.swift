@@ -48,11 +48,20 @@ final class DocumentWindowController: NSWindowController {
     private var sideBySide = false
     /// Guards the two scroll views against answering each other for ever.
     private var syncingScroll = false
+    /// How much larger than the reading size this window draws.
+    private var zoom: CGFloat
 
     init(document: MarkdownDocument) {
         self.markdownDocument = document
         self.displayed = document.parsed
-        let theme = Theme(isDark: NSApp.effectiveAppearance.isDark)
+        // Each window carries its own zoom: two documents open side by side are
+        // often read at different sizes, one being skimmed and one worked
+        // through. A document opened again comes back at the size it was left,
+        // and one never zoomed opens at whatever the system asks for.
+        let zoom =
+            document.fileURL.flatMap { Preferences.zoom(for: $0) } ?? SystemTextSize.zoom
+        self.zoom = zoom
+        let theme = DocumentWindowController.theme(zoom: zoom)
         self.layout = DocumentLayout(
             document: document.parsed,
             theme: theme,
@@ -325,6 +334,39 @@ final class DocumentWindowController: NSWindowController {
         return min(preferred, room)
     }
 
+    // MARK: - Zoom
+
+    @objc func zoomIn(_ sender: Any?) {
+        apply(zoom: Preferences.zoom(zoom, steppedBy: 1), remember: true)
+    }
+
+    @objc func zoomOut(_ sender: Any?) {
+        apply(zoom: Preferences.zoom(zoom, steppedBy: -1), remember: true)
+    }
+
+    /// Back to the size the system asks for, and forget this window's own — so
+    /// a reader who changes the system setting later gets it here too.
+    @objc func actualSize(_ sender: Any?) {
+        apply(zoom: SystemTextSize.zoom, remember: false)
+    }
+
+    private func apply(zoom newValue: CGFloat, remember: Bool) {
+        // Recorded before the early return: Actual Size at the size the system
+        // already asks for still has something to do, which is to forget the
+        // size this window was told to keep.
+        if let url = markdownDocument.fileURL {
+            Preferences.setZoom(remember ? newValue : nil, for: url)
+        }
+        guard newValue != zoom else { return }
+        zoom = newValue
+        let anchorOrdinal = layout.index(atOffset: scrollView.contentView.bounds.minY)
+        let theme = DocumentWindowController.theme(zoom: zoom)
+        layout.setTheme(theme)
+        baselineLayout.setTheme(theme)
+        applyColumnWidth()
+        documentView.reveal(ordinal: anchorOrdinal)
+    }
+
     @objc func widenColumn(_ sender: Any?) {
         widthSlider.doubleValue = Double(Preferences.readingWidth + Preferences.widthStep)
         widthChanged()
@@ -484,8 +526,14 @@ final class DocumentWindowController: NSWindowController {
         updateTitle()
     }
 
+    private static func theme(zoom: CGFloat) -> Theme {
+        Theme(
+            isDark: NSApp.effectiveAppearance.isDark,
+            metrics: Theme.Metrics().scaled(by: zoom))
+    }
+
     private func appearanceChanged() {
-        let theme = Theme(isDark: NSApp.effectiveAppearance.isDark)
+        let theme = DocumentWindowController.theme(zoom: zoom)
         layout.setTheme(theme)
         baselineLayout.setTheme(theme)
         scrollView.backgroundColor =

@@ -54,8 +54,11 @@ enum MermaidLayout {
     static func draw(_ diagram: MermaidDiagram, theme: Theme, width: CGFloat) -> Drawing {
         let theme = theme.forDiagrams
         let page = background(of: diagram, theme: theme)
+        // A diagram grows with the page it sits on: the reader zoomed the
+        // document, not the prose in it.
+        let asked = Metrics(scale: theme.metrics.zoom)
         var drawing = settled(
-            draw(diagram, theme: theme, width: width, metrics: Metrics()), width: width)
+            draw(diagram, theme: theme, width: width, metrics: asked), width: width)
         drawing.background = page
         let room = width - Metrics().padding * 2
         guard room > 0 else { return drawing }
@@ -64,7 +67,7 @@ enum MermaidLayout {
         // exactly that scale — a label that stops wrapping takes a whole line
         // with it — so the fit is approached in a few passes rather than
         // guessed once and cropped when the guess falls short.
-        var scale: CGFloat = 1
+        var scale = asked.scale
         var pass = 0
         while drawing.contentWidth > room, drawing.contentWidth > 0, scale > minimumScale,
             pass < 6
