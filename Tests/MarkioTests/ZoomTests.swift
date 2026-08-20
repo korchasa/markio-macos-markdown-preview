@@ -82,6 +82,72 @@ final class ZoomTests: XCTestCase {
         }
     }
 
+    /// The page is re-measured when the zoom or the width changes, so the same
+    /// number of points down is a different place in the text. What the reader
+    /// tracks is the paragraph under their eyes.
+    @MainActor
+    func testTheReaderKeepsTheirPlaceAcrossAZoomAndAWidthChange() throws {
+        let text = (1...200).map { "Paragraph number \($0), long enough to wrap." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(
+            from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 900, height: 700), display: true)
+        window.layoutIfNeeded()
+
+        // Reached through the window rather than through the controller: the
+        // views are its own business, and a test is not a reason to publish them.
+        // The window holds two of these — the document and the baseline it is
+        // compared against — and the empty one is not the one under test.
+        func documentScrolls(in view: NSView) -> [NSScrollView] {
+            var found: [NSScrollView] = []
+            if let scroll = view as? NSScrollView,
+                let inner = scroll.documentView as? DocumentView, inner.layout.blockCount > 0
+            {
+                found.append(scroll)
+            }
+            for subview in view.subviews { found += documentScrolls(in: subview) }
+            return found
+        }
+        let scroll = try XCTUnwrap(
+            documentScrolls(in: try XCTUnwrap(window.contentView)).first)
+        let view = try XCTUnwrap(scroll.documentView as? DocumentView)
+        let layout = view.layout
+        // The view has no height until it has laid something out, and a scroll
+        // to a point past the bottom of a one-screen view goes nowhere.
+        view.viewWillDraw()
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 4000))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        view.viewWillDraw()
+        let padding = view.verticalPadding
+        /// The block at the top of the window, and how far into it the window
+        /// has been scrolled — which is where the reader actually is.
+        func place() -> (ordinal: Int, fraction: CGFloat) {
+            let y = max(0, scroll.contentView.bounds.minY - padding)
+            let ordinal = layout.index(atOffset: y)
+            let height = layout.height(of: ordinal)
+            guard height > 0 else { return (ordinal, 0) }
+            return (ordinal, (y - layout.offset(of: ordinal)) / height)
+        }
+        let before = place()
+        XCTAssertGreaterThan(before.ordinal, 0, "the test needs to be somewhere in the document")
+
+        controller.zoomIn(nil)
+        view.viewWillDraw()
+        XCTAssertEqual(place().ordinal, before.ordinal)
+        XCTAssertEqual(place().fraction, before.fraction, accuracy: 0.35)
+
+        controller.widenColumn(nil)
+        view.viewWillDraw()
+        XCTAssertEqual(place().ordinal, before.ordinal)
+        XCTAssertEqual(place().fraction, before.fraction, accuracy: 0.35)
+
+        controller.actualSize(nil)
+        window.close()
+    }
+
     @MainActor
     func testADiagramGrowsWithThePageItSitsOn() throws {
         let source = """

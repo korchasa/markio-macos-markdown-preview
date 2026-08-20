@@ -127,6 +127,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-1** A single reading column, centred, its width set in characters and
   adjustable from the menu (⌥⌘+ and ⌥⌘−) and a slider in the bottom bar. The
   setting persists.
+- **VIEW-29** Changing the zoom or the column width does not move the reader:
+  the block at the top of the window and how far into it the window has been
+  scrolled are both put back after the page is re-measured.
 - **VIEW-28** Zoom, per window: ⌘+ and ⌘− step the whole page — type, spacing,
   indents, rules and diagrams together — through a fixed ladder of sizes, so
   stepping in and out the same number of times lands where it started. A window

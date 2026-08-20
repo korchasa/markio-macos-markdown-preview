@@ -313,16 +313,50 @@ final class DocumentWindowController: NSWindowController {
     }
 
     private func applyColumnWidth() {
-        let anchorOrdinal = layout.index(atOffset: scrollView.contentView.bounds.minY)
+        let position = readingPosition()
         let preferred = DocumentWindowController.columnWidth(for: layout.theme)
         layout.setColumnWidth(fitted(preferred, in: scrollView))
         baselineLayout.setColumnWidth(fitted(preferred, in: baselineScroll))
         baselineView.needsDisplay = true
         documentView.needsDisplay = true
-        // A width change re-measures everything, so the old scroll offset means
-        // nothing; the block that was at the top is what the reader tracks.
-        documentView.reveal(ordinal: anchorOrdinal)
+        restore(position)
         rerunSearchIfActive()
+    }
+
+    // MARK: - Holding the reader's place
+
+    /// Where the reader is, in terms that survive re-measuring the page.
+    ///
+    /// A scroll offset does not: changing the width or the zoom re-measures
+    /// every block, so the same number of points down is a different place in
+    /// the text. What holds still is the block at the top of the window and how
+    /// far into it the window has been scrolled.
+    private struct ReadingPosition {
+        var ordinal: Int
+        /// How far down that block the top of the window sits, 0 to 1.
+        var fraction: CGFloat
+    }
+
+    private func readingPosition() -> ReadingPosition {
+        let y = max(0, scrollView.contentView.bounds.minY - documentView.verticalPadding)
+        let ordinal = layout.index(atOffset: y)
+        let height = layout.height(of: ordinal)
+        guard height > 0 else { return ReadingPosition(ordinal: ordinal, fraction: 0) }
+        let into = (y - layout.offset(of: ordinal)) / height
+        return ReadingPosition(ordinal: ordinal, fraction: min(max(into, 0), 1))
+    }
+
+    private func restore(_ position: ReadingPosition) {
+        guard position.ordinal >= 0, position.ordinal < layout.blockCount else { return }
+        // Measured before it is asked about: after a re-measure the block's
+        // height is an estimate until something types it, and an estimate is
+        // exactly what the fraction must not be multiplied by.
+        _ = layout.prepare(
+            range: position.ordinal..<(position.ordinal + 1), anchor: position.ordinal)
+        let top = layout.offset(of: position.ordinal) + documentView.verticalPadding
+        let target = top + position.fraction * layout.height(of: position.ordinal)
+        documentView.scroll(NSPoint(x: 0, y: max(0, target)))
+        documentView.needsDisplay = true
     }
 
     /// A column never gets wider than the pane holding it. Half a window is
@@ -359,12 +393,16 @@ final class DocumentWindowController: NSWindowController {
         }
         guard newValue != zoom else { return }
         zoom = newValue
-        let anchorOrdinal = layout.index(atOffset: scrollView.contentView.bounds.minY)
+        let position = readingPosition()
         let theme = DocumentWindowController.theme(zoom: zoom)
         layout.setTheme(theme)
         baselineLayout.setTheme(theme)
+        // The width follows the type: a column is so many characters wide, and
+        // characters just changed size. `applyColumnWidth` holds the place too,
+        // but from a page already re-measured — so the position taken above is
+        // the one that means anything, and it is put back last.
         applyColumnWidth()
-        documentView.reveal(ordinal: anchorOrdinal)
+        restore(position)
     }
 
     @objc func widenColumn(_ sender: Any?) {
