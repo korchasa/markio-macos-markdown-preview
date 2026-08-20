@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import XCTest
 
 @testable import MarkdownKit
@@ -330,39 +331,83 @@ final class DiagramInteractionTests: XCTestCase {
     }
 }
 
-/// The shape of the window a diagram is enlarged into.
+/// The shape of the window a diagram is enlarged into, and how far it may
+/// shrink the picture to get there.
 @MainActor
 final class DiagramWindowSizeTests: XCTestCase {
     private let room = CGSize(width: 1400, height: 800)
+    private let theme = Theme(isDark: false)
+
+    /// The point size the smallest lettering in a diagram is set at.
+    private var smallestText: CGFloat {
+        CTFontGetSize(theme.controlLabel) * MermaidLayout.smallestLabelFactor
+    }
+
+    private func opening(_ picture: CGSize) -> CGFloat {
+        DiagramWindow.openingMagnification(picture: picture, room: room, theme: theme)
+    }
 
     func testAPictureNarrowerThanTheRoomKeepsItsOwnShape() {
         // The renderer treats the width it is given as a limit, so a small
         // diagram comes back at its own size. Before this, the panel took the
         // width that had been asked for and the picture was stretched into it.
         let picture = CGSize(width: 420, height: 300)
-        let size = DiagramWindow.panelSize(picture: picture, room: room)
+        let size = DiagramWindow.panelSize(
+            picture: picture, room: room, magnification: opening(picture))
         XCTAssertEqual(size.width, 420, accuracy: 0.001)
         XCTAssertEqual(size.height, 300, accuracy: 0.001)
     }
 
-    func testAPictureTallerThanTheRoomShrinksOnBothSides() {
-        let picture = CGSize(width: 600, height: 1600)
-        let size = DiagramWindow.panelSize(picture: picture, room: room)
-        XCTAssertEqual(size.height, 800, accuracy: 0.001)
-        XCTAssertEqual(
-            size.width / size.height, picture.width / picture.height, accuracy: 0.001)
+    func testAPictureThatFitsWholeIsShownWhole() {
+        // Two thirds of the room across, and it opens at its own size with
+        // nothing to scroll to.
+        let picture = CGSize(width: 900, height: 500)
+        XCTAssertEqual(opening(picture), 1, accuracy: 0.001)
     }
 
-    func testAPictureWiderThanTheRoomShrinksOnBothSides() {
-        let picture = CGSize(width: 2800, height: 700)
-        let size = DiagramWindow.panelSize(picture: picture, room: room)
-        XCTAssertEqual(size.width, 1400, accuracy: 0.001)
-        XCTAssertEqual(
-            size.width / size.height, picture.width / picture.height, accuracy: 0.001)
+    func testAPictureTooWideToFitIsNotShrunkPastReading() {
+        // Sixteen participants at their natural spacing. Fitted into the room
+        // this would stand at 0.3 and set its message labels at under three
+        // points; the floor is where the smallest lettering is still readable.
+        let picture = CGSize(width: 4700, height: 900)
+        let magnification = opening(picture)
+        XCTAssertGreaterThan(magnification, 1400 / 4700)
+        XCTAssertGreaterThanOrEqual(
+            smallestText * magnification, DiagramWindow.readableTextSize - 0.001)
+    }
+
+    func testAPictureTooBigForTheRoomFillsIt() {
+        // What it cannot show is scrolled to, so leaving two thirds of the
+        // screen empty to keep the picture's shape would buy nothing.
+        let picture = CGSize(width: 4700, height: 900)
+        let size = DiagramWindow.panelSize(
+            picture: picture, room: room, magnification: opening(picture))
+        XCTAssertEqual(size.width, room.width, accuracy: 0.001)
+        XCTAssertEqual(size.height, room.height, accuracy: 0.001)
+    }
+
+    func testAPictureTallerThanTheRoomFillsItsHeightAndNoMoreWidth() {
+        // Tall and narrow. Fitting it whole would halve the lettering, so it
+        // opens at the readable floor: as tall as the room, and only as wide
+        // as the picture itself needs.
+        let picture = CGSize(width: 600, height: 1600)
+        let magnification = opening(picture)
+        let size = DiagramWindow.panelSize(
+            picture: picture, room: room, magnification: magnification)
+        XCTAssertEqual(size.width, 600 * magnification, accuracy: 0.001)
+        XCTAssertLessThan(size.width, room.width)
+        XCTAssertEqual(size.height, 800, accuracy: 0.001)
+    }
+
+    func testTheOpeningMagnificationNeverEnlarges() {
+        // This window shows a diagram at its own size; growing past that is
+        // the reader's business, through ⌘+ or a pinch.
+        XCTAssertEqual(opening(CGSize(width: 100, height: 80)), 1, accuracy: 0.001)
     }
 
     func testAnEmptyPictureAsksForNoWindow() {
-        XCTAssertEqual(DiagramWindow.panelSize(picture: .zero, room: room), .zero)
+        XCTAssertEqual(
+            DiagramWindow.panelSize(picture: .zero, room: room, magnification: 1), .zero)
     }
 }
 

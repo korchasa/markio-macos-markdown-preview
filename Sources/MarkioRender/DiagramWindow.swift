@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 
 /// A diagram shown on its own, large, over the document it came from.
 ///
@@ -30,7 +31,10 @@ final class DiagramWindow: NSPanel {
             let canvas = Canvas(
                 source: source, theme: theme.unzoomed, width: DocumentRenderer.naturalWidth)
         else { return nil }
-        let size = panelSize(picture: canvas.pictureSize, room: room.size)
+        let magnification = openingMagnification(
+            picture: canvas.pictureSize, room: room.size, theme: theme.unzoomed)
+        let size = panelSize(
+            picture: canvas.pictureSize, room: room.size, magnification: magnification)
         guard size.width > 0, size.height > 0 else { return nil }
 
         let panel = DiagramWindow(
@@ -57,24 +61,56 @@ final class DiagramWindow: NSPanel {
             display: true
         )
         panel.makeKeyAndOrderFront(nil)
-        canvas.showWhole()
+        canvas.show(at: magnification)
         return panel
     }
 
-    /// The panel's size in points: the picture's own shape, shrunk to fit the
-    /// room it is shown in — both sides by the same factor.
+    /// The smallest a diagram's own lettering may be shown at, in points.
+    ///
+    /// Below this the picture is sharp and unreadable, which is the one thing
+    /// this window exists to fix.
+    static let readableTextSize: CGFloat = 9
+
+    /// The magnification the window opens at.
+    ///
+    /// Showing the whole picture at once is what a reader reaches for first,
+    /// and for a diagram that fits it is what they get. A wide sequence
+    /// diagram fitted into the screen is a different matter: sixteen
+    /// participants across 1700 points put the message labels at under four
+    /// points each. So the fit has a floor — never smaller than the size at
+    /// which the diagram's smallest lettering is still readable — and a
+    /// picture that does not fit at that magnification opens at its start,
+    /// with ⌘0 still there to show it whole.
+    static func openingMagnification(picture: CGSize, room: CGSize, theme: Theme) -> CGFloat {
+        guard picture.width > 0, picture.height > 0, room.width > 0, room.height > 0 else {
+            return 1
+        }
+        let whole = min(1, min(room.width / picture.width, room.height / picture.height))
+        let smallest = CTFontGetSize(theme.controlLabel) * MermaidLayout.smallestLabelFactor
+        guard smallest > 0 else { return whole }
+        return max(whole, min(1, readableTextSize / smallest))
+    }
+
+    /// The panel's size in points: what the picture takes at that
+    /// magnification, and never more room than there is.
     ///
     /// The width handed to the renderer is a limit and not a frame, so a
     /// diagram narrower than the offered room comes back at its own size. A
     /// panel built to the asked-for width and filled with that picture
-    /// stretched every diagram that did not happen to fill the column, and a
-    /// height clamped on its own squashed every diagram taller than the screen.
-    static func panelSize(picture: CGSize, room: CGSize) -> CGSize {
-        guard picture.width > 0, picture.height > 0, room.width > 0, room.height > 0 else {
+    /// stretched every diagram that did not happen to fill the column. What
+    /// the picture cannot show inside the panel is scrolled to, which is why
+    /// the panel takes the whole room rather than keeping the picture's shape
+    /// when the picture is too big for it.
+    static func panelSize(picture: CGSize, room: CGSize, magnification: CGFloat) -> CGSize {
+        guard picture.width > 0, picture.height > 0, room.width > 0, room.height > 0,
+            magnification > 0
+        else {
             return .zero
         }
-        let fit = min(1, min(room.width / picture.width, room.height / picture.height))
-        return CGSize(width: picture.width * fit, height: picture.height * fit)
+        return CGSize(
+            width: min(room.width, picture.width * magnification),
+            height: min(room.height, picture.height * magnification)
+        )
     }
 
     /// The bitmap scale worth holding for a given magnification.
@@ -205,8 +241,21 @@ final class DiagramWindow: NSPanel {
             scrollView.frame = bounds
         }
 
-        /// Fit the whole diagram in the panel — what the reader sees first, and
-        /// what ⌘0 goes back to.
+        /// Open at a given magnification, looking at the picture's start.
+        ///
+        /// A diagram too big for the panel is read from the top left: the
+        /// first participant of a sequence diagram, the root of a tree. The
+        /// scroll view would otherwise show whatever corner it was left on.
+        func show(at magnification: CGFloat) {
+            layoutSubtreeIfNeeded()
+            setMagnification(magnification)
+            let room = scrollView.contentView.bounds.size
+            scrollView.contentView.scroll(
+                to: NSPoint(x: 0, y: max(0, picture.frame.height - room.height)))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        /// Fit the whole diagram in the panel — what ⌘0 goes back to.
         func showWhole() {
             layoutSubtreeIfNeeded()
             let room = scrollView.contentView.bounds.size

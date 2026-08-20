@@ -910,17 +910,28 @@ a titled band above the participants declared inside it, and both take their
 colour through the same CSS reader every other diagram uses, so `rgba()` fades
 them over the page rather than hiding it.
 
-A diagram in the reading column is as wide as the column, which is why clicking
-one opens `DiagramWindow`: the same source laid out again at the width of the
-window, not the same picture magnified — a diagram's type does not simply scale,
-and a graph drawn smaller to fit the column has ranks it could have spread out.
-Copy PNG goes through the same renderer. Neither keeps a drawing beside the
-block: re-reading the fence costs a parse of a few lines, and a second copy of
-every picture on screen would cost exactly what this viewer refuses to spend.
-In both, the width asked for is a limit and not a frame: a picture is centred in
-the room it is given, so a small diagram in a wide window would come back
-sitting in a field of empty card. A drawing narrower than the room is laid out a
-second time at its own size, and what leaves is the picture and nothing else.
+A diagram in the reading column is as wide as the column, which is why the
+context menu offers Enlarge Diagram. `DiagramWindow` shows the one drawing at
+its natural size, magnified and pannable; Copy PNG and the written-out file go
+through the same renderer. None of them keeps a drawing beside the block:
+re-reading the fence costs a parse of a few lines, and a second copy of every
+picture on screen would cost exactly what this viewer refuses to spend. The
+width asked for is a limit and not a frame, and `cropped` cuts away the empty
+card either side, so what leaves is the picture and nothing else.
+
+How large that window opens is a question about lettering rather than about
+pictures. Fitting the whole picture into the screen is the obvious answer, and
+it fails for exactly the diagrams that need the window most: sixteen
+participants across 1748 points stand at 0.37 and set their message labels at
+3.7 points — sharp, and unreadable, which is what the reader opened the window
+to escape. `openingMagnification` takes that fit and floors it at the
+magnification where the smallest lettering a diagram sets —
+`MermaidLayout.smallestLabelFactor` of the theme's control label — is still
+`readableTextSize` points tall. A picture that fits at that magnification is
+shown whole, and one that does not opens at its top left with the rest scrolled
+to; ⌘0 still goes back to the whole picture. The panel then takes the room it
+is offered instead of keeping the picture's shape, because what will not fit is
+scrolled to rather than left out.
 
 That only works if a drawing knows how wide it really is, and for a while none
 of them did. Each kind reported the width of the boxes it had laid out, which is

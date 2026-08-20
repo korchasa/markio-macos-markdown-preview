@@ -233,7 +233,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   hand over a picture, so a reader can see there is something to click.
   Enlarging shows the diagram at its own size over the window, magnified and
   pannable rather than laid out again at a greater width, with ⌘+, ⌘− and ⌘0
-  inside it. A click on the picture, a click on the document behind it, or
+  inside it. It opens as large as the room allows, and never so small that the
+  diagram's smallest lettering falls under nine points: a picture that fits at
+  that size is shown whole, a wider one opens at its top left with the rest
+  scrolled to, and ⌘0 shows it whole. A click on the picture, a click on the document behind it, or
   Escape puts it away. A double click on a diagram writes it out as a PNG at its
   own size — the diagram's own, not the reader's zoom — and hands it to
   whatever opens PNGs. The bitmap holds two device pixels per point until that

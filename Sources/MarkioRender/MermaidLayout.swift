@@ -58,6 +58,14 @@ enum MermaidLayout {
     /// and small rather than cropped.
     static let minimumScale: CGFloat = 0.08
 
+    /// The smallest lettering a diagram sets, as a fraction of the theme's
+    /// control label.
+    ///
+    /// A few drawings shrink that label a little for the text they crowd most;
+    /// nothing goes below this. The enlarged window reads it to decide how far
+    /// it may shrink a picture and still leave it readable.
+    static let smallestLabelFactor: CGFloat = 0.85
+
     static func draw(_ diagram: MermaidDiagram, theme: Theme, width: CGFloat) -> Drawing {
         let theme = theme.forDiagrams
         let page = background(of: diagram, theme: theme)
@@ -1768,7 +1776,7 @@ enum MermaidLayout {
         _ chart: GanttChart, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
         let font = scaled(theme.body, by: metrics.scale * 0.94)
-        let smallFont = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let smallFont = scaled(theme.controlLabel, by: metrics.scale * smallestLabelFactor)
         let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
         let sectionFont = scaled(theme.bodyBold, by: metrics.scale * 0.94)
         let pad = 6 * metrics.scale
@@ -2335,7 +2343,7 @@ enum MermaidLayout {
     private static func packet(
         _ packet: PacketDiagram, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
-        let font = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let font = scaled(theme.controlLabel, by: metrics.scale * smallestLabelFactor)
         let titleFont = scaled(theme.bodyBold, by: metrics.scale * 1.1)
         // Every field has to hold its own name, so the field that needs the most
         // room per bit decides how wide a bit is drawn. A row of one-bit flags
@@ -2501,7 +2509,7 @@ enum MermaidLayout {
         _ board: KanbanBoard, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
         let font = scaled(theme.body, by: metrics.scale * 0.94)
-        let smallFont = scaled(theme.controlLabel, by: metrics.scale * 0.85)
+        let smallFont = scaled(theme.controlLabel, by: metrics.scale * smallestLabelFactor)
         let headFont = scaled(theme.bodyBold, by: metrics.scale)
         let pad = 8 * metrics.scale
         let gap = 12 * metrics.scale
