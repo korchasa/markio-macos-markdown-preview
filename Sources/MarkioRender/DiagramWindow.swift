@@ -19,7 +19,10 @@ final class DiagramWindow: NSPanel {
     /// six-point label has become a headline.
     static let magnificationRange: ClosedRange<CGFloat> = 0.2...8
 
-    static func present(source: String, theme: Theme, over host: NSWindow) -> DiagramWindow? {
+    static func present(
+        source: String, theme: Theme, over host: NSWindow,
+        onOpenInViewer: (() -> Void)? = nil
+    ) -> DiagramWindow? {
         guard let screen = host.screen ?? NSScreen.main else { return nil }
         // Room enough to be worth opening, never so much that the panel runs
         // past the edge of the screen it is shown on.
@@ -44,6 +47,7 @@ final class DiagramWindow: NSPanel {
             defer: false
         )
         panel.source = source
+        panel.onOpenInViewer = onOpenInViewer
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -113,6 +117,10 @@ final class DiagramWindow: NSPanel {
         )
     }
 
+    /// The density the picture is drawn at for the first paint. See `Canvas`'s
+    /// initialiser for why it is not the density it will settle at.
+    static let firstBitmapScale: CGFloat = 1
+
     /// The bitmap scale worth holding for a given magnification.
     ///
     /// A picture drawn for the screen it sat in goes soft the moment it is
@@ -125,7 +133,10 @@ final class DiagramWindow: NSPanel {
         return min(8, max(2, wanted))
     }
 
-    private var canvas: Canvas?
+    private(set) var canvas: Canvas?
+
+    /// Hands the diagram to whatever opens PNGs, on a double click.
+    private var onOpenInViewer: (() -> Void)?
 
     // A borderless panel refuses the key window by default, and without it the
     // Escape key never reaches anything.
@@ -133,9 +144,18 @@ final class DiagramWindow: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { close() }
 
-    /// A click anywhere on the picture puts it away, which is what a reader who
-    /// opened it with a click reaches for first.
-    override func mouseDown(with event: NSEvent) { close() }
+    /// What a click on the picture means.
+    ///
+    /// Nothing, for one click: a reader who has just opened the panel is
+    /// looking at it, and a picture that vanished under the pointer would take
+    /// a second click to bring back. Two clicks hand the diagram to a viewer,
+    /// which is the one thing this panel cannot do — show it at a size larger
+    /// than the screen, in something that can save or print it.
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount > 1, let open = onOpenInViewer else { return }
+        close()
+        open()
+    }
 
     /// And a click on the document behind it: the document window taking the
     /// key status is what that click looks like from here.
@@ -187,11 +207,20 @@ final class DiagramWindow: NSPanel {
         /// The picture's size in points, which never changes: magnification is
         /// what changes, and the bitmap behind it is redrawn to suit.
         let pictureSize: CGSize
-        private var bitmapScale: CGFloat
+        /// How many bitmap pixels the picture holds for each of its points:
+        /// one on the first paint, more once the redraw has caught up.
+        private(set) var bitmapScale: CGFloat
         private var redraw: DispatchWorkItem?
 
         init?(source: String, theme: Theme, width: CGFloat) {
-            let scale = DiagramWindow.bitmapScale(for: 1)
+            // One pixel per point to begin with, and the density the
+            // magnification really wants a moment later. Laying a diagram out
+            // costs a few milliseconds; filling the bitmap for it is what takes
+            // the time — a third of a second at two pixels per point for the
+            // largest of these, and the reader spends all of it looking at a
+            // document that has not answered their click. A slightly soft
+            // picture for the length of one redraw is the better trade.
+            let scale = DiagramWindow.firstBitmapScale
             guard
                 let image = DocumentRenderer.diagram(
                     source: source, theme: theme, width: width, scale: scale)

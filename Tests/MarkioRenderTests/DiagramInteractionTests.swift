@@ -317,31 +317,52 @@ final class DiagramInteractionTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.3))
     }
 
-    func testAClickOnADiagramEnlargesItOnceTheDoubleClickHasBeenRuledOut() {
+    func testAClickOnADiagramEnlargesIt() {
         let (_, click) = viewShowingADiagram()
         click(1)
-        // Not straight away: the panel opens under the pointer, so opening it
-        // on the first of a double click's two clicks would swallow the second.
-        XCTAssertNil(enlarged)
-        waitOutTheDoubleClick()
         let panel = enlarged
         defer { panel?.close() }
         XCTAssertNotNil(panel)
     }
 
-    func testADoubleClickWritesThePNGAndLeavesThePanelAlone() {
+    func testADoubleClickOnTheEnlargedDiagramHandsThePNGOver() throws {
+        // The whole way round: a click on the diagram in the page opens the
+        // panel, and a double click on the panel writes the picture out and
+        // gives it to whatever opens PNGs.
         let (view, click) = viewShowingADiagram()
         var handed: URL?
         view.openFile = { handed = $0 }
         click(1)
-        click(2)
+        let panel = try XCTUnwrap(enlarged)
+        defer { panel.close() }
+        panel.mouseDown(
+            with: try XCTUnwrap(
+                NSEvent.mouseEvent(
+                    with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: panel.windowNumber, context: nil, eventNumber: 0, clickCount: 2,
+                    pressure: 1)))
         XCTAssertEqual(handed?.pathExtension, "png")
         if let handed { try? FileManager.default.removeItem(at: handed) }
-        // The enlargement the first of those two clicks asked for is off.
-        waitOutTheDoubleClick()
-        let panel = enlarged
-        defer { panel?.close() }
-        XCTAssertNil(panel)
+        XCTAssertFalse(panel.isVisible)
+    }
+
+    func testTheEnlargedPictureIsOnScreenBeforeItIsSharp() throws {
+        // Laying a diagram out costs a few milliseconds and filling its bitmap
+        // costs a third of a second, so the first paint is one pixel per point
+        // and the density the magnification wants follows a moment later. A
+        // panel that waited for the sharp bitmap left the click unanswered for
+        // long enough to look broken.
+        let host = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled], backing: .buffered, defer: true)
+        let panel = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        defer { panel.close() }
+        XCTAssertEqual(panel.canvas?.bitmapScale, 1, "the first paint is one pixel per point")
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        XCTAssertEqual(
+            panel.canvas?.bitmapScale, 2, "the picture should have sharpened by itself")
     }
 
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {
@@ -357,7 +378,7 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertGreaterThan(panel.frame.height, 0)
     }
 
-    func testAnEnlargedDiagramIsPutAwayByEscapeAndByAClick() throws {
+    func testAnEnlargedDiagramIsPutAwayByEscapeAndOpenedByADoubleClick() throws {
         let host = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),
             styleMask: [.titled], backing: .buffered, defer: true)
@@ -375,11 +396,15 @@ final class DiagramInteractionTests: XCTestCase {
         byEscape.keyDown(with: escape)
         XCTAssertFalse(byEscape.isVisible)
 
-        // A click on the picture, which is what a reader who opened it with a
-        // click reaches for. The image view does not answer a click of its own,
-        // so it travels up to the panel.
+        // A single click on the picture leaves it alone: the reader has just
+        // opened it and is looking at it. A double click hands the diagram to
+        // a viewer and puts the panel away. Neither reaches the image view,
+        // which answers no click of its own, so both travel up to the panel.
+        var handedOver = false
         let byClick = try XCTUnwrap(
-            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+            DiagramWindow.present(
+                source: source, theme: Theme(isDark: false), over: host,
+                onOpenInViewer: { handedOver = true }))
         let picture = try XCTUnwrap(
             byClick.contentView.map { view -> NSView? in
                 var found: NSView?
@@ -390,12 +415,19 @@ final class DiagramInteractionTests: XCTestCase {
                 walk(view)
                 return found
             } ?? nil)
-        let click = try XCTUnwrap(
-            NSEvent.mouseEvent(
-                with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
-                windowNumber: byClick.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
-                pressure: 1))
-        picture.mouseDown(with: click)
+        func click(_ clicks: Int) throws {
+            picture.mouseDown(
+                with: try XCTUnwrap(
+                    NSEvent.mouseEvent(
+                        with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                        windowNumber: byClick.windowNumber, context: nil, eventNumber: 0,
+                        clickCount: clicks, pressure: 1)))
+        }
+        try click(1)
+        XCTAssertTrue(byClick.isVisible)
+        XCTAssertFalse(handedOver)
+        try click(2)
+        XCTAssertTrue(handedOver)
         XCTAssertFalse(byClick.isVisible)
 
         // ⌘W belongs to the document window, so the panel leaves it alone.

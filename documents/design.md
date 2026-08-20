@@ -933,16 +933,26 @@ to; ⌘0 still goes back to the whole picture. The panel then takes the room it
 is offered instead of keeping the picture's shape, because what will not fit is
 scrolled to rather than left out.
 
-Two gestures share the click: one enlarges the diagram, two write it out as a
-PNG for a viewer to open. They cannot both be immediate. The panel opens under
-the pointer, so a first click that opened it would swallow the second, and the
-double click would never arrive — which is what happened, and cost the click
-its meaning for a while. So `enlargeAfterDoubleClickInterval` schedules the
-enlargement and any click cancels what is still waiting: the second click of a
-double click, and a click that landed elsewhere meanwhile. The wait is
-`NSEvent.doubleClickInterval`, the system's own number and the shortest one
-that is correct. `openFile` is named rather than called straight so a test can
-watch the file being handed over without Preview opening on somebody's screen.
+A click on a diagram opens the panel; a double click on the panel hands the
+picture to a viewer. The two gestures used to share the diagram in the page, and
+they cannot: the panel opens under the pointer, so the first of a double click's
+two clicks opened it and the second landed on the panel rather than on the
+document. Waiting out `NSEvent.doubleClickInterval` before opening made the
+click answer nothing for most of a second on a Mac whose double-click speed is
+set slow. Moving the second gesture onto the panel costs nothing — a single
+click there means nothing anyway, since a reader who has just opened a picture
+is looking at it — and leaves the click in the page immediate. `openFile` is
+named rather than called straight so a test can watch the file being handed over
+without Preview opening on somebody's screen.
+
+Opening has to feel like nothing happened but the picture. Laying a diagram out
+costs a few milliseconds; filling its bitmap at two pixels per point costs a
+third of a second for the largest of these, and all of it is spent on the main
+thread with the click unanswered. So the first paint is `firstBitmapScale`, one
+pixel per point, which the same measurement puts at five to ten milliseconds,
+and the redraw that follows a change of magnification — deferred anyway, so that
+a pinch costs one drawing and not thirty — brings the density the magnification
+really wants. The picture is soft for that one redraw and on screen at once.
 
 That only works if a drawing knows how wide it really is, and for a while none
 of them did. Each kind reported the width of the boxes it had laid out, which is

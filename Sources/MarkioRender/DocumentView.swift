@@ -53,9 +53,6 @@ public final class DocumentView: NSView {
     /// The diagram shown enlarged, while it is shown.
     private var enlarged: DiagramWindow?
 
-    /// An enlargement waiting to see whether a second click is coming.
-    private var pendingEnlarge: DispatchWorkItem?
-
     /// How a written-out diagram reaches a viewer. Named rather than called
     /// straight, so that a test can check the gesture without Preview opening
     /// on somebody's screen.
@@ -243,11 +240,15 @@ public final class DocumentView: NSView {
         guard let hover = codeHover(at: point) else { return nil }
         let menu = NSMenu()
         if hover.diagramRect != nil {
+            // What the reader can do with the picture, in the order they are
+            // likely to want it: look at it here, look at it in a viewer, take
+            // it away with them.
+            menu.addItem(command("Enlarge Diagram", #selector(enlargeDiagramCommand(_:)), hover))
+            menu.addItem(.separator())
+            menu.addItem(command("Open in Preview", #selector(openDiagramCommand(_:)), hover))
+            menu.addItem(.separator())
             menu.addItem(command("Copy Diagram as PNG", #selector(copyDiagramCommand(_:)), hover))
             menu.addItem(command("Copy Diagram Source", #selector(copyCodeCommand(_:)), hover))
-            menu.addItem(.separator())
-            menu.addItem(command("Enlarge Diagram", #selector(enlargeDiagramCommand(_:)), hover))
-            menu.addItem(command("Open Diagram as PNG", #selector(openDiagramCommand(_:)), hover))
         } else {
             menu.addItem(command("Copy Code", #selector(copyCodeCommand(_:)), hover))
         }
@@ -433,29 +434,6 @@ public final class DocumentView: NSView {
         return url
     }
 
-    /// Enlarge, but not before the reader has had their chance to make this a
-    /// double click.
-    ///
-    /// Two gestures share one place: a click shows the diagram large, a double
-    /// click writes it out as a PNG. The first of those two clicks cannot open
-    /// the panel, because it opens under the pointer and the second click would
-    /// land on it rather than on the document — so the panel waits out the
-    /// interval the system calls a double click and opens only if no second
-    /// click arrived. That interval is the price of keeping both gestures, and
-    /// it is the system's own number rather than one chosen here.
-    private func enlargeAfterDoubleClickInterval(ordinal: Int) {
-        let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.pendingEnlarge = nil
-                self.enlargeDiagram(ordinal: ordinal)
-            }
-        }
-        pendingEnlarge = work
-        DispatchQueue.main.asyncAfter(
-            deadline: .now() + NSEvent.doubleClickInterval, execute: work)
-    }
-
     /// Show the hovered diagram large, over the window. A second click on the
     /// same one puts it away again.
     private func enlargeDiagram(ordinal: Int) {
@@ -467,7 +445,8 @@ public final class DocumentView: NSView {
         }
         enlarged?.close()
         enlarged = DiagramWindow.present(
-            source: box.plainText, theme: layout.theme, over: window)
+            source: box.plainText, theme: layout.theme, over: window,
+            onOpenInViewer: { [weak self] in self?.openDiagram(ordinal: ordinal) })
     }
 
     private func copyCode(ordinal: Int) {
@@ -774,21 +753,12 @@ public final class DocumentView: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        // Any click puts off an enlargement that has not happened yet: the
-        // second click of a double click, and equally a click that landed
-        // somewhere else while the first one was still waiting.
-        pendingEnlarge?.cancel()
-        pendingEnlarge = nil
         let point = convert(event.locationInWindow, from: nil)
-        // A diagram has no text to select, so both of the things a picture in a
-        // reading column wants live on the click: one shows it large, two write
-        // it out as a PNG.
+        // A diagram has no text to select, so a click on one shows it large.
+        // Opening it in a viewer is a double click on the enlarged picture,
+        // where nothing else is competing for the gesture.
         if let hover = hoveredCode, let diagram = hover.diagramRect, diagram.contains(point) {
-            if event.clickCount > 1 {
-                openDiagram(ordinal: hover.ordinal)
-            } else {
-                enlargeAfterDoubleClickInterval(ordinal: hover.ordinal)
-            }
+            if event.clickCount == 1 { enlargeDiagram(ordinal: hover.ordinal) }
             return
         }
         if event.clickCount == 1, let link = link(at: point) {

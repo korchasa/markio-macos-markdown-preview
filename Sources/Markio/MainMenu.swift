@@ -6,7 +6,32 @@ import AppKit
 /// would be a binary blob carrying items that have to be deleted again. Every
 /// item here routes through the responder chain, so the focused window's
 /// controller answers without any window bookkeeping.
+@MainActor
 enum MainMenu {
+    /// The Open Recent this file builds, kept only for as long as macOS does
+    /// not build one itself.
+    private static weak var ourRecents: NSMenuItem?
+
+    private static let recentsGuard = RecentsGuard()
+
+    /// Leaves the File menu with one Open Recent on every version of macOS.
+    ///
+    /// A document app on a recent system is given an Open Recent by AppKit,
+    /// and this app builds its own, which is what a Mac without that gift
+    /// needs. When both arrive the reader sees the item twice and one of them
+    /// is empty, because whichever came second did not get the identifier that
+    /// fills it. So the menu is looked at each time it opens, and if the system
+    /// has provided one, ours goes.
+    final class RecentsGuard: NSObject, NSMenuDelegate {
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            guard let ours = ourRecents, menu.items.contains(ours) else { return }
+            let theirs = menu.items.contains { $0 !== ours && $0.title == ours.title }
+            guard theirs else { return }
+            menu.removeItem(ours)
+            ourRecents = nil
+        }
+    }
+
     static func build() -> NSMenu {
         let main = NSMenu()
         main.addItem(appMenu())
@@ -69,6 +94,8 @@ enum MainMenu {
         recentsMenu.identifier = NSUserInterfaceItemIdentifier("NSRecentDocumentsMenu")
         recents.submenu = recentsMenu
         menu.addItem(recents)
+        ourRecents = recents
+        menu.delegate = recentsGuard
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Compare…",
