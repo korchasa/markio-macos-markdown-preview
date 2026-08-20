@@ -916,7 +916,11 @@ is a block like any other whose frame is a wash of colour with no outline and no
 word on it, painted before the lifelines so the messages stay on top; a `box` is
 a named column — its colour runs the whole height of the participants declared
 inside it, not just the band its name is written in, so a reader following a
-lifeline down can see at any point which group it belongs to. Both take their
+lifeline down can see at any point which group it belongs to. It is that colour
+and nothing else: an outline the height of the picture crosses every message
+passing between two groups, and a word written across that line is the one word
+in the diagram nobody can read. A `box` written without a colour takes the
+faintest tint the theme has, since it no longer has an outline to be seen by. Both take their
 colour through the same CSS reader every other diagram uses, so `rgba()` fades
 them over the page rather than hiding it.
 

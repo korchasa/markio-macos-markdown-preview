@@ -5708,16 +5708,18 @@ enum MermaidLayout {
                 width: centres[last] - centres[first] + boxWidth + 12 * metrics.scale,
                 height: height - metrics.padding - (top - groupRoom))
             let rect = column
-            let colour = group.fill.map(cgColor) ?? theme.palette.codeBackground
+            // A group is its colour and nothing else. An outline around a
+            // column the height of the picture crosses every message that
+            // passes between two groups, and a word written over that line is
+            // the one word in the diagram nobody can read. A box left without a
+            // colour takes the faintest tint the theme has, so that removing
+            // the outline does not leave it invisible.
+            let colour = group.fill.map(cgColor) ?? theme.palette.tableHeaderBackground
             decorations.append(
                 .path(
                     CGPath(rect: column, transform: nil),
                     color: wash(colour, on: theme.palette.codeBackground, keeping: theme),
                     lineWidth: 0, filled: true))
-            decorations.append(
-                .path(
-                    CGPath(rect: column, transform: nil), color: theme.palette.tableBorder,
-                    lineWidth: 1, filled: false))
             let lines = labelLines(
                 group.label, font: small, color: theme.palette.secondaryText
             ).lines

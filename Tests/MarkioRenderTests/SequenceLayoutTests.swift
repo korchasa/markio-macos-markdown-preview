@@ -96,4 +96,63 @@ final class SequenceLayoutTests: XCTestCase {
             "a box colour should run the height of the column it names")
         XCTAssertEqual(tallest.maxY, drawing.contentRect.maxY, accuracy: 2)
     }
+
+    func testABoxIsItsColourAndNothingElse() throws {
+        // An outline the height of the picture crosses every message that
+        // passes between two groups, and the words written over that line are
+        // the ones nobody can read.
+        let source = diagram(
+            """
+                box rgb(210,236,214) Cluster
+                    participant P2
+                    participant P3
+                end
+                P1->>P2: one
+                P2->>P3: two
+                P3->>P4: three
+            """)
+        let parsed = try XCTUnwrap(MermaidDiagram.parse(source))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 900)
+        let column = try XCTUnwrap(groupColumn(in: drawing))
+        for case .path(let path, _, let lineWidth, false) in drawing.decorations
+        where lineWidth > 0 {
+            XCTAssertFalse(
+                path.boundingBox.insetBy(dx: -1, dy: -1).contains(column),
+                "nothing should be drawn around a group")
+        }
+    }
+
+    func testABoxNobodyColouredIsStillVisible() throws {
+        // It had an outline to show it before; without one it needs a tint of
+        // its own, or its name would stand over nothing.
+        let source = diagram(
+            """
+                box Cluster
+                    participant P2
+                    participant P3
+                end
+                P1->>P2: one
+                P2->>P3: two
+            """)
+        let parsed = try XCTUnwrap(MermaidDiagram.parse(source))
+        let theme = Theme(isDark: false)
+        let drawing = MermaidLayout.draw(parsed, theme: theme, width: 900)
+        let page = theme.forDiagrams.palette.codeBackground
+        var tinted = false
+        for case .path(let path, let colour, _, true) in drawing.decorations
+        where path.boundingBox.height > drawing.contentRect.height * 0.7 {
+            tinted = tinted || MermaidLayout.contrast(colour, page) > 1.01
+        }
+        XCTAssertTrue(tinted, "a box without a colour should still be a shade of its own")
+    }
+
+    /// The group's own fill: the tallest wide filled rectangle in the picture.
+    private func groupColumn(in drawing: MermaidLayout.Drawing) -> CGRect? {
+        var tallest = CGRect.zero
+        for case .path(let path, _, _, true) in drawing.decorations {
+            let box = path.boundingBox
+            if box.width > 100, box.height > tallest.height { tallest = box }
+        }
+        return tallest == .zero ? nil : tallest
+    }
 }
