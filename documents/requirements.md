@@ -229,11 +229,14 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   drawing takes. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
 - **VIEW-27** A right-click on a drawn diagram offers Copy Diagram as PNG, Copy
-  Diagram Source and Enlarge Diagram; the pointer becomes a hand over a picture,
-  so a reader can see there is something to click. Enlarging shows the diagram
-  at its own size over the window, magnified and pannable rather than laid out
-  again at a greater width, with ⌘+, ⌘− and ⌘0 inside it. A click on the picture,
-  a click on the document behind it, or Escape puts it away.
+  Diagram Source, Enlarge Diagram and Open Diagram as PNG; the pointer becomes a
+  hand over a picture, so a reader can see there is something to click.
+  Enlarging shows the diagram at its own size over the window, magnified and
+  pannable rather than laid out again at a greater width, with ⌘+, ⌘− and ⌘0
+  inside it. A click on the picture, a click on the document behind it, or
+  Escape puts it away. A double click on a diagram writes it out as a PNG at its
+  own size, at 144 dots per inch so a viewer's full size is the size it was
+  drawn, and hands it to whatever opens PNGs.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

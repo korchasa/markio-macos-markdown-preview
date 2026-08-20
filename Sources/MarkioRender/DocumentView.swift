@@ -239,6 +239,7 @@ public final class DocumentView: NSView {
             menu.addItem(command("Copy Diagram Source", #selector(copyCodeCommand(_:)), hover))
             menu.addItem(.separator())
             menu.addItem(command("Enlarge Diagram", #selector(enlargeDiagramCommand(_:)), hover))
+            menu.addItem(command("Open Diagram as PNG", #selector(openDiagramCommand(_:)), hover))
         } else {
             menu.addItem(command("Copy Code", #selector(copyCodeCommand(_:)), hover))
         }
@@ -265,6 +266,11 @@ public final class DocumentView: NSView {
     @objc private func enlargeDiagramCommand(_ sender: NSMenuItem) {
         guard let ordinal = sender.representedObject as? Int else { return }
         enlargeDiagram(ordinal: ordinal)
+    }
+
+    @objc private func openDiagramCommand(_ sender: NSMenuItem) {
+        guard let ordinal = sender.representedObject as? Int else { return }
+        openDiagram(ordinal: ordinal)
     }
 
     private func drawPill(
@@ -350,6 +356,60 @@ public final class DocumentView: NSView {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setData(data, forType: .png)
         markCopied(ordinal: ordinal)
+    }
+
+    /// Write the diagram out as a PNG at its own size and hand it to whatever
+    /// opens PNGs — Preview, on a Mac nobody has changed.
+    ///
+    /// At its own size and not the column's: the picture the reader wants to
+    /// look at properly is the one too big for the page. The bitmap is drawn at
+    /// two device pixels per point and says so, so an image viewer showing it
+    /// at 100 per cent shows the diagram at exactly the size it was laid out.
+    private func openDiagram(ordinal: Int) {
+        guard let url = diagramFile(ordinal: ordinal) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// The PNG itself, written and ready to hand over. Separate from opening it
+    /// so the drawing and the file can be checked without a viewer opening on
+    /// somebody's screen.
+    func diagramFile(ordinal: Int) -> URL? {
+        guard let box = layout.box(at: ordinal),
+            let image = DocumentRenderer.diagram(
+                source: box.plainText, theme: layout.theme, width: DocumentView.naturalRoom)
+        else { return nil }
+        return DocumentView.writePNG(image, named: diagramName(ordinal: ordinal))
+    }
+
+    /// A width no diagram is expected to want, so the layout draws one at its
+    /// natural size instead of shrinking it into a column.
+    static let naturalRoom: CGFloat = 20000
+
+    /// A name a reader will recognise in a title bar: the document's, the
+    /// picture's place in it, and nothing else.
+    private func diagramName(ordinal: Int) -> String {
+        let document = layout.baseURL?.deletingPathExtension().lastPathComponent ?? "Markio"
+        return "\(document) diagram \(ordinal + 1)"
+    }
+
+    /// The PNG on disk, at 144 dots per inch so that its own idea of full size
+    /// matches the size it was drawn at.
+    static func writePNG(_ image: CGImage, named name: String) -> URL? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(name)
+            .appendingPathExtension("png")
+        guard
+            let destination = CGImageDestinationCreateWithURL(
+                url as CFURL, "public.png" as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(
+            destination, image,
+            [
+                kCGImagePropertyDPIWidth: 144,
+                kCGImagePropertyDPIHeight: 144,
+            ] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return url
     }
 
     /// Show the hovered diagram large, over the window. A second click on the
@@ -671,10 +731,13 @@ public final class DocumentView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        // A diagram has no text to select, so a click on one can mean the one
-        // thing a picture in a column is always too small for.
+        // A diagram has no text to select, so a double click on one means the
+        // one thing a picture in a column is always too small for: see it whole,
+        // at its own size, in an image viewer. Enlarging in place is a click
+        // away in the menu — it cannot also be the single click, because the
+        // panel would open under the pointer and swallow the second one.
         if let hover = hoveredCode, let diagram = hover.diagramRect, diagram.contains(point) {
-            enlargeDiagram(ordinal: hover.ordinal)
+            if event.clickCount == 2 { openDiagram(ordinal: hover.ordinal) }
             return
         }
         if event.clickCount == 1, let link = link(at: point) {

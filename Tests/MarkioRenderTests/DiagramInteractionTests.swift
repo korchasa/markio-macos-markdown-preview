@@ -104,6 +104,43 @@ final class DiagramInteractionTests: XCTestCase {
         }
     }
 
+    func testADoubleClickedDiagramIsWrittenOutWholeAndAtItsOwnSize() throws {
+        // Wider than any column, so a picture written out at the column's width
+        // would be a visibly different file from one written at its own.
+        let wide = """
+            sequenceDiagram
+                participant A as A participant with a long name
+                participant B as Another participant with a long name
+                participant C as A third participant with a long name
+                A->>B: a message with enough words to need real room
+                B->>C: and another message just as wordy as the first
+            """
+        let text = "```mermaid\n" + wide + "\n```"
+        let layout = DocumentLayout(
+            document: Document(text: text), theme: Theme(isDark: false), columnWidth: 520)
+        let view = DocumentView(layout: layout)
+
+        let url = try XCTUnwrap(view.diagramFile(ordinal: 0))
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(url.pathExtension, "png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        let properties = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        // 144 dots per inch: the bitmap has two device pixels per point, and
+        // saying so is what makes a viewer's 100 per cent the size it was drawn.
+        XCTAssertEqual(properties[kCGImagePropertyDPIWidth] as? Int, 144)
+        XCTAssertEqual(properties[kCGImagePropertyDPIHeight] as? Int, 144)
+
+        // The written picture is the whole diagram, not the column's version of
+        // it: at 520 points the layout shrinks this one to fit.
+        let written = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let inColumn = try XCTUnwrap(
+            DocumentRenderer.diagram(source: wide, theme: Theme(isDark: false), width: 520))
+        XCTAssertGreaterThan(written.width, inColumn.width)
+    }
+
     /// A board is read by glancing across its columns, so a long title makes a
     /// taller card and not a column as wide as the sentence.
     func testALongCardTitleMakesATallerCardAndNotAWiderBoard() throws {
