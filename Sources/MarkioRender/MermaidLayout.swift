@@ -714,8 +714,11 @@ enum MermaidLayout {
         let path = CGPath(roundedRect: frame, cornerWidth: 3, cornerHeight: 3, transform: nil)
         var decorations: [BlockBox.Decoration] = [
             .path(
-                path, color: faded(style.fill.map(cgColor) ?? theme.palette.background, by: style),
-                lineWidth: 0, filled: true),
+                path,
+                color: faded(
+                    authorFill(
+                        style, or: theme.palette.background, ink: theme.palette.text, theme: theme),
+                    by: style), lineWidth: 0, filled: true),
             .path(
                 path,
                 color: faded(style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: style),
@@ -2291,18 +2294,52 @@ enum MermaidLayout {
         squarify(map.nodes[0].children, in: inside)
 
         var decorations: [BlockBox.Decoration] = []
+        // A tile is drawn over its parent, not over the page, and a class
+        // paints a section and everything in it — so the colour a leaf's name
+        // is read against is its own tint over its parent's. Each tile records
+        // what it leaves behind for its children.
+        var parents = [Int](repeating: -1, count: map.nodes.count)
+        for (index, node) in map.nodes.enumerated() {
+            for child in node.children { parents[child] = index }
+        }
+        var behind = [CGColor](repeating: theme.palette.codeBackground, count: map.nodes.count)
+        for (index, node) in map.nodes.enumerated() {
+            let frame = frames[index]
+            let page =
+                parents[index] >= 0 ? behind[parents[index]] : theme.palette.codeBackground
+            let wheel = theme.diagramWheel[index % theme.diagramWheel.count]
+            let strength: CGFloat = node.children.isEmpty ? 0.55 : 0.18
+            let colour =
+                node.style.fill.map {
+                    wash(
+                        cgColor($0), on: page,
+                        under: node.style.text.map(cgColor) ?? theme.palette.text, shownAt: strength
+                    )
+                } ?? wheel
+            behind[index] =
+                frame.width > 2 && frame.height > 2 ? over(colour, at: strength, on: page) : page
+        }
         for (index, node) in map.nodes.enumerated() where index > 0 || !node.label.isEmpty {
             let frame = frames[index]
             guard frame.width > 2, frame.height > 2 else { continue }
             // A rectangle a class painted keeps that paint; one nobody painted
             // takes its turn off the wheel.
             let wheel = theme.diagramWheel[index % theme.diagramWheel.count]
-            let colour = node.style.fill.map(cgColor) ?? wheel
             let branch = !node.children.isEmpty
+            let strength: CGFloat = branch ? 0.18 : 0.55
+            let page =
+                parents[index] >= 0 ? behind[parents[index]] : theme.palette.codeBackground
+            let colour =
+                node.style.fill.map {
+                    wash(
+                        cgColor($0), on: page,
+                        under: node.style.text.map(cgColor) ?? theme.palette.text, shownAt: strength
+                    )
+                } ?? wheel
             decorations.append(
                 .fill(
                     rect: frame.insetBy(dx: 1, dy: 1),
-                    color: colour.copy(alpha: branch ? 0.18 : 0.55) ?? colour,
+                    color: colour.copy(alpha: strength) ?? colour,
                     cornerRadius: 3 * metrics.scale))
             decorations.append(
                 .path(
@@ -3107,6 +3144,8 @@ enum MermaidLayout {
     ) -> Drawing {
         let font = scaled(theme.controlLabel, by: metrics.scale * 0.9)
         let branchFont = scaled(theme.bodyBold, by: metrics.scale * 0.9)
+        /// How far a branch name's tag reaches past the words on it.
+        let namePad = 6 * metrics.scale
         let gutter =
             (graph.branches.map {
                 measure(text($0, font: branchFont, color: theme.palette.text)).width
@@ -3138,7 +3177,14 @@ enum MermaidLayout {
                 measure(text(named(order, commit), font: font, color: theme.palette.text)).width
             }.max() ?? 0
         let step = down ? 56 * metrics.scale : max(56 * metrics.scale, widest + 8 * metrics.scale)
-        let lane = 46 * metrics.scale
+        // Down the page the names stand side by side over their lanes, so a
+        // lane has to be at least as wide as the tag it is named by — two tags
+        // touching read as one word twice as long.
+        let widestName =
+            (graph.branches.map {
+                measure(text($0, font: branchFont, color: theme.palette.text)).width
+            }.max() ?? 0) + namePad * 2 + 8 * metrics.scale
+        let lane = down ? max(46 * metrics.scale, widestName) : 46 * metrics.scale
         let radius = 7 * metrics.scale
         let columns = (graph.commits.map(\.column).max() ?? 0) + 1
         let nameHeight =
@@ -3195,18 +3241,31 @@ enum MermaidLayout {
             }
             decorations.append(
                 .path(rail, color: colour, lineWidth: 2.5 * metrics.scale, filled: false))
-            let line = text(name, font: branchFont, color: colour)
+            // The name used to be written in the branch's own colour on the
+            // page, where the paler half of the wheel came out at 2.2:1 — a
+            // word nobody could read, saying which line is which. The colour
+            // moves behind the word instead, as a tag, and the word is written
+            // in the ink everything else in the picture is written in.
+            let line = text(name, font: branchFont, color: theme.palette.text)
             let size = measure(line)
+            let origin =
+                down
+                ? CGPoint(
+                    x: side - size.width / 2, y: metrics.padding + size.height - descent(line))
+                : CGPoint(
+                    x: left + spill + gutter - 10 * metrics.scale - namePad - size.width,
+                    y: side + size.height / 2 - descent(line))
+            let tag = CGRect(
+                x: origin.x - namePad, y: origin.y + descent(line) - size.height - namePad / 2,
+                width: size.width + namePad * 2, height: size.height + namePad)
             decorations.append(
-                .glyphs(
-                    line,
-                    origin: down
-                        ? CGPoint(
-                            x: side - size.width / 2,
-                            y: metrics.padding + size.height - descent(line))
-                        : CGPoint(
-                            x: left + spill + gutter - 10 * metrics.scale - size.width,
-                            y: side + size.height / 2 - descent(line))))
+                .fill(
+                    rect: tag,
+                    color: wash(
+                        colour, on: theme.palette.codeBackground, under: theme.palette.text,
+                        shownAt: 0.28
+                    ).copy(alpha: 0.28) ?? colour, cornerRadius: 4 * metrics.scale))
+            decorations.append(.glyphs(line, origin: origin))
         }
         // A branch is drawn from where it left its parent and a merge back to
         // where it rejoined, so a lane is never a line floating on its own.
@@ -4024,7 +4083,9 @@ enum MermaidLayout {
             .path(
                 path,
                 color: faded(
-                    group.style.fill.map(cgColor) ?? theme.palette.codeBackground, by: group.style),
+                    authorFill(
+                        group.style, or: theme.palette.codeBackground,
+                        ink: theme.palette.secondaryText, theme: theme), by: group.style),
                 lineWidth: 0, filled: true),
             .path(
                 path,
@@ -4115,7 +4176,9 @@ enum MermaidLayout {
             box.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: box.style)
         let pen = (box.style.strokeWidth.map { CGFloat($0) } ?? 1) * metrics.scale
         let filling = faded(
-            box.style.fill.map(cgColor) ?? theme.palette.tableHeaderBackground, by: box.style)
+            authorFill(
+                box.style, or: theme.palette.tableHeaderBackground, ink: theme.palette.text,
+                theme: theme), by: box.style)
         let solid = !(box.style.fill?.isTransparent ?? false)
         // The copies stacked behind a multi-process stand under the front one,
         // so they are filled and outlined before it is.
@@ -4216,6 +4279,22 @@ enum MermaidLayout {
 
     /// A style's `opacity` lets the page through everything that style paints,
     /// the colours the theme supplied included, so it is applied last of all.
+    /// A fill an author wrote, kept readable under the lettering that goes on
+    /// it.
+    ///
+    /// Mermaid hands `style` and `classDef` straight to the renderer, so
+    /// `fill:#111` arrives with the theme's dark ink still on top of it and the
+    /// label disappears. Every fill an author chose passes through here; a
+    /// colour the theme itself picked does not, because the palette was chosen
+    /// against this bar already.
+    private static func authorFill(
+        _ style: Flowchart.Style, or fallback: CGColor, ink: CGColor, theme: Theme
+    ) -> CGColor {
+        guard let written = style.fill.map(cgColor) else { return fallback }
+        return wash(
+            written, on: theme.palette.codeBackground, under: style.text.map(cgColor) ?? ink)
+    }
+
     private static func faded(_ color: CGColor, by style: Flowchart.Style) -> CGColor {
         guard let share = style.opacity else { return color }
         return color.copy(alpha: color.alpha * share) ?? color
@@ -5550,14 +5629,55 @@ enum MermaidLayout {
     /// drawn over it — a message label — still stands at `readableContrast`. A
     /// pale colour is already there and passes through untouched.
     static func wash(_ fill: CGColor, on page: CGColor, keeping theme: Theme) -> CGColor {
-        let ink = theme.palette.secondaryText
-        guard contrast(ink, fill) < readableContrast else { return fill }
+        wash(fill, on: page, under: theme.palette.secondaryText)
+    }
+
+    /// The same rule for a colour that has one particular ink written on it:
+    /// a node's fill under the node's own label.
+    ///
+    /// A colour is only moved toward the page when the page is somewhere worth
+    /// moving to. An author who wrote both halves of a pair — a dark fill and
+    /// the pale lettering that goes on it — has already answered the question,
+    /// and washing that fill would erase their answer and their words with it.
+    /// A colour laid over another at a given strength, as the eye meets it.
+    static func over(_ colour: CGColor, at strength: CGFloat, on page: CGColor) -> CGColor {
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let under = page.converted(to: space, intent: .defaultIntent, options: nil) ?? page
+        let top = colour.converted(to: space, intent: .defaultIntent, options: nil) ?? colour
+        guard let start = under.components, let end = top.components, start.count >= 3,
+            end.count >= 3
+        else { return page }
+        return CGColor(
+            srgbRed: start[0] + (end[0] - start[0]) * strength,
+            green: start[1] + (end[1] - start[1]) * strength,
+            blue: start[2] + (end[2] - start[2]) * strength, alpha: 1)
+    }
+
+    /// `shownAt` is the alpha the colour will be drawn with: a tile painted at
+    /// half strength is half way to the page already, and washing it as if it
+    /// were solid would take a perfectly readable colour and pale it for
+    /// nothing.
+    static func wash(
+        _ fill: CGColor, on page: CGColor, under ink: CGColor, shownAt alpha: CGFloat = 1
+    ) -> CGColor {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
         let from = page.converted(to: space, intent: .defaultIntent, options: nil) ?? page
         let to = fill.converted(to: space, intent: .defaultIntent, options: nil) ?? fill
         guard let start = from.components, let end = to.components, start.count >= 3,
             end.count >= 3
-        else { return page }
+        else { return fill }
+        /// The colour as the eye meets it: mixed toward the fill by `strength`,
+        /// then laid over the page at `alpha`.
+        func shown(_ strength: CGFloat) -> CGColor {
+            let share = strength * alpha
+            return CGColor(
+                srgbRed: start[0] + (end[0] - start[0]) * share,
+                green: start[1] + (end[1] - start[1]) * share,
+                blue: start[2] + (end[2] - start[2]) * share,
+                alpha: 1)
+        }
+        guard contrast(ink, shown(1)) < readableContrast else { return fill }
+        guard contrast(ink, page) >= readableContrast else { return fill }
         var strength: CGFloat = 1
         // The page itself always passes, so a colour that never does becomes
         // no colour at all rather than an unreadable one.
@@ -5566,13 +5686,12 @@ enum MermaidLayout {
         // colour can be written in the first place.
         var stride: CGFloat = 0.5
         for _ in 0..<12 {
-            let candidate = CGColor(
-                srgbRed: start[0] + (end[0] - start[0]) * strength,
-                green: start[1] + (end[1] - start[1]) * strength,
-                blue: start[2] + (end[2] - start[2]) * strength,
-                alpha: 1)
-            if contrast(ink, candidate) >= readableContrast {
-                mixed = candidate
+            if contrast(ink, shown(strength)) >= readableContrast {
+                mixed = CGColor(
+                    srgbRed: start[0] + (end[0] - start[0]) * strength,
+                    green: start[1] + (end[1] - start[1]) * strength,
+                    blue: start[2] + (end[2] - start[2]) * strength,
+                    alpha: 1)
                 strength += stride
             } else {
                 strength -= stride

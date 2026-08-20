@@ -934,6 +934,36 @@ colour already that pale passes through untouched, which is what happens to most
 of them: of the five in the diagram this was written for, three were left
 exactly as written and two were lightened by a few points.
 
+The same rule then went everywhere else an author's colour lands under the
+picture's own ink, because `box` was only the kind that had been looked at:
+`style A fill:#111` on a flowchart node arrived with the theme's dark ink still
+on top of it and came out at 1.02:1 — a word that is in the picture and not on
+the screen. `authorFill` runs a node's fill, a subgraph's, a class or entity
+box's through `wash`, and the treemap runs its tiles through it a tile at a
+time, since a tile is painted over its parent rather than over the page and a
+class paints a section and everything in it. `wash` takes the ink it has to
+stand up to and the strength the colour will be drawn at, so a tile painted at
+half strength is not paled for a contrast it already had. An author who wrote
+`color:` as well as `fill:` has answered the question themselves: the page is no
+longer somewhere worth moving to, and both are kept exactly as written.
+
+Lettering in a colour off the wheel had the same fault without an author
+anywhere near it. A git graph wrote each branch's name in that branch's own
+colour on the white page, where the paler half of the wheel came out at 2.2:1 —
+the word saying which line is which was the one word in the picture nobody could
+read. The colour moved behind the word as a tag and the word is written in the
+ordinary ink, which is how the section bands of a timeline, a journey and a
+kanban board had it all along. Turned on its side the graph writes those tags
+side by side over lanes 46 points wide, so a lane is now at least as wide as the
+tag naming it: two tags that met in the middle read as one word twice as long.
+
+`DiagramLegibilityTests` is what keeps this true for the next kind of diagram.
+It draws one sample of every kind the layout knows, and for every word in the
+picture it finds the topmost thing painted under it, composites the part-strength
+fills the way the screen does, and measures the pair. The check is the layout's
+own bar of 7:1, and it runs again over author-written fills, on a light page and
+a dark one. It found treemap tiles and git branch names on its first run.
+
 A diagram in the reading column is as wide as the column, which is why a click
 on one enlarges it. `DiagramWindow` shows the one drawing at
 its natural size, magnified and pannable; Copy PNG and the written-out file go

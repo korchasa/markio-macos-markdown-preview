@@ -226,7 +226,14 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   or section where the diagram's own meaning is carried by colour. A colour an
   author chose for a group of participants runs the whole height of that group's
   column, and is lightened as far as it has to be for the faintest lettering
-  written over it to keep the 7:1 the rest of the picture is drawn to. A picture too
+  written over it to keep the 7:1 the rest of the picture is drawn to. That
+  holds wherever an author's colour ends up under the picture's own ink — a
+  node's `fill`, a `classDef`, a subgraph, a class or entity box, a treemap
+  tile — and an author who wrote the lettering's colour as well as the fill
+  keeps both exactly as written. Nothing in a diagram is written in a colour
+  from the wheel on the page itself: a branch's name is written in the ordinary
+  ink on a tag of the branch's colour, so a lane is told apart by the tag rather
+  than by lettering nobody can read. A picture too
   wide for the column is drawn smaller rather than cut off, and nothing in a
   picture is ever cut off by its own edge: a line that bows around a box and a
   word longer than the shape holding it both count towards how much room the
