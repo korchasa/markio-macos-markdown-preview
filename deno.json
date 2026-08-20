@@ -10,7 +10,6 @@
     "dist": "deno run -A scripts/dist.ts",
     "fmt": "deno run -A scripts/fmt.ts",
     "app": "deno run -A scripts/app.ts",
-    "install": "deno run -A scripts/install.ts",
     "bench": "deno run -A scripts/bench.ts",
     "viewbench": "deno run -A scripts/viewbench.ts",
     "icons": "deno run -A scripts/icons.ts",

@@ -1,5 +1,6 @@
 /**
- * `deno task app` — release build packaged as a proper Markio.app bundle.
+ * `deno task app` — release build packaged as a proper Markio.app bundle, and
+ * installed as the local "Markio Dev" copy.
  *
  * A bundle (Info.plist + bundle id) is what makes macOS keep a single instance
  * and route every open into it, one window per document. `prod` and `dist`
@@ -13,6 +14,7 @@
 
 import { run, section } from "./lib.ts";
 import { APP_NAME, APP_PRODUCT, QL_NAME, QL_PLIST, QL_PRODUCT } from "./identity.ts";
+import { installDevCopy } from "./install.ts";
 
 export const APP_BUNDLE = `.build/${APP_NAME}.app`;
 const RELEASE_BIN = `.build/release/${APP_PRODUCT}`;
@@ -75,6 +77,11 @@ export async function app(): Promise<void> {
       QL_APPEX,
     ],
   });
+
+  // A build nobody can launch from Spotlight is half a build: the copy in
+  // /Applications is refreshed here rather than by a verb somebody has to
+  // remember, so what is installed is always what was last built.
+  await installDevCopy(APP_BUNDLE);
 
   section(`app: built ${APP_BUNDLE}`);
 }

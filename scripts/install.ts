@@ -1,5 +1,11 @@
 /**
- * `deno task install` — put a fresh build in /Applications as "Markio Dev".
+ * The copy of the current build that lives in /Applications as "Markio Dev".
+ *
+ * Every build puts it there — `app` assembles the bundle and then calls this,
+ * so `dev`, `prod` and `dist` refresh it too. A build that is not the one in
+ * /Applications is the failure this exists to prevent: the app gets launched
+ * from Spotlight and previews documents in Finder, and a stale copy there is a
+ * session spent looking at last week's work and believing it is this week's.
  *
  * A copy in /Applications is how the app gets used the way a reader uses it:
  * launched from Spotlight, opening documents from Finder, previewing them in
@@ -15,7 +21,6 @@
  */
 
 import { fail, run, section } from "./lib.ts";
-import { app, APP_BUNDLE } from "./app.ts";
 import { APP_NAME, QL_NAME } from "./identity.ts";
 
 /** What the local copy is called and answers to. */
@@ -52,9 +57,8 @@ async function commit(): Promise<string> {
   return head.stdout.trim() + (dirty.stdout.trim() === "" ? "" : "+");
 }
 
-export async function install(): Promise<void> {
-  await app();
-
+/** Put `bundle` in /Applications under the local name and ids. */
+export async function installDevCopy(bundle: string): Promise<void> {
   section(`Installing ${INSTALLED}`);
   // A copy owned by root — an old bundle an installer put there — cannot be
   // replaced from here, and saying so is more use than a permission error
@@ -68,7 +72,7 @@ export async function install(): Promise<void> {
     fail(`${INSTALLED} is not yours to replace — remove it with sudo and run this again`);
   }
   await Deno.remove(INSTALLED, { recursive: true }).catch(() => {});
-  await run("cp", { args: ["-R", APP_BUNDLE, INSTALLED] });
+  await run("cp", { args: ["-R", bundle, INSTALLED] });
 
   section("Naming it apart from the store build");
   const plist = `${INSTALLED}/Contents/Info.plist`;
@@ -106,5 +110,3 @@ export async function install(): Promise<void> {
 
   section(`install: ${INSTALLED} is this build`);
 }
-
-if (import.meta.main) await install();
