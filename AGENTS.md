@@ -34,6 +34,12 @@ target.
   through, so leaving it out hides errors until someone wants a bundle.
 - `deno task test` — tests alone
 - `deno task app` — build `.build/Markio.app`
+- `deno task install` — build and put that bundle in `/Applications` as
+  **Markio Dev**, under its own bundle ids so it can sit beside the signed copy
+  from the store. Run it whenever the app changes: the copy in `/Applications`
+  is what gets launched from Spotlight and what previews documents in Finder, so
+  a stale one is a session spent looking at last week's build. Its About panel
+  carries the commit it was built from, with a `+` when the tree was dirty.
 - `deno task dev <file.md>` — build and open a document
 - `deno task bench` — parse cost and footprint at 1, 8 and 32 MB
 - `deno task viewbench` — the same document through finished apps, this one and
