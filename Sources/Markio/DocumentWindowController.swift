@@ -423,6 +423,46 @@ final class DocumentWindowController: NSWindowController {
         if baselineURL != nil { rebuildComparison() } else { showPlainDocument() }
     }
 
+    // MARK: - Folder access
+
+    /// The folder this window's document sits in, which is the one it can be
+    /// asked to grant.
+    var documentFolder: URL? {
+        markdownDocument.fileURL?.deletingLastPathComponent().standardizedFileURL
+    }
+
+    /// Ask for the folder a picture in this document lives in.
+    ///
+    /// The sandbox hands over the document and not the folder around it, and
+    /// there is no entitlement that widens that — a panel is the only way in,
+    /// which is why one appears the first time a document points at something
+    /// beside it rather than on open. Refusing leaves the document exactly as
+    /// it was drawn, and nothing asks again for that folder in this run.
+    func askForFolder(_ folder: URL) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.message =
+            "Markio can open this document, but not the files beside it. "
+            + "Choose its folder to show the pictures in it."
+        panel.prompt = "Allow"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = folder
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            guard FolderAccess.shared.remember(url) else { return }
+            // Every open document is drawn again, not just this one: two
+            // windows on files in the same folder both gained their pictures.
+            for document in NSDocumentController.shared.documents {
+                for controller in document.windowControllers {
+                    (controller as? DocumentWindowController)?.documentDidReload()
+                }
+            }
+        }
+    }
+
     // MARK: - Compare
 
     /// Compare the open file against an older version of it.

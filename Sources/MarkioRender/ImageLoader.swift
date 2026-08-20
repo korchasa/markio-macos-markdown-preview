@@ -33,7 +33,14 @@ enum ImageLoader {
             touch(key)
             return entry.image
         }
-        guard let image = decode(url: url, pixelWidth: pixelWidth) else { return nil }
+        guard let image = decode(url: url, pixelWidth: pixelWidth) else {
+            // Under the App Sandbox this is what a picture beside the document
+            // looks like: the file is there and reading it is refused. The
+            // reader is asked for the folder rather than left with an empty
+            // frame and no way to fill it.
+            FolderAccess.shared.noteUnreadable(url)
+            return nil
+        }
         store(image, key: key)
         return image
     }
@@ -61,6 +68,15 @@ enum ImageLoader {
             order.removeFirst()
             if let entry = cache.removeValue(forKey: oldest) { total -= entry.cost }
         }
+    }
+
+    /// Forget every decoded picture. Called when a folder grant arrives: the
+    /// failures are not cached, but the boxes that were laid out without them
+    /// are, and the document is drawn again from nothing.
+    static func forget() {
+        cache.removeAll()
+        order.removeAll()
+        total = 0
     }
 
     private static func touch(_ key: String) {

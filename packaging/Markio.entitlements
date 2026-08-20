@@ -4,8 +4,14 @@
 <dict>
     <!--
       Markio opens files the reader chooses, one window per document, and
-      does nothing else with the system. The sandbox therefore needs exactly
-      one grant: read access to user-selected files.
+      does nothing else with the system. The sandbox therefore needs read
+      access to user-selected files — and bookmarks to keep them.
+
+      A document comes with access to itself and not to the folder it sits in,
+      so the picture beside it cannot be read: there is no entitlement that
+      widens a document to its folder, only the reader pointing at that folder
+      in a panel. The app-scope bookmark entitlement is what lets that grant
+      survive a relaunch, so the reader is asked once and not every morning.
 
       There is deliberately no network entitlement. A sandboxed WKWebView needs
       com.apple.security.network.client to bring up its content process even
@@ -18,6 +24,8 @@
     <key>com.apple.security.app-sandbox</key>
     <true/>
     <key>com.apple.security.files.user-selected.read-only</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
 </dict>
 </plist>

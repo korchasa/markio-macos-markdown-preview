@@ -173,7 +173,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   a little taller than the text, and its alt text gives way to it. A remote
   address is not fetched; a picture that cannot be read leaves an empty frame
   where it belongs, so Find and the drawing agree on every character either
-  way.
+  way. A sandboxed copy is given the document and not the folder around it, so
+  the first time a document points at a file beside itself the reader is asked
+  for that folder, once, in a panel over that document — never on open, and
+  never again for a folder already granted, which is remembered across
+  relaunches. Refusing leaves the empty frame rather than an error.
 - **VIEW-17** A document can be compared against an older version of itself
   (File ▸ Compare…): blocks added since the baseline and blocks removed from it
   are marked in place, in one window with one scroll. The outline and find

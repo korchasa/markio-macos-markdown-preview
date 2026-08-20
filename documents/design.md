@@ -964,6 +964,22 @@ fills the way the screen does, and measures the pair. The check is the layout's
 own bar of 7:1, and it runs again over author-written fills, on a light page and
 a dark one. It found treemap tiles and git branch names on its first run.
 
+`FolderAccess` is the one place that knows what a sandboxed copy may read. The
+sandbox hands over the document that was opened and nothing else — not the
+folder it sits in, and not the picture beside it — so a document saying
+`![a picture](pic.png)` drew VIEW-16's empty frame on the Mac App Store and
+nowhere else: every local build is unsigned, and an unsigned build has no
+sandbox at all, which is why this survived to a shipped version. There is no
+entitlement that widens a document to its folder; the only way in is the reader
+pointing at that folder in a panel, and `files.bookmarks.app-scope` to keep the
+grant across relaunches. The ask is driven from the failure rather than from the
+open: `ImageLoader` reports a file it could not read, a file inside a granted
+folder is taken to be a broken file and not a locked one, and a folder is asked
+about once however many pictures a document has in it. Paths are compared with
+their symlinks resolved as far as the disk allows — a panel answers `/tmp/notes`
+where the document arrived as `/private/tmp/notes`, and comparing the spellings
+says the folder was never granted.
+
 A diagram in the reading column is as wide as the column, which is why a click
 on one enlarges it. `DiagramWindow` shows the one drawing at
 its natural size, magnified and pannable; Copy PNG and the written-out file go

@@ -1,4 +1,5 @@
 import AppKit
+import MarkioRender
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -22,6 +23,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A drawing that cannot read a file asks here, and the window showing
+        // that document is the one that asks the reader. Routed by folder
+        // rather than by which window is in front: the picture belongs to a
+        // document, and the reader should be asked over the document it is in.
+        FolderAccess.shared.onNeedsGrant = { folder in
+            // The call arrives in the middle of drawing a page, and a sheet
+            // cannot open there.
+            DispatchQueue.main.async {
+                let windows = NSApp.windows.compactMap {
+                    $0.windowController as? DocumentWindowController
+                }
+                let owner = windows.first { $0.documentFolder?.path == folder.path }
+                (owner ?? windows.first)?.askForFolder(folder)
+            }
+        }
         for url in launchFiles {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
