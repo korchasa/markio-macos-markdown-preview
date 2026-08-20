@@ -1,15 +1,15 @@
-# Reader tools — a wave of five
+# Reader tools — a wave of six
 
-Five features chosen from a longer list, with the owner's priorities attached:
+Six features chosen from a longer list, with the owner's priorities attached:
 clickable code paths (high), a presentation and a focus mode (high), vector PDF
-export (high), tables you can sort and filter (medium), and copy with formatting
-(low).
+export (high), tables you can sort and filter (medium), a document summary in
+the bottom bar (medium), and copy with formatting (low).
 
 They have one thing in common worth stating up front: none of them is another
 way to render Markdown. Version 1.0 was rejected under guideline 4.3(a) as a
 concept already on the store, and a viewer that opens a report, walks you to the
 line of code it names, prints it as a vector PDF and shows it as a deck is not
-the same product as a Markdown previewer. That is the argument these five make
+the same product as a Markdown previewer. That is the argument these six make
 together, and it is a better answer to 4.3(a) than any single one of them.
 
 ## The gate: the sandbox reaches the document and nothing beside it
@@ -55,12 +55,14 @@ image defect is worth fixing on its own.
 ## Order
 
 1. Folder access (the gate above) — unblocks 2, fixes a shipped promise.
-2. Focus mode — the cheapest of the five, and it reuses machinery that exists.
+2. Focus mode — the cheapest of the six, and it reuses machinery that exists.
 3. Clickable code paths — the strongest differentiator of the wave.
 4. Vector PDF export — self-contained, no dependency on the others.
 5. Presentation mode — the other half of the mode work.
-6. Sortable tables — most UI for the least architecture.
-7. Copy with formatting — smallest gain, and the owner ranked it low.
+6. The document summary — cheap, and it answers the first question a reader of
+   an agent's report has.
+7. Sortable tables — most UI for the least architecture.
+8. Copy with formatting — smallest gain, and the owner ranked it low.
 
 ## 1. Clickable code paths (high)
 
@@ -200,7 +202,51 @@ to sort.
 
 Cost: one and a half to two sessions.
 
-## 5. Copy with formatting (low)
+## 5. A document summary in the bottom bar (medium)
+
+The first question anyone asks of an agent's report is whether the work is
+finished, and the document already answers it — in checkboxes nobody counts.
+The bottom bar gains a summary: how many task items are ticked out of how many,
+how long the document takes to read, and how many of its sections still carry an
+open question. The outline shows the same count per heading, so a reader can see
+which section is the unfinished one without scrolling to it.
+
+Where it lands: `BlockFlags` already carries `.task` and `.taskChecked`, set
+during the scan, so counting checkboxes is a walk over the flat block array —
+24 bytes a node, no text, no typesetting. Reading time needs words, which means
+text, which is the expensive half. The bottom bar and `OutlineSidebar` display
+it.
+
+What is hard is the invariant, and it is the whole design of this feature.
+"Nothing is typeset until it is visible" forbids walking every block when the
+document opens, and a summary is by definition about every block. The way out is
+the one `FindEngine` already took: count on a background queue in batches,
+publish partial numbers as they arrive, and never make the first window wait for
+them. So the bar shows the count settling rather than appearing, and on a 32 MB
+document it settles late — which is honest, and better than a number that blocks
+the open.
+
+Three smaller decisions:
+
+- **A document with no checkboxes shows no progress**, rather than "0 of 0".
+  The summary is a fact about the document, not a widget that must be filled.
+- **Reading time is a measurement, not a promise.** Count words and divide by a
+  stated rate; put the rate where a reader can see it rather than presenting a
+  minute figure as if it were about them.
+- **"Open questions" needs a definition or it should not ship.** A `TODO`
+  marker, a `?` heading, an unticked task in a section — whichever is chosen,
+  write it down and count only that. Guessing what an author meant is how a
+  number becomes noise.
+
+Done when: the bar shows ticked-of-total for a document that has task items and
+nothing for one that does not, the counts are computed off the main thread and
+never delay the first window, the outline shows the per-section count, and
+`deno task bench` shows no change in time-to-first-window at 32 MB.
+
+Cost: one session, most of it in the background counting rather than the
+display.
+
+## 6. Copy with formatting (low)
 
 Copy a selection and paste it into Mail, Slack or Notes with its styles intact.
 The pieces are there: each `BlockBox.Segment` holds an `NSAttributedString`, so
@@ -230,8 +276,8 @@ Cost: half a session to one for step one.
 
 ## Not in this wave
 
-The other five ideas from the same list — live tail of a document being written,
+The other four ideas from the same list — live tail of a document being written,
 compare against a git revision or a macOS file version, reading from a pipe,
-folder-wide search, task progress in the bottom bar — were not chosen. Two of
-them (tail, pipe) are the strongest 4.3(a) argument of the whole list and are
-worth revisiting once these five land.
+folder-wide search — were not chosen. Two of them (tail, pipe) are the strongest
+4.3(a) argument of the whole list and are worth revisiting once these six land;
+folder-wide search becomes cheap the moment the folder grant above exists.
