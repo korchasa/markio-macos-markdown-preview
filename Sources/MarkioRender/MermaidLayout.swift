@@ -16,6 +16,10 @@ enum MermaidLayout {
         /// How wide the picture itself came out, which is how the caller knows
         /// it has to be drawn again smaller.
         var contentWidth: CGFloat
+        /// The page the picture was drawn on, so whoever puts a card behind it
+        /// paints the same colour. A diagram that names a Mermaid theme brings
+        /// its own, and the card has to follow it rather than the document's.
+        var background: CGColor = CGColor(gray: 1, alpha: 1)
     }
 
     /// Every distance in a diagram, scaled together.
@@ -48,10 +52,14 @@ enum MermaidLayout {
     static let minimumScale: CGFloat = 0.08
 
     static func draw(_ diagram: MermaidDiagram, theme: Theme, width: CGFloat) -> Drawing {
+        let theme = theme.forDiagrams
+        let page = background(of: diagram, theme: theme)
         var drawing = settled(
             draw(diagram, theme: theme, width: width, metrics: Metrics()), width: width)
+        drawing.background = page
         let room = width - Metrics().padding * 2
         guard room > 0 else { return drawing }
+        defer { drawing.background = page }
         // Laying the diagram out again at a smaller scale does not shrink it by
         // exactly that scale — a label that stops wrapping takes a whole line
         // with it — so the fit is approached in a few passes rather than
@@ -68,6 +76,19 @@ enum MermaidLayout {
             pass += 1
         }
         return drawing
+    }
+
+    /// The page a diagram is drawn on: the reader's white one, unless the
+    /// diagram named a Mermaid theme, which brings its own.
+    private static func background(of diagram: MermaidDiagram, theme: Theme) -> CGColor {
+        switch diagram {
+        case .themed(let name, let inner):
+            return background(of: inner, theme: theme.mermaidThemed(name) ?? theme)
+        case .titled(_, let inner):
+            return background(of: inner, theme: theme)
+        default:
+            return theme.palette.codeBackground
+        }
     }
 
     private static func draw(

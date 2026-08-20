@@ -322,7 +322,17 @@ and then moves it down to make room — one place for a title rather than one pe
 kind; a `title` with nothing after it is no title at all. `config.kanban`'s
 `ticketBaseUrl` and `sectionWidth`, and `displayMode: compact`, reach the reader
 that wants them, and a key written over a diagram of another kind is left unused
-rather than read as a mistake — which is what Mermaid does with it. `config.theme` travels the same way as the title, as a
+rather than read as a mistake — which is what Mermaid does with it. A diagram is drawn on a white page whatever the page around it is, in ink
+chosen against white — `Theme.forDiagrams`. A picture is mostly lines, and lines
+are the first thing a dark palette takes away: an outline and the card behind it
+differed by a shade nobody could see. Mermaid's own themes assume a white page,
+and so do the colours authors set by hand, the pastel `box rgb(...)` of a
+sequence diagram among them. The card behind the picture is painted the page the
+drawing reports, and outlined in the reader's own border colour so that on a
+light document the white card still has an edge. `DiagramContrastTests` states
+the ratios: lettering past 7:1, outlines and connecting lines past 3:1.
+
+`config.theme` travels the same way as the title, as a
 `MermaidDiagram.themed` wrapping any other, and the layout draws the diagram
 underneath against a repainted `Theme`: Mermaid's five colour sets are a handful
 of values each — what a box is filled and outlined with, what its words are,

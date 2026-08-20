@@ -134,7 +134,7 @@ public enum DocumentRenderer {
             )
         else { return nil }
         context.scaleBy(x: scale, y: scale)
-        context.setFillColor(theme.palette.codeBackground)
+        context.setFillColor(drawing.background)
         context.fill(CGRect(origin: .zero, size: size))
         context.translateBy(x: 0, y: size.height)
         context.scaleBy(x: 1, y: -1)
@@ -176,7 +176,7 @@ public enum DocumentRenderer {
             )
         else { return nil }
         context.scaleBy(x: scale, y: scale)
-        context.setFillColor(theme.palette.codeBackground)
+        context.setFillColor(drawing.background)
         context.fill(CGRect(origin: .zero, size: size))
         context.translateBy(x: 0, y: size.height)
         context.scaleBy(x: 1, y: -1)

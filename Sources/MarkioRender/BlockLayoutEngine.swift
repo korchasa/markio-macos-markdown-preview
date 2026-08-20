@@ -547,10 +547,14 @@ struct BlockLayoutEngine {
             decorations.append(
                 .fill(
                     rect: frame,
-                    color: theme.palette.codeBackground,
+                    color: drawing.background,
                     cornerRadius: theme.metrics.codeCornerRadius
                 )
             )
+            // The picture's page is white whatever the document's is, so on a
+            // light page the card has no edge of its own. The outline is the
+            // reader's, not the diagram's: it belongs to the document.
+            decorations.append(.stroke(rect: frame, color: theme.palette.tableBorder, width: 1))
             for decoration in drawing.decorations {
                 decorations.append(BlockBox.move(decoration, dx: indent, dy: y))
             }

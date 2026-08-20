@@ -94,6 +94,50 @@ public struct Theme {
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }
     }
 
+    /// The same theme with the colours a diagram is drawn in — a white page,
+    /// and ink chosen against it.
+    ///
+    /// A diagram is a picture made of lines, and lines are the first thing a
+    /// dark page takes away: at the reader's own dark palette an outline and
+    /// the card behind it differ by a shade nobody can see, which is the grey
+    /// on grey a reader complains about. Mermaid's own themes are written for
+    /// a white page, and so are the colours authors set by hand — the pastel
+    /// `box rgb(...)` of a sequence diagram assumes dark lettering over it. So
+    /// the picture gets a white page whatever the page around it is, and the
+    /// document stays the reader's.
+    public var forDiagrams: Theme {
+        var copy = self
+        copy.palette = Theme.diagramPalette()
+        copy.diagramWheel = Theme.wheel(named: "default")
+        return copy
+    }
+
+    /// Ink for a white page, at contrasts that hold up: lettering well past
+    /// what WCAG asks of text, outlines and connecting lines past what it asks
+    /// of everything that is not text. `DiagramContrastTests` is where those
+    /// ratios are stated as numbers.
+    private static func diagramPalette() -> Palette {
+        func color(_ red: Double, _ green: Double, _ blue: Double) -> CGColor {
+            CGColor(srgbRed: red / 255, green: green / 255, blue: blue / 255, alpha: 1)
+        }
+        var palette = Theme.palette(isDark: false)
+        palette.background = color(255, 255, 255)
+        palette.codeBackground = color(255, 255, 255)
+        palette.text = color(20, 24, 31)
+        palette.codeText = color(20, 24, 31)
+        // Message labels and the lines they sit over. The light palette's own
+        // secondary grey is meant for a paragraph of prose beside black text,
+        // not for a word floating over a line.
+        palette.secondaryText = color(65, 75, 88)
+        // Box outlines, lifelines, arrows. The table border this replaces is a
+        // hairline meant to be nearly invisible; a diagram is made of them.
+        palette.tableBorder = color(107, 114, 128)
+        // What a box is filled with: enough to read as a box against the page,
+        // light enough to keep the lettering on it at full contrast.
+        palette.tableHeaderBackground = color(237, 240, 245)
+        return palette
+    }
+
     /// The same theme repainted in one of Mermaid's own — `default`, `neutral`,
     /// `dark`, `forest` or `base`.
     ///
