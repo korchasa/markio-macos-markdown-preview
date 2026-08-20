@@ -744,13 +744,13 @@ public final class DocumentView: NSView {
     public override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        // A diagram has no text to select, so a double click on one means the
-        // one thing a picture in a column is always too small for: see it whole,
-        // at its own size, in an image viewer. Enlarging in place is a click
-        // away in the menu — it cannot also be the single click, because the
-        // panel would open under the pointer and swallow the second one.
+        // A diagram has no text to select, so a click on one does the thing a
+        // picture in a reading column always wants: show it large. Writing it
+        // out as a PNG is a menu item rather than a double click, because the
+        // panel opens under the pointer on the first of those two clicks and
+        // the second one would land on it.
         if let hover = hoveredCode, let diagram = hover.diagramRect, diagram.contains(point) {
-            if event.clickCount == 2 { openDiagram(ordinal: hover.ordinal) }
+            if event.clickCount == 1 { enlargeDiagram(ordinal: hover.ordinal) }
             return
         }
         if event.clickCount == 1, let link = link(at: point) {

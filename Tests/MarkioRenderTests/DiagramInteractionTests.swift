@@ -269,6 +269,45 @@ final class DiagramInteractionTests: XCTestCase {
                 width: 400))
     }
 
+    func testAClickOnADiagramEnlargesIt() throws {
+        // The gesture a picture in a reading column asks for. It was a menu
+        // item alone for a while, because a double click wrote the diagram out
+        // as a PNG and the panel would have swallowed the second of those two
+        // clicks; the PNG is a menu item now and the click is back.
+        let text = "```mermaid\n" + source + "\n```"
+        let layout = DocumentLayout(
+            document: Document(text: text), theme: Theme(isDark: false), columnWidth: 520)
+        let view = DocumentView(layout: layout)
+        let host = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled], backing: .buffered, defer: true)
+        host.contentView = view
+        view.frame = CGRect(x: 0, y: 0, width: 900, height: 700)
+        view.viewWillDraw()
+
+        let middle = CGPoint(
+            x: view.bounds.midX,
+            y: layout.offset(of: 0) + view.verticalPadding + layout.height(of: 0) / 2)
+        let inWindow = view.convert(middle, to: nil)
+        func event(_ type: NSEvent.EventType, clicks: Int) throws -> NSEvent {
+            try XCTUnwrap(
+                NSEvent.mouseEvent(
+                    with: type, location: inWindow, modifierFlags: [], timestamp: 0,
+                    windowNumber: host.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: clicks, pressure: 1))
+        }
+        // The pointer has to be over the picture first: that is what tells the
+        // view a click is on a diagram rather than in the text.
+        view.mouseMoved(with: try event(.mouseMoved, clicks: 0))
+        view.mouseDown(with: try event(.leftMouseDown, clicks: 1))
+
+        let panel = NSApp.windows
+            .compactMap { $0 as? DiagramWindow }
+            .first { $0.isVisible && $0.source == source }
+        defer { panel?.close() }
+        XCTAssertNotNil(panel)
+    }
+
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {
         let host = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),

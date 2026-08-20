@@ -228,21 +228,21 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   word longer than the shape holding it both count towards how much room the
   drawing takes. The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
-- **VIEW-27** A right-click on a drawn diagram offers Copy Diagram as PNG, Copy
-  Diagram Source, Enlarge Diagram and Open Diagram as PNG; the pointer becomes a
-  hand over a picture, so a reader can see there is something to click.
-  Enlarging shows the diagram at its own size over the window, magnified and
-  pannable rather than laid out again at a greater width, with ⌘+, ⌘− and ⌘0
-  inside it. It opens as large as the room allows, and never so small that the
-  diagram's smallest lettering falls under nine points: a picture that fits at
-  that size is shown whole, a wider one opens at its top left with the rest
-  scrolled to, and ⌘0 shows it whole. A click on the picture, a click on the document behind it, or
-  Escape puts it away. A double click on a diagram writes it out as a PNG at its
-  own size — the diagram's own, not the reader's zoom — and hands it to
-  whatever opens PNGs. The bitmap holds two device pixels per point until that
-  would make it more than eight thousand pixels across, and records the
-  resolution it settled on, so a viewer's full size is the size the diagram was
-  drawn at either way.
+- **VIEW-27** A click on a drawn diagram enlarges it, and the pointer becomes a
+  hand over a picture, so a reader can see there is something to click. A
+  right-click offers Copy Diagram as PNG, Copy Diagram Source, Enlarge Diagram
+  and Open Diagram as PNG. Enlarging shows the diagram at its own size over the
+  window, magnified and pannable rather than laid out again at a greater width,
+  with ⌘+, ⌘− and ⌘0 inside it. It opens as large as the room allows, and never
+  so small that the diagram's smallest lettering falls under nine points: a
+  picture that fits at that size is shown whole, a wider one opens at its top
+  left with the rest scrolled to, and ⌘0 shows it whole. A click on the picture,
+  a click on the document behind it, or Escape puts it away. Open Diagram as PNG
+  writes the diagram out at its own size — the diagram's own, not the reader's
+  zoom — and hands it to whatever opens PNGs. That bitmap holds two device
+  pixels per point until that would make it more than eight thousand pixels
+  across, and records the resolution it settled on, so a viewer's full size is
+  the size the diagram was drawn at either way.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every
