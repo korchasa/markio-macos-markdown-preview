@@ -910,8 +910,8 @@ a titled band above the participants declared inside it, and both take their
 colour through the same CSS reader every other diagram uses, so `rgba()` fades
 them over the page rather than hiding it.
 
-A diagram in the reading column is as wide as the column, which is why the
-context menu offers Enlarge Diagram. `DiagramWindow` shows the one drawing at
+A diagram in the reading column is as wide as the column, which is why a click
+on one enlarges it. `DiagramWindow` shows the one drawing at
 its natural size, magnified and pannable; Copy PNG and the written-out file go
 through the same renderer. None of them keeps a drawing beside the block:
 re-reading the fence costs a parse of a few lines, and a second copy of every
@@ -932,6 +932,17 @@ shown whole, and one that does not opens at its top left with the rest scrolled
 to; ⌘0 still goes back to the whole picture. The panel then takes the room it
 is offered instead of keeping the picture's shape, because what will not fit is
 scrolled to rather than left out.
+
+Two gestures share the click: one enlarges the diagram, two write it out as a
+PNG for a viewer to open. They cannot both be immediate. The panel opens under
+the pointer, so a first click that opened it would swallow the second, and the
+double click would never arrive — which is what happened, and cost the click
+its meaning for a while. So `enlargeAfterDoubleClickInterval` schedules the
+enlargement and any click cancels what is still waiting: the second click of a
+double click, and a click that landed elsewhere meanwhile. The wait is
+`NSEvent.doubleClickInterval`, the system's own number and the shortest one
+that is correct. `openFile` is named rather than called straight so a test can
+watch the file being handed over without Preview opening on somebody's screen.
 
 That only works if a drawing knows how wide it really is, and for a while none
 of them did. Each kind reported the width of the boxes it had laid out, which is

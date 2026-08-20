@@ -269,11 +269,9 @@ final class DiagramInteractionTests: XCTestCase {
                 width: 400))
     }
 
-    func testAClickOnADiagramEnlargesIt() throws {
-        // The gesture a picture in a reading column asks for. It was a menu
-        // item alone for a while, because a double click wrote the diagram out
-        // as a PNG and the panel would have swallowed the second of those two
-        // clicks; the PNG is a menu item now and the click is back.
+    /// A view with one diagram in it, in a window, with the pointer already
+    /// over the picture — everything a click needs to mean something.
+    private func viewShowingADiagram() -> (DocumentView, (Int) -> Void) {
         let text = "```mermaid\n" + source + "\n```"
         let layout = DocumentLayout(
             document: Document(text: text), theme: Theme(isDark: false), columnWidth: 520)
@@ -289,23 +287,61 @@ final class DiagramInteractionTests: XCTestCase {
             x: view.bounds.midX,
             y: layout.offset(of: 0) + view.verticalPadding + layout.height(of: 0) / 2)
         let inWindow = view.convert(middle, to: nil)
-        func event(_ type: NSEvent.EventType, clicks: Int) throws -> NSEvent {
-            try XCTUnwrap(
-                NSEvent.mouseEvent(
-                    with: type, location: inWindow, modifierFlags: [], timestamp: 0,
-                    windowNumber: host.windowNumber, context: nil, eventNumber: 0,
-                    clickCount: clicks, pressure: 1))
+        func event(_ type: NSEvent.EventType, clicks: Int) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type, location: inWindow, modifierFlags: [], timestamp: 0,
+                windowNumber: host.windowNumber, context: nil, eventNumber: 0,
+                clickCount: clicks, pressure: 1)
         }
         // The pointer has to be over the picture first: that is what tells the
         // view a click is on a diagram rather than in the text.
-        view.mouseMoved(with: try event(.mouseMoved, clicks: 0))
-        view.mouseDown(with: try event(.leftMouseDown, clicks: 1))
+        if let move = event(.mouseMoved, clicks: 0) { view.mouseMoved(with: move) }
+        return (
+            view,
+            { clicks in
+                if let click = event(.leftMouseDown, clicks: clicks) {
+                    view.mouseDown(with: click)
+                }
+            }
+        )
+    }
 
-        let panel = NSApp.windows
+    /// The panel this view put on screen, if it has.
+    private var enlarged: DiagramWindow? {
+        NSApp.windows
             .compactMap { $0 as? DiagramWindow }
             .first { $0.isVisible && $0.source == source }
+    }
+
+    private func waitOutTheDoubleClick() {
+        RunLoop.current.run(until: Date().addingTimeInterval(NSEvent.doubleClickInterval + 0.3))
+    }
+
+    func testAClickOnADiagramEnlargesItOnceTheDoubleClickHasBeenRuledOut() {
+        let (_, click) = viewShowingADiagram()
+        click(1)
+        // Not straight away: the panel opens under the pointer, so opening it
+        // on the first of a double click's two clicks would swallow the second.
+        XCTAssertNil(enlarged)
+        waitOutTheDoubleClick()
+        let panel = enlarged
         defer { panel?.close() }
         XCTAssertNotNil(panel)
+    }
+
+    func testADoubleClickWritesThePNGAndLeavesThePanelAlone() {
+        let (view, click) = viewShowingADiagram()
+        var handed: URL?
+        view.openFile = { handed = $0 }
+        click(1)
+        click(2)
+        XCTAssertEqual(handed?.pathExtension, "png")
+        if let handed { try? FileManager.default.removeItem(at: handed) }
+        // The enlargement the first of those two clicks asked for is off.
+        waitOutTheDoubleClick()
+        let panel = enlarged
+        defer { panel?.close() }
+        XCTAssertNil(panel)
     }
 
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {
