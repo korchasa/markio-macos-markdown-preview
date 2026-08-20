@@ -34,11 +34,19 @@ final class DiagramWindow: NSPanel {
             let canvas = Canvas(
                 source: source, theme: theme.unzoomed, width: DocumentRenderer.naturalWidth)
         else { return nil }
+        // The header sits above the picture and takes its own room, so the
+        // picture is fitted into what is left rather than into the screen.
+        let forPicture = CGSize(
+            width: room.width, height: room.height - Canvas.headerHeight)
         let magnification = openingMagnification(
-            picture: canvas.pictureSize, room: room.size, theme: theme.unzoomed)
-        let size = panelSize(
-            picture: canvas.pictureSize, room: room.size, magnification: magnification)
-        guard size.width > 0, size.height > 0 else { return nil }
+            picture: canvas.pictureSize, room: forPicture, theme: theme.unzoomed)
+        let picture = panelSize(
+            picture: canvas.pictureSize, room: forPicture, magnification: magnification)
+        guard picture.width > 0, picture.height > 0 else { return nil }
+        let size = CGSize(
+            width: min(room.width, max(picture.width, Canvas.headerWidth)),
+            height: picture.height + Canvas.headerHeight
+        )
 
         let panel = DiagramWindow(
             contentRect: CGRect(origin: .zero, size: size),
@@ -152,10 +160,19 @@ final class DiagramWindow: NSPanel {
     /// which is the one thing this panel cannot do — show it at a size larger
     /// than the screen, in something that can save or print it.
     override func mouseDown(with event: NSEvent) {
-        guard event.clickCount > 1, let open = onOpenInViewer else { return }
+        guard event.clickCount > 1 else { return }
+        openInViewer(nil)
+    }
+
+    /// Hand the diagram over and step out of the way — the double click and
+    /// the header's own button both come through here.
+    @objc func openInViewer(_ sender: Any?) {
+        guard let open = onOpenInViewer else { return }
         close()
         open()
     }
+
+    @objc func closeFromHeader(_ sender: Any?) { close() }
 
     /// And a click on the document behind it: the document window taking the
     /// key status is what that click looks like from here.
@@ -199,8 +216,21 @@ final class DiagramWindow: NSPanel {
     /// background a fenced block has — so an enlarged diagram still looks like
     /// the one in the document.
     final class Canvas: NSView {
+        /// The strip above the picture, and the width below which its two
+        /// controls would sit on top of each other.
+        static let headerHeight: CGFloat = 38
+        static let headerWidth: CGFloat = 280
+
         private let scrollView = NSScrollView()
         private let picture = NSImageView()
+        private let header = NSView()
+        private let rule = NSView()
+        /// The way out, and the way on: a panel with no visible dismiss
+        /// control leaves Escape as the only exit, and a reader has to know it
+        /// already. Quick Look, which is where this whole gesture comes from,
+        /// puts both in a strip at the top.
+        private(set) var closeControl = NSButton()
+        private(set) var openControl = NSButton()
         private let source: String
         private let theme: Theme
         private let width: CGFloat
@@ -254,6 +284,7 @@ final class DiagramWindow: NSPanel {
             scrollView.maxMagnification = DiagramWindow.magnificationRange.upperBound
             scrollView.autoresizingMask = [.width, .height]
             addSubview(scrollView)
+            buildHeader()
 
             NotificationCenter.default.addObserver(
                 self,
@@ -267,7 +298,69 @@ final class DiagramWindow: NSPanel {
 
         override func layout() {
             super.layout()
-            scrollView.frame = bounds
+            let strip = CGRect(
+                x: 0, y: bounds.maxY - Canvas.headerHeight,
+                width: bounds.width, height: Canvas.headerHeight)
+            header.frame = strip
+            rule.frame = CGRect(x: 0, y: 0, width: strip.width, height: 1)
+            scrollView.frame = CGRect(
+                x: 0, y: 0, width: bounds.width, height: bounds.height - strip.height)
+            let inset: CGFloat = 12
+            closeControl.frame = CGRect(
+                x: inset, y: (strip.height - closeControl.frame.height) / 2,
+                width: closeControl.frame.width, height: closeControl.frame.height)
+            openControl.frame = CGRect(
+                x: strip.width - inset - openControl.frame.width,
+                y: (strip.height - openControl.frame.height) / 2,
+                width: openControl.frame.width, height: openControl.frame.height)
+        }
+
+        /// The strip at the top: the close button macOS draws for every window
+        /// on the left, and the one thing this panel cannot do on the right.
+        private func buildHeader() {
+            header.wantsLayer = true
+            header.layer?.backgroundColor = theme.palette.tableHeaderBackground
+            header.autoresizingMask = [.width, .minYMargin]
+            addSubview(header)
+            // A hairline where the strip meets the picture: both are near
+            // enough to white that the edge would otherwise be guesswork.
+            rule.wantsLayer = true
+            rule.layer?.backgroundColor = theme.palette.tableBorder
+            header.addSubview(rule)
+
+            // A button of our own rather than the window's: this panel is
+            // borderless, so it has no title bar for a standard close button
+            // to belong to.
+            closeControl = NSButton(
+                image: NSImage(
+                    systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close")
+                    ?? NSImage(),
+                target: self,
+                action: #selector(closeFromHeader(_:))
+            )
+            closeControl.isBordered = false
+            closeControl.imagePosition = .imageOnly
+            closeControl.contentTintColor = .secondaryLabelColor
+            closeControl.toolTip = "Close (Escape)"
+            closeControl.setAccessibilityLabel("Close")
+            closeControl.sizeToFit()
+            header.addSubview(closeControl)
+
+            openControl = NSButton(
+                title: "Open in Preview", target: self, action: #selector(openInViewer(_:)))
+            openControl.bezelStyle = .rounded
+            openControl.controlSize = .small
+            openControl.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+            openControl.sizeToFit()
+            header.addSubview(openControl)
+        }
+
+        @objc private func closeFromHeader(_ sender: Any?) {
+            (window as? DiagramWindow)?.close()
+        }
+
+        @objc private func openInViewer(_ sender: Any?) {
+            (window as? DiagramWindow)?.openInViewer(sender)
         }
 
         /// Open at a given magnification, looking at the picture's start.

@@ -945,6 +945,15 @@ is looking at it — and leaves the click in the page immediate. `openFile` is
 named rather than called straight so a test can watch the file being handed over
 without Preview opening on somebody's screen.
 
+Neither gesture is visible, which is why the panel carries a strip above the
+picture: a close button on the left, Open in Preview on the right. Apple's
+guidance for a modal view on macOS is a dismiss button in the content itself,
+and Quick Look — where this whole gesture comes from, and what Notes and Mail
+put behind the space bar — arranges exactly these two controls this way. Without
+the strip the panel had one way out, Escape, which a reader has to know before
+they need it; the panel now fills nearly the whole screen, so the document
+behind it is barely there to click.
+
 Opening has to feel like nothing happened but the picture. Laying a diagram out
 costs a few milliseconds; filling its bitmap at two pixels per point costs a
 third of a second for the largest of these, and all of it is spent on the main

@@ -238,10 +238,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   a picture that fits at that size is shown whole, a wider one opens at its top
   left with the rest scrolled to, and ⌘0 shows it whole. The panel is on screen
   within a few hundredths of a second of the click, at one bitmap pixel per
-  point, and sharpens by itself a moment later. A single click on the enlarged
-  picture leaves it alone; a double click hands the diagram to whatever opens
-  PNGs and puts the panel away; Escape and a click on the document behind put it
-  away too. A written-out diagram is written at its own size — the diagram's
+  point, and sharpens by itself a moment later. Above the picture is a strip
+  with a close button on the left and Open in Preview on the right, so the way
+  out and the way on are both visible. A single click on the enlarged picture
+  leaves it alone; a double click hands the diagram to whatever opens PNGs and
+  puts the panel away; Escape and a click on the document behind put it away
+  too. A written-out diagram is written at its own size — the diagram's
   own, not the reader's zoom. That bitmap holds two device pixels per point
   until that would make it more than eight thousand pixels across, and records
   the resolution it settled on, so a viewer's full size is the size the diagram

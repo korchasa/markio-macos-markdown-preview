@@ -365,6 +365,50 @@ final class DiagramInteractionTests: XCTestCase {
             panel.canvas?.bitmapScale, 2, "the picture should have sharpened by itself")
     }
 
+    func testTheEnlargedDiagramHasAWayOutAndAWayOn() throws {
+        // A panel with no visible dismiss control leaves Escape as the only
+        // way out, and a reader has to know it already — Apple's own guidance
+        // for a modal view on macOS is a button in the content itself, and
+        // Quick Look, which this gesture comes from, puts one at the top left
+        // with "Open with…" at the right.
+        let host = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled], backing: .buffered, defer: true)
+        var handedOver = false
+        let opened = try XCTUnwrap(
+            DiagramWindow.present(
+                source: source, theme: Theme(isDark: false), over: host,
+                onOpenInViewer: { handedOver = true }))
+        let canvas = try XCTUnwrap(opened.canvas)
+        XCTAssertEqual(canvas.openControl.title, "Open in Preview")
+        canvas.openControl.performClick(nil)
+        XCTAssertTrue(handedOver)
+        XCTAssertFalse(opened.isVisible)
+
+        let closed = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        try XCTUnwrap(closed.canvas).closeControl.performClick(nil)
+        XCTAssertFalse(closed.isVisible)
+    }
+
+    func testTheHeaderTakesItsRoomFromTheWindowAndNotFromThePicture() throws {
+        // The picture is fitted into what is left after the strip, so nothing
+        // is pushed off the bottom of the screen to make room for it.
+        let host = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            styleMask: [.titled], backing: .buffered, defer: true)
+        let panel = try XCTUnwrap(
+            DiagramWindow.present(source: source, theme: Theme(isDark: false), over: host))
+        defer { panel.close() }
+        let picture = try XCTUnwrap(panel.canvas).pictureSize
+        let screen = try XCTUnwrap(host.screen ?? NSScreen.main).visibleFrame.insetBy(
+            dx: 60, dy: 60)
+        XCTAssertLessThanOrEqual(panel.frame.height, screen.height)
+        XCTAssertEqual(
+            panel.frame.height, picture.height + DiagramWindow.Canvas.headerHeight,
+            accuracy: 0.5, "the strip is added to the picture, not carved out of it")
+    }
+
     func testAnEnlargedDiagramRemembersWhichOneItIs() throws {
         let host = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 900, height: 600),
