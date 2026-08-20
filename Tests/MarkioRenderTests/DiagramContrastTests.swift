@@ -71,4 +71,45 @@ final class DiagramContrastTests: XCTestCase {
             contrast(dark.palette.background, dark.forDiagrams.palette.background) > 10, true)
         XCTAssertTrue(dark.forDiagrams.isDark)
     }
+
+    /// A colour an author wrote into a `box`, now that it is behind a whole
+    /// column rather than a band of heading.
+    @MainActor
+    func testAnAuthorsColourIsLightenedUntilEverythingOnItReads() {
+        let theme = Theme(isDark: false).forDiagrams
+        let page = theme.palette.codeBackground
+        let chosen: [(String, CGColor)] = [
+            ("black", CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)),
+            ("navy", CGColor(srgbRed: 0.05, green: 0.1, blue: 0.4, alpha: 1)),
+            ("red", CGColor(srgbRed: 0.85, green: 0.1, blue: 0.1, alpha: 1)),
+            ("mid grey", CGColor(gray: 0.5, alpha: 1)),
+            ("pale grey", CGColor(gray: 228 / 255, alpha: 1)),
+            (
+                "pale purple",
+                CGColor(srgbRed: 226 / 255, green: 214 / 255, blue: 244 / 255, alpha: 1)
+            ),
+        ]
+        for (name, colour) in chosen {
+            let washed = MermaidLayout.wash(colour, on: page, keeping: theme)
+            // The faintest lettering in a diagram is a message label, and it is
+            // now written over this.
+            XCTAssertGreaterThan(
+                contrast(theme.palette.secondaryText, washed), 6.999, "message labels on \(name)")
+            XCTAssertGreaterThan(contrast(theme.palette.text, washed), 7, "lettering on \(name)")
+            // 1.4.11 again: lifelines, arrows and the outline of every
+            // participant box are drawn on it too.
+            XCTAssertGreaterThan(
+                contrast(theme.palette.tableBorder, washed), 3, "lines on \(name)")
+        }
+    }
+
+    /// A colour already pale enough is left exactly as it was written: the
+    /// author picked it, and nothing is gained by moving it.
+    @MainActor
+    func testAPaleColourIsNotTouched() {
+        let theme = Theme(isDark: false).forDiagrams
+        let pale = CGColor(srgbRed: 210 / 255, green: 236 / 255, blue: 214 / 255, alpha: 1)
+        let washed = MermaidLayout.wash(pale, on: theme.palette.codeBackground, keeping: theme)
+        XCTAssertEqual(contrast(pale, washed), 1, accuracy: 0.001)
+    }
 }

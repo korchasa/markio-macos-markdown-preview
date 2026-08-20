@@ -5515,6 +5515,122 @@ enum MermaidLayout {
         }
     }
 
+    /// WCAG 2.1 relative luminance, which contrast is defined in terms of.
+    static func luminance(_ color: CGColor) -> CGFloat {
+        let rgb =
+            color.converted(
+                to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)
+            ?? color
+        let parts = (rgb.components ?? [0, 0, 0, 1]).prefix(3).map { part -> CGFloat in
+            part <= 0.03928 ? part / 12.92 : pow((part + 0.055) / 1.055, 2.4)
+        }
+        guard parts.count == 3 else { return 1 }
+        return 0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2]
+    }
+
+    static func contrast(_ one: CGColor, _ other: CGColor) -> CGFloat {
+        let first = luminance(one)
+        let second = luminance(other)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    /// The lettering a diagram's own ink is held to: AAA for body text, which
+    /// is what the palette is chosen against, and what a colour an author
+    /// wrote must not undo.
+    static let readableContrast: CGFloat = 7
+
+    /// The strongest tint of a colour an author chose that still leaves the
+    /// faintest lettering on it readable.
+    ///
+    /// A `box` colour used to sit behind a band of heading and nothing else,
+    /// where the only thing over it was the group's own name. Run down the
+    /// whole column it is behind every message, every lifeline and every note
+    /// in the group, so a saturated or dark colour would take the picture with
+    /// it. The colour is therefore mixed with the page until the faintest ink
+    /// drawn over it — a message label — still stands at `readableContrast`. A
+    /// pale colour is already there and passes through untouched.
+    static func wash(_ fill: CGColor, on page: CGColor, keeping theme: Theme) -> CGColor {
+        let ink = theme.palette.secondaryText
+        guard contrast(ink, fill) < readableContrast else { return fill }
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let from = page.converted(to: space, intent: .defaultIntent, options: nil) ?? page
+        let to = fill.converted(to: space, intent: .defaultIntent, options: nil) ?? fill
+        guard let start = from.components, let end = to.components, start.count >= 3,
+            end.count >= 3
+        else { return page }
+        var strength: CGFloat = 1
+        // The page itself always passes, so a colour that never does becomes
+        // no colour at all rather than an unreadable one.
+        var mixed = page
+        // Twelve halvings settle it to a thousandth, which is finer than a
+        // colour can be written in the first place.
+        var stride: CGFloat = 0.5
+        for _ in 0..<12 {
+            let candidate = CGColor(
+                srgbRed: start[0] + (end[0] - start[0]) * strength,
+                green: start[1] + (end[1] - start[1]) * strength,
+                blue: start[2] + (end[2] - start[2]) * strength,
+                alpha: 1)
+            if contrast(ink, candidate) >= readableContrast {
+                mixed = candidate
+                strength += stride
+            } else {
+                strength -= stride
+            }
+            stride /= 2
+        }
+        return mixed
+    }
+
+    /// How far apart two neighbouring lifelines stand, gap by gap.
+    ///
+    /// A sequence diagram usually gets one spacing for all of its columns, and
+    /// the widest message anywhere is what sets it: a diagram with one wordy
+    /// message and a dozen short ones spreads all dozen as far apart as the
+    /// wordy one needs, and the picture is two or three times the width it has
+    /// anything to say in. Each gap is given the room its own traffic asks for
+    /// instead. A message crossing several gaps asks them together and takes
+    /// only what is still missing, so the ones already widened by their own
+    /// messages are not widened twice; short crossings are settled first, for
+    /// the same reason.
+    ///
+    /// A note written over two or more participants is traffic too — it is
+    /// centred on them and would otherwise lie across a neighbour.
+    private static func spacing(
+        _ diagram: SequenceDiagram, count: Int, boxWidth: CGFloat, theme: Theme, font: CTFont,
+        metrics: Metrics
+    ) -> [CGFloat] {
+        guard count > 1 else { return [] }
+        // Two boxes side by side with room to breathe: the floor under every
+        // gap, whatever crosses it.
+        var gaps = Array(repeating: boxWidth + metrics.columnGap, count: count - 1)
+
+        func room(_ text: String, padding: CGFloat) -> CGFloat {
+            measure(MermaidLayout.text(text, font: font, color: theme.palette.text)).width
+                + padding * metrics.scale
+        }
+        var wanted: [(span: Range<Int>, width: CGFloat)] = []
+        for message in messages(diagram.items) where message.from != message.to {
+            let low = min(message.from, message.to)
+            let high = max(message.from, message.to)
+            guard low >= 0, high < count else { continue }
+            wanted.append((low..<high, room(message.text, padding: 26)))
+        }
+        for case .note(let note) in diagram.items {
+            let anchors = note.participants.filter { $0 >= 0 && $0 < count }.sorted()
+            guard let low = anchors.first, let high = anchors.last, low < high else { continue }
+            wanted.append((low..<high, room(note.text, padding: 16)))
+        }
+
+        for asked in wanted.sorted(by: { $0.span.count < $1.span.count }) {
+            let have = asked.span.reduce(CGFloat(0)) { $0 + gaps[$1] }
+            guard have < asked.width else { continue }
+            let share = (asked.width - have) / CGFloat(asked.span.count)
+            for gap in asked.span { gaps[gap] += share }
+        }
+        return gaps
+    }
+
     private static func sequence(
         _ diagram: SequenceDiagram, theme: Theme, width: CGFloat, metrics: Metrics
     ) -> Drawing {
@@ -5530,18 +5646,10 @@ enum MermaidLayout {
         let boxWidth =
             (sizes.map { $0.width }.max() ?? 40) + metrics.nodePaddingX * 2
         let boxHeight = (sizes.map { $0.height }.max() ?? 16) + metrics.nodePaddingY * 2
-        // A message's words are written over its arrow, so a column has to be
-        // wide enough to hold them. A message that reaches across several
-        // columns has all of them to spread over, which is why the room it asks
-        // for is divided by how many it crosses.
-        let messageRoom =
-            messages(diagram.items).filter { $0.from != $0.to }
-            .map {
-                (measure(text($0.text, font: small, color: theme.palette.text)).width
-                    + 26 * metrics.scale) / CGFloat(max(1, abs($0.to - $0.from)))
-            }.max() ?? 0
-        let step = max(boxWidth + metrics.columnGap, messageRoom)
-        let content = step * CGFloat(max(0, diagram.participants.count - 1)) + boxWidth
+        let gaps = spacing(
+            diagram, count: diagram.participants.count, boxWidth: boxWidth, theme: theme,
+            font: small, metrics: metrics)
+        let content = gaps.reduce(boxWidth, +)
         var titleLine: CTLine?
         var titleRoom: CGFloat = 0
         if !diagram.title.isEmpty {
@@ -5566,8 +5674,11 @@ enum MermaidLayout {
         // ended, and a note beside the outermost lifeline decides how wide the
         // picture really is.
         let left = max(metrics.padding, (width - content) / 2)
-        let centres = (0..<diagram.participants.count).map {
-            left + boxWidth / 2 + step * CGFloat($0)
+        var centres: [CGFloat] = []
+        var standing = left + boxWidth / 2
+        for index in 0..<diagram.participants.count {
+            if index > 0 { standing += gaps[index - 1] }
+            centres.append(standing)
         }
         let body = script(
             diagram, centres: centres, boxWidth: boxWidth, boxHeight: boxHeight,
@@ -5589,18 +5700,23 @@ enum MermaidLayout {
             guard let first = members.first, let last = members.last, last < centres.count else {
                 continue
             }
-            let rect = CGRect(
+            // A `box` names a column of the picture, not a row of it: the
+            // colour runs the whole height, so a reader following a lifeline
+            // down can see which group it belongs to at any point.
+            let column = CGRect(
                 x: centres[first] - boxWidth / 2 - 6 * metrics.scale, y: top - groupRoom,
                 width: centres[last] - centres[first] + boxWidth + 12 * metrics.scale,
-                height: groupRoom + boxHeight + 6 * metrics.scale)
+                height: height - metrics.padding - (top - groupRoom))
+            let rect = column
+            let colour = group.fill.map(cgColor) ?? theme.palette.codeBackground
             decorations.append(
                 .path(
-                    CGPath(rect: rect, transform: nil),
-                    color: group.fill.map(cgColor) ?? theme.palette.codeBackground,
+                    CGPath(rect: column, transform: nil),
+                    color: wash(colour, on: theme.palette.codeBackground, keeping: theme),
                     lineWidth: 0, filled: true))
             decorations.append(
                 .path(
-                    CGPath(rect: rect, transform: nil), color: theme.palette.tableBorder,
+                    CGPath(rect: column, transform: nil), color: theme.palette.tableBorder,
                     lineWidth: 1, filled: false))
             let lines = labelLines(
                 group.label, font: small, color: theme.palette.secondaryText

@@ -209,7 +209,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   source stays searchable.
 
 - **VIEW-25** A diagram is drawn in place of its fence — boxes on ranks with
-  arrows between them, subgraphs in titled frames, participants with messages,
+  arrows between them, subgraphs in titled frames, participants with messages
+  whose columns stand only as far apart as what crosses them needs,
   notes and framed blocks across them, a tree opening to the right of its root,
   periods across the page with what happened in each one under it, a line rising
   and falling over the steps of a journey, a row per task with its bar over the
@@ -222,7 +223,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   the reading column, on a white page whatever the page around it is and in ink
   chosen against white, except where the diagram names a Mermaid theme and gets
   that theme's colours, and with a colour per branch
-  or section where the diagram's own meaning is carried by colour. A picture too
+  or section where the diagram's own meaning is carried by colour. A colour an
+  author chose for a group of participants runs the whole height of that group's
+  column, and is lightened as far as it has to be for the faintest lettering
+  written over it to keep the 7:1 the rest of the picture is drawn to. A picture too
   wide for the column is drawn smaller rather than cut off, and nothing in a
   picture is ever cut off by its own edge: a line that bows around a box and a
   word longer than the shape holding it both count towards how much room the

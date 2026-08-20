@@ -886,10 +886,18 @@ Somebody made part way through — `create participant Carl` — has their box o
 message that makes them rather than at the top, and somebody destroyed has a
 second box where their lifeline stops; an arrow to either of those boxes ends at
 its edge instead of running through the name written inside it.
-A column is as wide as the longest message written across it — divided by how
-many columns that message spans, since a message reaching further has more of
-them to spread over — because the words go over the arrow, and a column sized to
-the participant boxes alone leaves them hanging off both lifelines. The words
+Each gap between two lifelines is as wide as what crosses that gap, and no
+wider. The words of a message go over its arrow, so a gap sized to the
+participant boxes alone leaves them hanging off both lifelines — but one
+spacing for every column, which is what a sequence diagram usually gets, hands
+the room the wordiest message anywhere needs to every gap in the picture: a
+diagram of a dozen short calls and one long one came out two or three times the
+width it had anything to say in. `spacing` starts every gap at two boxes side
+by side and then lets each message and each note over two or more participants
+ask for the gaps it crosses, together, taking only what they are short of.
+Short crossings are settled first, so a message reaching across the picture
+does not widen gaps its neighbours have already paid for. On the diagrams this
+was written for it takes a third off the width. The words
 stand clear of the arrow by their own descenders rather than by a fixed few
 points, which is what stops the tail of a `y` from crossing the line.
 The walk hands back three lists — block frames, activation bars and the
@@ -906,9 +914,21 @@ frames whose edges met read as a single box with a line through it, and the
 dashes are what the diagrams everyone learned this from use. A `rect`
 is a block like any other whose frame is a wash of colour with no outline and no
 word on it, painted before the lifelines so the messages stay on top; a `box` is
-a titled band above the participants declared inside it, and both take their
+a named column — its colour runs the whole height of the participants declared
+inside it, not just the band its name is written in, so a reader following a
+lifeline down can see at any point which group it belongs to. Both take their
 colour through the same CSS reader every other diagram uses, so `rgba()` fades
 them over the page rather than hiding it.
+
+A colour behind a whole column is behind the lettering too, which is why it
+goes through `wash` first. Behind a band of heading, an author's colour had only
+the group's own name over it; behind the column it has every message label,
+every lifeline and every note in the group. So the colour is mixed with the page
+until the faintest ink in a diagram — a message label — stands at
+`readableContrast`, which is the 7:1 the palette itself is chosen against. A
+colour already that pale passes through untouched, which is what happens to most
+of them: of the five in the diagram this was written for, three were left
+exactly as written and two were lightened by a few points.
 
 A diagram in the reading column is as wide as the column, which is why a click
 on one enlarges it. `DiagramWindow` shows the one drawing at
