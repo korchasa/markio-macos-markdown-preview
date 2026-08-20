@@ -128,8 +128,9 @@ final class DiagramInteractionTests: XCTestCase {
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
         let properties = try XCTUnwrap(
             CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
-        // 144 dots per inch: the bitmap has two device pixels per point, and
-        // saying so is what makes a viewer's 100 per cent the size it was drawn.
+        // 144 dots per inch: this picture is small enough for two device pixels
+        // per point, and saying so is what makes a viewer's full size the size
+        // the diagram was drawn at.
         XCTAssertEqual(properties[kCGImagePropertyDPIWidth] as? Int, 144)
         XCTAssertEqual(properties[kCGImagePropertyDPIHeight] as? Int, 144)
 
@@ -139,6 +140,40 @@ final class DiagramInteractionTests: XCTestCase {
         let inColumn = try XCTUnwrap(
             DocumentRenderer.diagram(source: wide, theme: Theme(isDark: false), width: 520))
         XCTAssertGreaterThan(written.width, inColumn.width)
+    }
+
+    func testAWrittenDiagramIsTheSameSizeHoweverLargeTheReaderIsReading() throws {
+        let source = """
+            sequenceDiagram
+                participant A as One
+                participant B as Two
+                A->>B: a message
+            """
+        let text = "```mermaid\n" + source + "\n```"
+        func file(zoom: CGFloat) throws -> CGImage {
+            let layout = DocumentLayout(
+                document: Document(text: text),
+                theme: Theme(isDark: false, metrics: Theme.Metrics().scaled(by: zoom)),
+                columnWidth: 520)
+            let url = try XCTUnwrap(DocumentView(layout: layout).diagramFile(ordinal: 0))
+            defer { try? FileManager.default.removeItem(at: url) }
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+            return try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        }
+        // The file is the diagram, not the page: how large somebody is reading
+        // today does not decide how many pixels it has.
+        XCTAssertEqual(try file(zoom: 2).width, try file(zoom: 1).width)
+    }
+
+    func testAHugePictureIsDrawnLessDenselyRatherThanEnormously() {
+        // Two pixels per point is what a screen wants and what a small picture
+        // gets. A diagram four thousand points across would become a bitmap
+        // eight thousand pixels wide, so past the limit the density drops and
+        // the file records the resolution it settled on.
+        XCTAssertEqual(DocumentRenderer.density(for: CGSize(width: 900, height: 600)), 2)
+        XCTAssertEqual(
+            DocumentRenderer.density(for: CGSize(width: 5000, height: 1000)), 1.6, accuracy: 0.001)
+        XCTAssertEqual(DocumentRenderer.density(for: CGSize(width: 40000, height: 900)), 1)
     }
 
     /// A board is read by glancing across its columns, so a long title makes a

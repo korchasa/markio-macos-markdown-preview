@@ -235,8 +235,11 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   pannable rather than laid out again at a greater width, with ⌘+, ⌘− and ⌘0
   inside it. A click on the picture, a click on the document behind it, or
   Escape puts it away. A double click on a diagram writes it out as a PNG at its
-  own size, at 144 dots per inch so a viewer's full size is the size it was
-  drawn, and hands it to whatever opens PNGs.
+  own size — the diagram's own, not the reader's zoom — and hands it to
+  whatever opens PNGs. The bitmap holds two device pixels per point until that
+  would make it more than eight thousand pixels across, and records the
+  resolution it settled on, so a viewer's full size is the size the diagram was
+  drawn at either way.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

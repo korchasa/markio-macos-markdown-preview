@@ -132,6 +132,13 @@ public struct Theme {
         headings = scales.map { Theme.systemFont(size: size * $0, weight: .bold) }
     }
 
+    /// The same theme at the reading size, with the reader's zoom taken out.
+    ///
+    /// A picture drawn for its own sake — enlarged, copied, written to a file —
+    /// is the diagram, not the page: how large somebody is reading today should
+    /// not decide how many pixels the file has.
+    public var unzoomed: Theme { Theme(isDark: isDark) }
+
     /// The same theme with the colours a diagram is drawn in — a white page,
     /// and ink chosen against it.
     ///

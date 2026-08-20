@@ -96,6 +96,31 @@ public enum DocumentRenderer {
         }
     }
 
+    /// The room a diagram is given when it is drawn for its own sake rather
+    /// than for a column — enlarged, copied, or written out as a file.
+    ///
+    /// Not unlimited: the width is what decides whether a message label wraps,
+    /// so a diagram offered a whole screen of room spreads its columns out to
+    /// the width of its longest sentence. Six thousand points is past the point
+    /// where any of this project's diagrams still grows — measured, not guessed
+    /// — and stops the ones that would from running to a bitmap nobody can look
+    /// at.
+    public static let naturalWidth: CGFloat = 6000
+
+    /// The bitmap density worth using for a picture of a given size, and the
+    /// resolution to record with it.
+    ///
+    /// Two device pixels per point is what a Retina screen wants, but a diagram
+    /// four thousand points across then becomes a bitmap eight thousand pixels
+    /// wide, which is a slow file and an unwieldy window. Past that size the
+    /// density drops instead, and the file says what it is in dots per inch, so
+    /// a viewer showing it at full size still shows it at the size it was drawn.
+    public static func density(for size: CGSize, limit: CGFloat = 8000) -> CGFloat {
+        let longest = max(size.width, size.height)
+        guard longest > 0 else { return 2 }
+        return max(1, min(2, limit / longest))
+    }
+
     /// A Mermaid fence drawn on its own, at whatever width is asked for.
     ///
     /// The source is re-read rather than a drawing kept beside the block: a

@@ -26,7 +26,9 @@ final class DiagramWindow: NSPanel {
         // Room enough that the layout never shrinks the picture to fit: this
         // window is where a diagram is seen at its own size, and the panel
         // magnifies from there rather than the layout shrinking beforehand.
-        guard let canvas = Canvas(source: source, theme: theme, width: naturalRoom)
+        guard
+            let canvas = Canvas(
+                source: source, theme: theme.unzoomed, width: DocumentRenderer.naturalWidth)
         else { return nil }
         let size = panelSize(picture: canvas.pictureSize, room: room.size)
         guard size.width > 0, size.height > 0 else { return nil }
@@ -58,10 +60,6 @@ final class DiagramWindow: NSPanel {
         canvas.showWhole()
         return panel
     }
-
-    /// A width no diagram is expected to want, so the layout lays one out at
-    /// its natural size instead of shrinking it into a column.
-    static let naturalRoom: CGFloat = 20000
 
     /// The panel's size in points: the picture's own shape, shrunk to fit the
     /// room it is shown in — both sides by the same factor.

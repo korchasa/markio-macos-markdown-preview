@@ -374,16 +374,28 @@ public final class DocumentView: NSView {
     /// so the drawing and the file can be checked without a viewer opening on
     /// somebody's screen.
     func diagramFile(ordinal: Int) -> URL? {
-        guard let box = layout.box(at: ordinal),
-            let image = DocumentRenderer.diagram(
-                source: box.plainText, theme: layout.theme, width: DocumentView.naturalRoom)
+        guard let box = layout.box(at: ordinal) else { return nil }
+        let theme = layout.theme.unzoomed
+        // Measured first, drawn second: how dense the bitmap should be depends
+        // on how large the picture turns out, and a diagram four thousand points
+        // across does not want two pixels per point.
+        guard
+            let measured = DocumentRenderer.diagram(
+                source: box.plainText, theme: theme, width: DocumentRenderer.naturalWidth,
+                scale: 1)
         else { return nil }
-        return DocumentView.writePNG(image, named: diagramName(ordinal: ordinal))
+        let size = CGSize(width: CGFloat(measured.width), height: CGFloat(measured.height))
+        let density = DocumentRenderer.density(for: size)
+        let image =
+            density == 1
+            ? measured
+            : DocumentRenderer.diagram(
+                source: box.plainText, theme: theme, width: DocumentRenderer.naturalWidth,
+                scale: density)
+        guard let image else { return nil }
+        return DocumentView.writePNG(
+            image, named: diagramName(ordinal: ordinal), density: density)
     }
-
-    /// A width no diagram is expected to want, so the layout draws one at its
-    /// natural size instead of shrinking it into a column.
-    static let naturalRoom: CGFloat = 20000
 
     /// A name a reader will recognise in a title bar: the document's, the
     /// picture's place in it, and nothing else.
@@ -392,9 +404,10 @@ public final class DocumentView: NSView {
         return "\(document) diagram \(ordinal + 1)"
     }
 
-    /// The PNG on disk, at 144 dots per inch so that its own idea of full size
-    /// matches the size it was drawn at.
-    static func writePNG(_ image: CGImage, named name: String) -> URL? {
+    /// The PNG on disk, at the resolution its density works out to — 144 dots
+    /// per inch at two pixels per point — so that the file's own idea of full
+    /// size matches the size the diagram was drawn at.
+    static func writePNG(_ image: CGImage, named name: String, density: CGFloat = 2) -> URL? {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(name)
             .appendingPathExtension("png")
@@ -405,8 +418,8 @@ public final class DocumentView: NSView {
         CGImageDestinationAddImage(
             destination, image,
             [
-                kCGImagePropertyDPIWidth: 144,
-                kCGImagePropertyDPIHeight: 144,
+                kCGImagePropertyDPIWidth: 72 * density,
+                kCGImagePropertyDPIHeight: 72 * density,
             ] as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return url
