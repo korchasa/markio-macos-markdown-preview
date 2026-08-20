@@ -980,6 +980,13 @@ their symlinks resolved as far as the disk allows — a panel answers `/tmp/note
 where the document arrived as `/private/tmp/notes`, and comparing the spellings
 says the folder was never granted.
 
+The Quick Look extension keeps the old behaviour, and that is not an oversight.
+It is a separate sandbox with its own identity, so an app-scoped bookmark the
+app holds means nothing inside it, and a preview has nowhere to put a panel: a
+picture beside a document previewed with the Space bar draws the empty frame.
+Nothing promises otherwise — what Quick Look is offered is the rendering,
+diagrams and formulas included.
+
 A diagram in the reading column is as wide as the column, which is why a click
 on one enlarges it. `DiagramWindow` shows the one drawing at
 its natural size, magnified and pannable; Copy PNG and the written-out file go
