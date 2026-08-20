@@ -115,6 +115,57 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(plan.shots[0].appearance, .light)
     }
 
+    /// The same document has to come out the same picture on any machine.
+    ///
+    /// The reading width is the reader's, kept in the defaults a snapshot run
+    /// reads too, so the pictures used to be drawn at whatever the slider was
+    /// last left at — a session that widened the column to 130 shipped 130 to
+    /// the App Store. Two runs over one document, with two different widths
+    /// stored, must therefore draw the same pixels.
+    func testAStoredReadingWidthDoesNotReachTheStorePictures() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let document = directory.appendingPathComponent("demo.md")
+        let text = """
+            # Wide enough
+
+            A paragraph long enough that the column it is broken into changes \
+            where the words fall.
+            """
+        try Data(text.utf8).write(to: document)
+        try Data(
+            """
+            {"shots": [{"file": "01-light.png", "appearance": "light"}]}
+            """.utf8
+        ).write(to: directory.appendingPathComponent("demo.snapshot.json"))
+
+        let saved = UserDefaults.standard.object(forKey: "readingWidthCharacters")
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: "readingWidthCharacters")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "readingWidthCharacters")
+            }
+        }
+
+        func shoot(storedWidth: Int) throws -> Data {
+            UserDefaults.standard.set(storedWidth, forKey: "readingWidthCharacters")
+            let out = directory.appendingPathComponent("out-\(storedWidth)")
+            let markdown = MarkdownDocument()
+            try markdown.read(
+                from: Data(contentsOf: document), ofType: "net.daringfireball.markdown")
+            let controller = DocumentWindowController(document: markdown)
+            defer { controller.window?.close() }
+            try Snapshot.run(document: document, into: out, using: controller)
+            return try Data(contentsOf: out.appendingPathComponent("01-light.png"))
+        }
+
+        XCTAssertEqual(try shoot(storedWidth: 60), try shoot(storedWidth: 130))
+    }
+
     func testAMissingPlanIsAnError() throws {
         let document = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).md")

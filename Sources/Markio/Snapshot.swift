@@ -162,16 +162,31 @@ enum Snapshot {
     /// and a non-zero exit, because the alternative is a store listing built on
     /// a screenshot nobody checked.
     static func run(document: URL, into directory: URL) throws {
-        let plan = try Plan.beside(document)
         guard
             let controller = NSApp.windows.compactMap({
                 $0.windowController as? DocumentWindowController
-            }).first,
-            let window = controller.window
+            }).first
         else { throw Failure.noWindow }
+        try run(document: document, into: directory, using: controller)
+    }
+
+    /// The same run against a window handed in, which is how a test drives it
+    /// without an app around it.
+    static func run(
+        document: URL, into directory: URL, using controller: DocumentWindowController
+    ) throws {
+        let plan = try Plan.beside(document)
+        guard let window = controller.window else { throw Failure.noWindow }
 
         try FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)
+
+        // The reading width is the reader's, kept in the same defaults this
+        // run would otherwise read, so the pictures came out at whatever the
+        // slider was last left at. Pin it for the run instead.
+        Preferences.pinnedWidth = Preferences.defaultWidth
+        defer { Preferences.pinnedWidth = nil }
+        controller.reapplyReadingWidth()
 
         for shot in plan.shots {
             try apply(shot, to: controller, window: window, beside: document)

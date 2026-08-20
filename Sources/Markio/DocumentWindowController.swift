@@ -304,6 +304,15 @@ final class DocumentWindowController: NSWindowController {
         theme.columnWidth(characters: Preferences.readingWidth)
     }
 
+    /// Draw at whatever `Preferences.readingWidth` now answers, slider and
+    /// label included. The snapshot run pins that width; a reader changes it
+    /// through the slider, which goes the other way round.
+    func reapplyReadingWidth() {
+        widthSlider.doubleValue = Double(Preferences.readingWidth)
+        widthLabel.stringValue = "\(Preferences.readingWidth) ch"
+        applyColumnWidth()
+    }
+
     @objc private func widthChanged() {
         let value = Preferences.clampWidth(Int(widthSlider.doubleValue.rounded()))
         guard value != Preferences.readingWidth else { return }

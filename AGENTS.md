@@ -98,6 +98,13 @@ quote a debug number.
   loop forever. Launch with a path only.
 - **Reading a plist:** always `plutil -extract <key> raw -o - -- <file>`.
   Without `-o -` the value is written back into the file.
+- **An offscreen store picture must not read the reader's own settings.** The
+  reading width lives in the same `UserDefaults` a `--snapshot` run reads, so
+  the pictures came out at whatever the slider was last left at — a session
+  that widened the column to 130 characters shipped 130 to the App Store, with
+  the wide empty frames that follow. `Snapshot.run` now pins the width for the
+  length of the run and puts it back afterwards, so the reader's choice
+  survives. Anything else a shot could inherit belongs in the same place.
 - **A linear scan over `leaves` is quadratic in disguise.** A 32 MB document
   has ~537 000 leaves and ~159 000 headings; the outline looks each heading up
   once, and scanning cost 39 seconds before the first window appeared. `leaves`

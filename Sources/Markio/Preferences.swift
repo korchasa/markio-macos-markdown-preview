@@ -36,10 +36,23 @@ enum Preferences {
     static let widthRange = 50...140
     static let widthStep = 10
 
-    static var readingWidth: Int {
+    /// The width a reader who has never touched the slider reads at.
+    static let defaultWidth = 84
+
+    /// Held for the length of a `--snapshot` run, and never written down.
+    ///
+    /// A store picture has to come out the same on every machine, and the
+    /// width a snapshot draws at is the same one the reader sets with the
+    /// slider — so a session that left the slider at 130 shipped 130 to the
+    /// App Store, wide frames and all. Pinning it here rather than assigning
+    /// to `readingWidth` is what keeps the reader's own choice.
+    @MainActor static var pinnedWidth: Int?
+
+    @MainActor static var readingWidth: Int {
         get {
+            if let pinnedWidth { return clampWidth(pinnedWidth) }
             let stored = UserDefaults.standard.integer(forKey: widthKey)
-            return stored == 0 ? 84 : clampWidth(stored)
+            return stored == 0 ? defaultWidth : clampWidth(stored)
         }
         set { UserDefaults.standard.set(clampWidth(newValue), forKey: widthKey) }
     }
