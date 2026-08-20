@@ -528,19 +528,27 @@ struct BlockLayoutEngine {
         /// diagram by what its author wrote and Copy still yields the source —
         /// which is the only form of a diagram worth putting on a clipboard.
         mutating func layoutDiagram(_ diagram: MermaidDiagram, language: String) {
-            var drawing = MermaidLayout.draw(diagram, theme: theme, width: available)
-            // What the layout could not shrink into the column is squeezed as
-            // drawn, so the fence never shows a picture with its right-hand
-            // side cut off by the edge of the column.
-            if drawing.size.width > available + 0.5,
-                let squeezed = DocumentRenderer.squeezed(drawing, theme: theme, into: available)
+            // Laid out at its own size and then fitted, rather than laid out to
+            // the column: width is what decides whether a label wraps, so a
+            // diagram laid out twice at two widths is two different pictures —
+            // and the reader saw one of them in the page and the other one
+            // enlarged. One layout, shrunk to fit, is the same picture in both.
+            let natural = MermaidLayout.cropped(
+                MermaidLayout.draw(
+                    diagram, theme: theme.unzoomed, width: DocumentRenderer.naturalWidth))
+            var drawing = MermaidLayout.centred(natural, in: available)
+            // Wider than the column even at its own size: squeezed as drawn,
+            // which is the same picture smaller rather than another picture.
+            if natural.size.width > available + 0.5,
+                let squeezed = DocumentRenderer.squeezed(natural, theme: theme, into: available)
             {
                 drawing = MermaidLayout.Drawing(
                     decorations: [
                         .image(squeezed.image, rect: CGRect(origin: .zero, size: squeezed.size))
                     ],
                     size: squeezed.size,
-                    contentWidth: squeezed.size.width
+                    contentWidth: squeezed.size.width,
+                    background: natural.background
                 )
             }
             let frame = CGRect(x: indent, y: y, width: available, height: drawing.size.height)

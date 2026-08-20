@@ -132,21 +132,16 @@ public enum DocumentRenderer {
         source: String, theme: Theme, width: CGFloat, scale: CGFloat = 2
     ) -> CGImage? {
         guard let parsed = MermaidDiagram.parse(source) else { return nil }
-        var drawing = MermaidLayout.draw(parsed, theme: theme, width: width)
+        let drawing = MermaidLayout.cropped(
+            MermaidLayout.draw(parsed, theme: theme, width: width))
         // A picture is centred in the width it is given, so a small diagram
         // asked for at a large one comes back sitting in a field of empty card.
         // Here the width is a limit and not a frame — the enlarged window and
-        // Copy PNG both want the picture and nothing else — so a drawing
-        // narrower than the room is drawn again at its own size.
-        let tight = min(width, drawing.contentWidth + 32)
-        if tight < width { drawing = MermaidLayout.draw(parsed, theme: theme, width: tight) }
-        // Laid out again at its own size, a picture may come back a little wider
-        // than the measurement that asked for that size — a word laid beside a
-        // line moves with the line. A bitmap cut to the earlier figure clips it.
-        // The bitmap holds whatever was drawn. Capping it at the width that was
-        // asked for cut the right-hand side off every diagram too big to fit
-        // there — which is exactly the diagram somebody wants enlarged.
-        let size = CGSize(width: max(tight, drawing.size.width), height: drawing.size.height)
+        // Copy PNG both want the picture and nothing else — so the bitmap is cut
+        // to what was drawn. Cut, and not laid out again narrower: width decides
+        // where labels wrap, so a second layout is a second picture, and the
+        // reader would see one of them in the page and the other one enlarged.
+        let size = CGSize(width: drawing.size.width, height: drawing.size.height)
         guard size.width > 0, size.height > 0,
             let context = CGContext(
                 data: nil,

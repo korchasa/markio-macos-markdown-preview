@@ -20,6 +20,13 @@ enum MermaidLayout {
         /// paints the same colour. A diagram that names a Mermaid theme brings
         /// its own, and the card has to follow it rather than the document's.
         var background: CGColor = CGColor(gray: 1, alpha: 1)
+        /// Where the picture actually ended up inside `size`, and the margin it
+        /// was given. A caller that wants the picture and not the field of card
+        /// around it — a bitmap, a file — crops to this instead of asking for
+        /// the drawing again at a narrower width, which would be a second
+        /// layout and so a second picture.
+        var contentRect: CGRect = .zero
+        var padding: CGFloat = 16
     }
 
     /// Every distance in a diagram, scaled together.
@@ -79,6 +86,38 @@ enum MermaidLayout {
             pass += 1
         }
         return drawing
+    }
+
+    /// The drawing with the empty card either side of the picture taken off.
+    ///
+    /// A diagram is centred in the width it was offered, so one drawn at its own
+    /// size sits in a field of card. Cutting that away is not the same as asking
+    /// for the drawing again at a narrower width: width decides where a label
+    /// wraps, so a second layout is a second picture — which is how the page and
+    /// the enlarged copy came to disagree.
+    static func cropped(_ drawing: Drawing) -> Drawing {
+        var copy = drawing
+        let dx = drawing.padding - drawing.contentRect.minX
+        guard abs(dx) > 0.5 else {
+            copy.size.width = drawing.contentRect.width + drawing.padding * 2
+            return copy
+        }
+        copy.decorations = drawing.decorations.map { moved($0, right: dx, down: 0) }
+        copy.contentRect = drawing.contentRect.offsetBy(dx: dx, dy: 0)
+        copy.size.width = drawing.contentRect.width + drawing.padding * 2
+        return copy
+    }
+
+    /// The same picture centred in a width that holds it, for a caller who
+    /// wants the drawing to fill a column rather than end where it ends.
+    static func centred(_ drawing: Drawing, in width: CGFloat) -> Drawing {
+        var copy = cropped(drawing)
+        let dx = max(0, (width - copy.size.width) / 2)
+        guard dx > 0.5 else { return copy }
+        copy.decorations = copy.decorations.map { moved($0, right: dx, down: 0) }
+        copy.contentRect = copy.contentRect.offsetBy(dx: dx, dy: 0)
+        copy.size.width = width
+        return copy
     }
 
     /// The page a diagram is drawn on: the reader's white one, unless the
@@ -251,6 +290,8 @@ enum MermaidLayout {
         // to be cut off by the bitmap even after the picture had been measured,
         // because only the height grew to hold what was drawn.
         drawing.size.width = max(drawing.size.width, box.maxX + right + padding)
+        drawing.contentRect = box.offsetBy(dx: right, dy: down)
+        drawing.padding = padding
         return drawing
     }
 

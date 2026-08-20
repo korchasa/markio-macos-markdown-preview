@@ -2779,7 +2779,10 @@ final class MermaidTests: XCTestCase {
             DocumentRenderer.diagram(
                 source: "radar-beta\n  axis a, b, c\n  curve one{1, 2, 3}",
                 theme: Theme(isDark: false), width: 700))
-        XCTAssertEqual(bare.width, ringed.width)
+        // The rings carry the tick labels, so a web without them is the narrower
+        // picture — the bitmap is cut to what was drawn, not padded to the width
+        // that was asked for.
+        XCTAssertLessThanOrEqual(bare.width, ringed.width)
 
         // Axes and no curve is a bare web, which is what its axes say it is.
         guard case .radar(let empty)? = MermaidDiagram.parse("radar-beta\n  axis a, b, c") else {

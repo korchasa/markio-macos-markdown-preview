@@ -176,6 +176,40 @@ final class DiagramInteractionTests: XCTestCase {
         XCTAssertEqual(DocumentRenderer.density(for: CGSize(width: 40000, height: 900)), 1)
     }
 
+    func testThePictureInThePageAndThePictureEnlargedAreTheSameOne() throws {
+        // Width is what decides whether a label wraps, so a diagram laid out
+        // once for the column and once for a window was two different pictures:
+        // different column spacing, different line breaks, a different shape.
+        // One layout, fitted, gives one picture at two sizes — which is what
+        // the ratio of its sides shows.
+        let wide = """
+            sequenceDiagram
+                participant A as A participant with a fairly long name
+                participant B as Another participant with a long name
+                participant C as A third participant with a long name
+                A->>B: a message with enough words in it to need real room
+                B->>C: and a second message quite as wordy as the first one
+                C->>A: and a third, so the picture is wider than any column
+            """
+        let text = "```mermaid\n" + wide + "\n```"
+
+        for column in [520.0, 700.0, 900.0] as [CGFloat] {
+            let layout = DocumentLayout(
+                document: Document(text: text), theme: Theme(isDark: false), columnWidth: column)
+            let box = try XCTUnwrap(layout.box(at: 0))
+            let region = try XCTUnwrap(box.codeRegion)
+            let inPage = region.rect.width / region.rect.height
+
+            let enlarged = try XCTUnwrap(
+                DocumentRenderer.diagram(
+                    source: box.plainText, theme: Theme(isDark: false),
+                    width: DocumentRenderer.naturalWidth))
+            let large = CGFloat(enlarged.width) / CGFloat(enlarged.height)
+
+            XCTAssertEqual(inPage, large, accuracy: 0.05, "column \(column)")
+        }
+    }
+
     /// A board is read by glancing across its columns, so a long title makes a
     /// taller card and not a column as wide as the sentence.
     func testALongCardTitleMakesATallerCardAndNotAWiderBoard() throws {
@@ -198,8 +232,10 @@ final class DiagramInteractionTests: XCTestCase {
     }
 
     func testADiagramFillsTheRoomItNeedsAndNoMore() throws {
-        // A picture wider than the room it is given is drawn to the room. Two
-        // device pixels per point, which is what a Retina paste needs.
+        // A picture wider than the room it is given is shrunk into it, and the
+        // bitmap is cut to the picture — so it comes back close to the room but
+        // never past it. Two device pixels per point, which is what a Retina
+        // paste needs.
         let long = """
             flowchart LR
                 A[A step with a long name] --> B[Another step with a long name]
@@ -207,7 +243,8 @@ final class DiagramInteractionTests: XCTestCase {
             """
         let filled = try XCTUnwrap(
             DocumentRenderer.diagram(source: long, theme: Theme(isDark: false), width: 400))
-        XCTAssertEqual(filled.width, 800)
+        XCTAssertLessThanOrEqual(filled.width, 800)
+        XCTAssertGreaterThan(filled.width, 640)
         XCTAssertGreaterThan(filled.height, 0)
     }
 

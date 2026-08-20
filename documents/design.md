@@ -322,7 +322,18 @@ and then moves it down to make room — one place for a title rather than one pe
 kind; a `title` with nothing after it is no title at all. `config.kanban`'s
 `ticketBaseUrl` and `sectionWidth`, and `displayMode: compact`, reach the reader
 that wants them, and a key written over a diagram of another kind is left unused
-rather than read as a mistake — which is what Mermaid does with it. A diagram is drawn on a white page whatever the page around it is, in ink
+rather than read as a mistake — which is what Mermaid does with it. A diagram is laid out **once**, at its own size, and fitted afterwards. Width is
+what decides where a message label wraps, so a picture laid out to a 700-point
+column and the same picture laid out for a window are two different drawings —
+different column spacing, different line breaks — and the reader saw one of them
+in the page and the other one enlarged. `MermaidLayout.draw` is therefore asked
+for `DocumentRenderer.naturalWidth` by every caller; `cropped` cuts the empty
+card either side of the picture, `centred` places it in a column that holds it,
+and `DocumentRenderer.squeezed` scales the whole drawing down when the column
+does not. Cutting and scaling are not layouts, so the page, the enlarged window,
+Copy PNG and the written-out file all show one picture at four sizes.
+
+A diagram is drawn on a white page whatever the page around it is, in ink
 chosen against white — `Theme.forDiagrams`. A picture is mostly lines, and lines
 are the first thing a dark palette takes away: an outline and the card behind it
 differed by a shade nobody could see. Mermaid's own themes assume a white page,
