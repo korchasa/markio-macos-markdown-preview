@@ -125,6 +125,18 @@ enum MainMenu {
             keyEquivalent: ""
         )
         menu.addItem(.separator())
+        let export = menu.addItem(
+            withTitle: "Export as PDF…",
+            action: #selector(DocumentWindowController.exportPDF(_:)),
+            keyEquivalent: "e"
+        )
+        export.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(
+            withTitle: "Print…",
+            action: #selector(NSDocument.printDocument(_:)),
+            keyEquivalent: "p"
+        )
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: "Copy File Path",
             action: #selector(DocumentWindowController.copyFilePath(_:)),

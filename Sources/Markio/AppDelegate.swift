@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
         if let baseline = baselineFromCommandLine() { startComparison(against: baseline) }
+        if let target = pdfTarget() { exportPDF(to: target) }
         if let directory = snapshotDirectory() { runSnapshot(into: directory) }
         if let target = captureTarget() { capture(to: target) }
     }
@@ -120,6 +121,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             files.append(url)
         }
         return files
+    }
+
+    /// `--export-pdf=<path>`: write the open document out as a PDF and quit.
+    ///
+    /// The reader's way in is the File menu, where the save panel is also the
+    /// permission to write. This exists so the pages can be checked from a
+    /// script, the way `--capture` checks the window.
+    private func pdfTarget() -> URL? {
+        let prefix = "--export-pdf="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+        else { return nil }
+        return URL(fileURLWithPath: String(argument.dropFirst(prefix.count)))
+    }
+
+    private func exportPDF(to url: URL) {
+        guard let document = NSDocumentController.shared.documents.first as? MarkdownDocument
+        else {
+            FileHandle.standardError.write(Data("export-pdf: no document\n".utf8))
+            exit(1)
+        }
+        do {
+            let pages = try PDFExport.write(
+                document: document.parsed,
+                baseURL: document.fileURL,
+                to: url,
+                title: document.fileURL?.lastPathComponent ?? "Markio"
+            )
+            print("exported \(pages) pages -> \(url.path)")
+        } catch {
+            FileHandle.standardError.write(Data("export-pdf: \(error)\n".utf8))
+            exit(1)
+        }
+        NSApp.terminate(nil)
     }
 
     /// `--capture=<path>`: draw the window that just opened into a PNG and quit.

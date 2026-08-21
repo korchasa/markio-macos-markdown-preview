@@ -1,5 +1,6 @@
 import AppKit
 import MarkdownKit
+import MarkioRender
 
 /// One open Markdown file.
 ///
@@ -41,6 +42,32 @@ final class MarkdownDocument: NSDocument {
     override func makeWindowControllers() {
         addWindowController(DocumentWindowController(document: self))
         startWatching()
+    }
+
+    // MARK: - Printing
+
+    /// Print the pages the PDF export would write.
+    ///
+    /// Routed through `NSDocument` so ⌘P is the system's own Print command,
+    /// with its panel, its page setup and its "Save as PDF" — one pagination
+    /// behind all three. The margins are set to nothing because the pages
+    /// carry their own; letting the print system add a second set would inset
+    /// the text twice.
+    override func printOperation(withSettings settings: [NSPrintInfo.AttributeKey: Any]) throws
+        -> NSPrintOperation
+    {
+        let info = NSPrintInfo(dictionary: settings)
+        info.topMargin = 0
+        info.bottomMargin = 0
+        info.leftMargin = 0
+        info.rightMargin = 0
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        let geometry = PageLayout.Geometry(pageSize: info.paperSize, margin: 54)
+        let view = PrintableDocument(document: parsed, baseURL: fileURL, geometry: geometry)
+        let operation = NSPrintOperation(view: view, printInfo: info)
+        operation.jobTitle = fileURL?.lastPathComponent ?? "Markio"
+        return operation
     }
 
     override func close() {

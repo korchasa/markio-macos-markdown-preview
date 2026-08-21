@@ -906,6 +906,40 @@ final class DocumentWindowController: NSWindowController {
         }
     }
 
+    // MARK: - PDF
+
+    /// Write the document out as a PDF.
+    ///
+    /// The save panel is also the sandbox grant for writing, which is why this
+    /// is a command a reader gives rather than something the app does on its
+    /// own. What is exported is what is on screen — a comparison exports with
+    /// its marks — because that is the document the reader is looking at.
+    @objc func exportPDF(_ sender: Any?) {
+        guard let window else { return }
+        let panel = NSSavePanel()
+        let name = markdownDocument.fileURL?.deletingPathExtension().lastPathComponent ?? "Markio"
+        panel.nameFieldStringValue = "\(name).pdf"
+        panel.allowedContentTypes = [.pdf]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            do {
+                try PDFExport.write(
+                    document: self.displayed,
+                    baseURL: self.markdownDocument.fileURL,
+                    to: url,
+                    title: name
+                )
+            } catch {
+                // Loudly: a silent failure here looks exactly like a PDF that
+                // was written and then vanished.
+                let alert = NSAlert()
+                alert.messageText = "Markio could not write that PDF."
+                alert.informativeText = "\(error)"
+                alert.beginSheetModal(for: window, completionHandler: nil)
+            }
+        }
+    }
+
     @objc func copyFilePath(_ sender: Any?) {
         guard let path = markdownDocument.fileURL?.path else { return }
         NSPasteboard.general.clearContents()
