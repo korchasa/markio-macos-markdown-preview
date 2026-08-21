@@ -875,6 +875,8 @@ final class DocumentWindowController: NSWindowController {
         switch url {
         case .external(let external):
             NSWorkspace.shared.open(external)
+        case .file(let file, let line):
+            CodeEditor.open(file, line: line)
         case .anchor(let slug):
             jumpToAnchor(slug)
         case .document(let file, let anchor):

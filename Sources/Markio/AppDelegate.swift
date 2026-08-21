@@ -2,7 +2,7 @@ import AppKit
 import MarkioRender
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let documentController = MarkdownDocumentController()
     private var launchFiles: [URL] = []
 
@@ -263,6 +263,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             withDelegate: nil, didCloseAllSelector: nil, contextInfo: nil)
     }
 
+    /// Remember which editor a clicked code path should open in.
+    @objc func chooseCodeEditor(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+            let editor = CodeEditor(rawValue: raw)
+        else { return }
+        Preferences.codeEditor = editor
+    }
+
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         launchFiles.isEmpty && NSDocumentController.shared.documents.isEmpty
     }
@@ -273,6 +281,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    /// The tick beside the editor in use. Answered here rather than set when
+    /// the menu is built, so the mark follows the choice without the menu
+    /// having to be rebuilt.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(chooseCodeEditor(_:)) else { return true }
+        item.state = (item.representedObject as? String) == Preferences.codeEditor.rawValue
+            ? .on : .off
+        return true
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }

@@ -9,6 +9,11 @@ public struct InlineContent: Sendable {
     public var runs: [InlineRun]
     public var links: [InlineLink]
 
+    public init(runs: [InlineRun], links: [InlineLink]) {
+        self.runs = runs
+        self.links = links
+    }
+
     public static let empty = InlineContent(runs: [], links: [])
 }
 
@@ -80,6 +85,12 @@ public struct InlineLink: Sendable, Equatable {
     public var destination: String
     public var title: String
     public var isImage: Bool
+
+    public init(destination: String, title: String, isImage: Bool) {
+        self.destination = destination
+        self.title = title
+        self.isImage = isImage
+    }
 }
 
 /// Plain-text projection of inline content, used for headings, slugs, the

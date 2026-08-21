@@ -2,16 +2,23 @@ import Foundation
 
 /// Decides what a clicked link means.
 ///
-/// Three outcomes and nothing else: an anchor scrolls this document, a relative
-/// Markdown path opens as another document, and anything with a scheme goes to
-/// the system. A relative path that is not Markdown is deliberately inert —
-/// default-deny, so a document can never talk the viewer into opening an
-/// arbitrary file.
+/// Four outcomes: an anchor scrolls this document, a relative Markdown path
+/// opens as another document, anything with a scheme goes to the system, and a
+/// relative path to a file that is really there opens in an editor.
+///
+/// That fourth one used to be refused outright — default-deny, so a document
+/// could never talk the viewer into opening an arbitrary file. The rule that
+/// replaced it is narrower rather than looser, and it is written down here
+/// because it is the whole safety argument: never an absolute path, never a
+/// path that climbs out of the document's own folder, never a file that is not
+/// there, and the file is handed to another app rather than read here.
 enum LinkResolver {
     enum Target {
         case anchor(String)
         case document(URL, anchor: String?)
         case external(URL)
+        /// A source file beside the document, and the line the text named.
+        case file(URL, line: Int?)
     }
 
     private static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
@@ -52,10 +59,30 @@ enum LinkResolver {
         // Absolute paths are refused: a link in a document should only ever
         // reach files beside it.
         guard !decoded.hasPrefix("/") else { return nil }
-        let url = URL(fileURLWithPath: decoded, relativeTo: base.deletingLastPathComponent())
+        let (bare, line) = splitLine(decoded)
+        let url = URL(fileURLWithPath: bare, relativeTo: base.deletingLastPathComponent())
             .standardizedFileURL
-        guard isMarkdown(url) else { return nil }
-        return .document(url, anchor: anchor)
+        if isMarkdown(url), line == nil { return .document(url, anchor: anchor) }
+        // Everything else has to be a file that exists, inside the folder the
+        // document itself sits in.
+        let folder = base.deletingLastPathComponent().standardizedFileURL
+        guard url.path.hasPrefix(folder.path + "/") else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+            !isDirectory.boolValue
+        else { return nil }
+        return .file(url, line: line)
+    }
+
+    /// `Sources/a.swift:214` → the path and 214. A trailing colon with no
+    /// digits after it is part of the name as far as this is concerned.
+    private static func splitLine(_ path: String) -> (String, Int?) {
+        guard let colon = path.lastIndex(of: ":"), colon != path.startIndex else {
+            return (path, nil)
+        }
+        let tail = String(path[path.index(after: colon)...])
+        guard let line = Int(tail), line > 0 else { return (path, nil) }
+        return (String(path[path.startIndex..<colon]), line)
     }
 
     private static func externalTarget(_ string: String) -> Target? {

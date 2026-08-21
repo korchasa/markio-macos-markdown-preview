@@ -902,12 +902,18 @@ struct BlockLayoutEngine {
         // MARK: Shared
 
         private func parseInline(_ content: [UInt8]) -> InlineContent {
-            InlineParser.parse(
+            let parsed = InlineParser.parse(
                 content: content,
                 references: document.references,
                 documentBytes: document.bytes,
                 footnotes: document.footnotes
             )
+            // A path to a file beside the document becomes a link here, after
+            // the inline parse rather than inside it: whether a path is real is
+            // a question about the disk, and MarkdownKit has none.
+            return CodePathLinks.apply(to: parsed, bytes: content) { candidate in
+                CodePathLinks.destination(for: candidate, near: engine.baseURL)
+            }
         }
 
         private mutating func place(

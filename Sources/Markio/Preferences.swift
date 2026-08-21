@@ -9,6 +9,7 @@ enum Preferences {
     private static let widthKey = "readingWidthCharacters"
     private static let outlineKey = "outlineVisible"
     private static let positionsKey = "scrollPositions"
+    private static let editorKey = "codeEditor"
 
     /// The sizes zooming steps through, as multiples of the reading size.
     ///
@@ -60,6 +61,17 @@ enum Preferences {
     static func clampWidth(_ value: Int) -> Int {
         let snapped = (value / widthStep) * widthStep
         return min(max(snapped, widthRange.lowerBound), widthRange.upperBound)
+    }
+
+    /// Which editor a clicked code path opens in. See `CodeEditor`.
+    static var codeEditor: CodeEditor {
+        get {
+            guard let stored = UserDefaults.standard.string(forKey: editorKey),
+                let editor = CodeEditor(rawValue: stored)
+            else { return .system }
+            return editor
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: editorKey) }
     }
 
     static var outlineVisible: Bool {

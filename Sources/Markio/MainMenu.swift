@@ -58,6 +58,22 @@ enum MainMenu {
             keyEquivalent: ""
         )
         menu.addItem(.separator())
+        // Where a clicked path in a report opens. It lives in the app menu
+        // rather than in a settings window because it is the only preference
+        // this app has that a control on screen cannot carry.
+        let editors = NSMenuItem(title: "Open Code Paths In", action: nil, keyEquivalent: "")
+        let editorMenu = NSMenu(title: "Open Code Paths In")
+        for editor in CodeEditor.allCases {
+            let choice = editorMenu.addItem(
+                withTitle: editor.title,
+                action: #selector(AppDelegate.chooseCodeEditor(_:)),
+                keyEquivalent: ""
+            )
+            choice.representedObject = editor.rawValue
+        }
+        editors.submenu = editorMenu
+        menu.addItem(editors)
+        menu.addItem(.separator())
         let hide = menu.addItem(
             withTitle: "Hide \(name)",
             action: #selector(NSApplication.hide(_:)),
