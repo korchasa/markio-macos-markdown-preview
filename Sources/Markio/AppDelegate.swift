@@ -253,6 +253,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// files from the command line, so the answer comes from that list rather
     /// than from the documents opened so far — otherwise a launch with a path
     /// races into a modal open panel that nothing can dismiss.
+    /// Close every open document at once.
+    ///
+    /// One window per document and no tabs means six documents are six ⌘W, and
+    /// the File menu of every other reader on this system offers the way out of
+    /// that. Nothing is ever unsaved here, so this closes rather than asks.
+    @objc func closeAllDocuments(_ sender: Any?) {
+        NSDocumentController.shared.closeAllDocuments(
+            withDelegate: nil, didCloseAllSelector: nil, contextInfo: nil)
+    }
+
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         launchFiles.isEmpty && NSDocumentController.shared.documents.isEmpty
     }

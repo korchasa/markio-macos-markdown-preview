@@ -84,6 +84,12 @@ final class DocumentWindowController: NSWindowController {
             defer: false
         )
         window.minSize = NSSize(width: 480, height: 320)
+        // One window per document is what this app is: find, the outline, the
+        // reading width and the comparison all belong to a window. A system set
+        // to "prefer tabs: always" merges new windows into the front one
+        // regardless of `allowsAutomaticWindowTabbing`, so each window refuses
+        // on its own account as well.
+        window.tabbingMode = .disallowed
         super.init(window: window)
         window.delegate = self
         shouldCascadeWindows = true

@@ -97,16 +97,12 @@ enum MainMenu {
         ourRecents = recents
         menu.delegate = recentsGuard
         menu.addItem(.separator())
-        menu.addItem(
+        let compare = menu.addItem(
             withTitle: "Compare…",
             action: #selector(DocumentWindowController.compareWithBaseline(_:)),
-            keyEquivalent: ""
+            keyEquivalent: "c"
         )
-        menu.addItem(
-            withTitle: "Side by Side",
-            action: #selector(DocumentWindowController.toggleSideBySide(_:)),
-            keyEquivalent: ""
-        )
+        compare.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(
             withTitle: "Stop Comparing",
             action: #selector(DocumentWindowController.stopComparing(_:)),
@@ -124,16 +120,60 @@ enum MainMenu {
             action: #selector(NSWindow.performClose(_:)),
             keyEquivalent: "w"
         )
+        let closeAll = menu.addItem(
+            withTitle: "Close All",
+            action: #selector(AppDelegate.closeAllDocuments(_:)),
+            keyEquivalent: "w"
+        )
+        closeAll.keyEquivalentModifierMask = [.command, .option]
         return item
     }
 
     private static func editMenu() -> NSMenuItem {
         let (item, menu) = submenu("Edit")
+        // Undo, Redo, Cut, Paste and Delete belong to a menu the system knows:
+        // services and the accessibility clients that walk the Edit menu look
+        // for them, and a reader reads a missing item as a missing capability
+        // rather than as one a viewer has no use for. Nothing in this app
+        // answers them, so AppKit's own validation greys every one of them out
+        // — which is the honest state for a document that is never written.
+        let undo = menu.addItem(
+            withTitle: "Undo",
+            action: Selector(("undo:")),
+            keyEquivalent: "z"
+        )
+        undo.isEnabled = false
+        let redo = menu.addItem(
+            withTitle: "Redo",
+            action: Selector(("redo:")),
+            keyEquivalent: "z"
+        )
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        redo.isEnabled = false
+        menu.addItem(.separator())
+        let cut = menu.addItem(
+            withTitle: "Cut",
+            action: #selector(NSText.cut(_:)),
+            keyEquivalent: "x"
+        )
+        cut.isEnabled = false
         menu.addItem(
             withTitle: "Copy",
             action: #selector(NSText.copy(_:)),
             keyEquivalent: "c"
         )
+        let paste = menu.addItem(
+            withTitle: "Paste",
+            action: #selector(NSText.paste(_:)),
+            keyEquivalent: "v"
+        )
+        paste.isEnabled = false
+        let delete = menu.addItem(
+            withTitle: "Delete",
+            action: #selector(NSText.delete(_:)),
+            keyEquivalent: ""
+        )
+        delete.isEnabled = false
         menu.addItem(
             withTitle: "Select All",
             action: #selector(NSText.selectAll(_:)),
@@ -167,6 +207,14 @@ enum MainMenu {
             keyEquivalent: "s"
         )
         outline.keyEquivalentModifierMask = [.command, .option]
+        // Beside the Table of Contents, which is where the old build kept it
+        // and where a returning reader looks: both are ways of laying the
+        // document out, not things done to the file.
+        menu.addItem(
+            withTitle: "Side by Side",
+            action: #selector(DocumentWindowController.toggleSideBySide(_:)),
+            keyEquivalent: ""
+        )
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Zoom In",
