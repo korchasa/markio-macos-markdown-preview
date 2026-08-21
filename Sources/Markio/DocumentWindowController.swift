@@ -246,6 +246,7 @@ final class DocumentWindowController: NSWindowController {
         }
 
         outline.onSelect = { [weak self] index in self?.jumpToHeading(index) }
+        documentView.onSelectHeading = { [weak self] ordinal in self?.focus(on: ordinal) }
 
         findBar.onQueryChange = { [weak self] query in self?.runSearch(query) }
         findBar.onNext = { [weak self] in self?.step(by: 1) }
@@ -712,7 +713,42 @@ final class DocumentWindowController: NSWindowController {
 
     private func jumpToHeading(_ index: Int) {
         guard index >= 0, index < outlineOrdinals.count else { return }
+        // A folded document moves section by section: picking a heading in the
+        // outline opens that one, rather than scrolling to a heading with
+        // nothing under it.
+        if layout.focusedHeading != nil {
+            focus(on: outlineOrdinals[index])
+            return
+        }
         documentView.reveal(ordinal: outlineOrdinals[index])
+    }
+
+    // MARK: - Focus
+
+    /// Fold the document down to the section the reader is in, or unfold it.
+    ///
+    /// The section comes from the top of the window rather than from the
+    /// outline's idea of the current one: the reader means the passage in front
+    /// of them, and those two disagree while a long section scrolls past.
+    @objc func toggleFocus(_ sender: Any?) {
+        guard layout.blockCount > 0 else { return }
+        guard layout.focusedHeading == nil else {
+            focus(on: nil)
+            return
+        }
+        let top = max(0, scrollView.contentView.bounds.minY - documentView.verticalPadding)
+        focus(on: layout.index(atOffset: top))
+    }
+
+    var isFocused: Bool { layout.focusedHeading != nil }
+
+    private func focus(on ordinal: Int?) {
+        layout.setFocus(ordinal)
+        documentView.needsDisplay = true
+        if let heading = layout.focusedHeading {
+            documentView.reveal(ordinal: heading)
+        }
+        rerunSearchIfActive()
     }
 
     @objc func toggleOutline(_ sender: Any?) {
@@ -893,6 +929,10 @@ extension DocumentWindowController: NSMenuItemValidation {
         if item.action == #selector(stopComparing(_:)) { return isComparing }
         if item.action == #selector(toggleSideBySide(_:)) {
             item.state = sideBySide ? .on : .off
+            return true
+        }
+        if item.action == #selector(toggleFocus(_:)) {
+            item.state = isFocused ? .on : .off
             return true
         }
         return true

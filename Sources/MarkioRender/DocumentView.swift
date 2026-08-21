@@ -28,6 +28,10 @@ public final class DocumentView: NSView {
     public var onVisibleRangeChange: ((Range<Int>) -> Void)?
     /// Called when the system switches between light and dark.
     public var onAppearanceChange: (() -> Void)?
+    /// Called when a heading is clicked while the document is folded to one
+    /// section. Which section is showing is the layout's business; what a click
+    /// on a heading means is the app's.
+    public var onSelectHeading: ((Int) -> Void)?
     /// Called when files are dropped on the view. The view does not open
     /// anything itself, for the same reason it does not follow links.
     public var onOpenFiles: (([URL]) -> Void)?
@@ -577,6 +581,16 @@ public final class DocumentView: NSView {
         return TextPosition(ordinal: ordinal, offset: best.offset)
     }
 
+    /// The heading under a point, or nil when the block there is not one.
+    func heading(at point: CGPoint) -> Int? {
+        guard layout.blockCount > 0 else { return nil }
+        let ordinal = layout.index(atOffset: max(0, point.y - verticalPadding))
+        guard let box = layout.box(at: ordinal), box.height > 0 else { return nil }
+        let top = layout.offset(of: ordinal) + verticalPadding
+        guard point.y >= top, point.y <= top + box.height else { return nil }
+        return layout.document.block(box.leaf).kind == .heading ? ordinal : nil
+    }
+
     public func link(at point: CGPoint) -> InlineLink? {
         guard layout.blockCount > 0 else { return nil }
         let local = documentPoint(from: point)
@@ -763,6 +777,15 @@ public final class DocumentView: NSView {
         }
         if event.clickCount == 1, let link = link(at: point) {
             onActivateLink?(link)
+            return
+        }
+        // While the document is folded to one section, the headings are the
+        // only text left of the rest of it — so they are what moves the reader
+        // from one section to another.
+        if event.clickCount == 1, layout.focusedHeading != nil,
+            let heading = heading(at: point)
+        {
+            onSelectHeading?(heading)
             return
         }
         if event.clickCount == 1, toggleSection(at: point) { return }

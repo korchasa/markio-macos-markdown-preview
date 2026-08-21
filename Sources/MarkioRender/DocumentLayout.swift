@@ -31,6 +31,9 @@ public final class DocumentLayout {
     private var boxes: [Int: BlockBox] = [:]
     /// Sections showing their contents, by the ordinal of their `<details>`.
     private var expanded: Set<Int> = []
+    /// The heading whose section is the only one showing its text, or nil when
+    /// the whole document is open. See `setFocus`.
+    private var focused: Int?
     /// The ordinals inside a closed section, as sorted, non-overlapping ranges.
     /// Kept as ranges rather than a set of ordinals because a closed section may
     /// hold a hundred thousand blocks, and the question asked of it — "is this
@@ -84,8 +87,100 @@ public final class DocumentLayout {
                 ranges.append(lower..<upper)
             }
         }
+        if let focused {
+            ranges = DocumentLayout.merged(ranges + foldedByFocus(on: focused))
+        }
         hidden = ranges
         engine.expandedSections = Set(expanded.map { document.leaves[$0] })
+    }
+
+    /// Everything focus folds away: every block that is neither a heading nor
+    /// part of the section the reader is in.
+    ///
+    /// The headings stay because what is left has to remain a document rather
+    /// than becoming one section floating in an empty page — folded, the file
+    /// reads as its own table of contents with one part open.
+    private func foldedByFocus(on ordinal: Int) -> [Range<Int>] {
+        let section = sectionRange(of: ordinal)
+        var ranges: [Range<Int>] = []
+        var run: Int?
+        for index in document.leaves.indices {
+            let keep = section.contains(index) || isHeading(index)
+            if keep {
+                if let start = run { ranges.append(start..<index) }
+                run = nil
+            } else if run == nil {
+                run = index
+            }
+        }
+        if let start = run { ranges.append(start..<document.leaves.count) }
+        return ranges
+    }
+
+    private func isHeading(_ ordinal: Int) -> Bool {
+        document.blocks[Int(document.leaves[ordinal])].kind == .heading
+    }
+
+    /// A heading and everything under it, up to the next heading at the same
+    /// level or above. A focus ordinal that is not a heading owns only itself,
+    /// which is what a document with no headings at all comes to.
+    private func sectionRange(of ordinal: Int) -> Range<Int> {
+        guard ordinal >= 0, ordinal < document.leaves.count, isHeading(ordinal) else {
+            return ordinal..<(ordinal + 1)
+        }
+        let level = document.blocks[Int(document.leaves[ordinal])].level
+        var end = ordinal + 1
+        while end < document.leaves.count {
+            let block = document.blocks[Int(document.leaves[end])]
+            if block.kind == .heading, block.level <= level { break }
+            end += 1
+        }
+        return ordinal..<end
+    }
+
+    /// Sorted, non-overlapping — the shape `isHidden` binary-searches.
+    private static func merged(_ ranges: [Range<Int>]) -> [Range<Int>] {
+        let sorted = ranges.sorted { $0.lowerBound < $1.lowerBound }
+        var out: [Range<Int>] = []
+        for range in sorted where !range.isEmpty {
+            if let last = out.last, range.lowerBound <= last.upperBound {
+                out[out.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+            } else {
+                out.append(range)
+            }
+        }
+        return out
+    }
+
+    // MARK: - Focus
+
+    /// Which heading's section is showing its text, if any.
+    public var focusedHeading: Int? { focused }
+
+    /// Fold the document down to one section, or unfold it.
+    ///
+    /// This walks every block, which the open path may not do — but a reader
+    /// asking for focus has a document open already, and the walk is over the
+    /// flat 24-byte array with no text and no typesetting in it.
+    public func setFocus(_ ordinal: Int?) {
+        let target = ordinal.map { headingOwning($0) }
+        guard target != focused else { return }
+        focused = target
+        boxes.removeAll(keepingCapacity: true)
+        rebuildHidden()
+        rebuildEstimates()
+    }
+
+    /// The heading a block belongs to: itself if it is one, otherwise the last
+    /// heading above it. A document that opens with prose before its first
+    /// heading has none, and focus then keeps that block on its own.
+    public func headingOwning(_ ordinal: Int) -> Int {
+        var index = min(max(0, ordinal), max(0, document.leaves.count - 1))
+        while index >= 0 {
+            if isHeading(index) { return index }
+            index -= 1
+        }
+        return min(max(0, ordinal), max(0, document.leaves.count - 1))
     }
 
     /// Whether a block is inside a section that is currently closed.
@@ -184,6 +279,15 @@ public final class DocumentLayout {
 
     public func replace(document: Document) {
         self.document = document
+        // The file was re-read, so an ordinal from the old text names a
+        // different block now. Focus survives a reload only when it still
+        // points at a heading; otherwise the document comes back whole.
+        if let ordinal = focused,
+            ordinal >= document.leaves.count
+                || document.blocks[Int(document.leaves[ordinal])].kind != .heading
+        {
+            focused = nil
+        }
         boxes.removeAll(keepingCapacity: true)
         engine = BlockLayoutEngine(
             document: document,

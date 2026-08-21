@@ -215,6 +215,12 @@ enum MainMenu {
             action: #selector(DocumentWindowController.toggleSideBySide(_:)),
             keyEquivalent: ""
         )
+        let focus = menu.addItem(
+            withTitle: "Focus on Section",
+            action: #selector(DocumentWindowController.toggleFocus(_:)),
+            keyEquivalent: "f"
+        )
+        focus.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Zoom In",
