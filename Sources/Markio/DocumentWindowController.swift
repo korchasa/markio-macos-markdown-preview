@@ -26,6 +26,10 @@ final class DocumentWindowController: NSWindowController {
     private let findEngine = FindEngine()
     private let widthSlider = NSSlider()
     private let widthLabel = NSTextField(labelWithString: "")
+    /// What the document says about itself — ticked boxes, reading time, open
+    /// questions — counted in the background and shown at the left of the bar.
+    private let summaryLabel = NSTextField(labelWithString: "")
+    private let summaryEngine = DocumentSummary()
 
     private var findMatches: [DocumentView.FindMatch] = []
     private var currentMatch = -1
@@ -292,7 +296,11 @@ final class DocumentWindowController: NSWindowController {
         widthLabel.textColor = .secondaryLabelColor
         widthLabel.stringValue = "\(Preferences.readingWidth) ch"
 
-        for view in [widthSlider, widthLabel] as [NSView] {
+        summaryLabel.font = NSFont.systemFont(ofSize: 10)
+        summaryLabel.textColor = .secondaryLabelColor
+        summaryLabel.lineBreakMode = .byTruncatingTail
+
+        for view in [widthSlider, widthLabel, summaryLabel] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             bar.addSubview(view)
         }
@@ -302,6 +310,10 @@ final class DocumentWindowController: NSWindowController {
             widthSlider.trailingAnchor.constraint(equalTo: widthLabel.leadingAnchor, constant: -8),
             widthSlider.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
             widthSlider.widthAnchor.constraint(equalToConstant: 120),
+            summaryLabel.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
+            summaryLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            summaryLabel.trailingAnchor.constraint(
+                lessThanOrEqualTo: widthSlider.leadingAnchor, constant: -12),
         ])
         return bar
     }
@@ -689,6 +701,37 @@ final class DocumentWindowController: NSWindowController {
         headings = displayed.headings()
         outlineOrdinals = headings.compactMap { layout.ordinal(ofLeaf: $0.block) }
         outline.setHeadings(headings)
+        recount()
+    }
+
+    // MARK: - Summary
+
+    /// Count the document again, in the background.
+    ///
+    /// Nothing waits for this: the window is already on screen and the figures
+    /// arrive as they are counted. A document with no checkboxes and no markers
+    /// says only how long it takes to read, and one still being counted says so
+    /// with an ellipsis rather than showing a number that is about to change.
+    private func recount() {
+        summaryLabel.stringValue = ""
+        summaryEngine.count(displayed) { [weak self] result in
+            guard let self else { return }
+            self.summaryLabel.stringValue = DocumentWindowController.summary(result.counts)
+            self.outline.setProgress(result.sections)
+        }
+    }
+
+    static func summary(_ counts: DocumentSummary.Counts) -> String {
+        var parts: [String] = []
+        if counts.tasks > 0 { parts.append("\(counts.tasksDone) of \(counts.tasks) done") }
+        if let minutes = counts.readingMinutes {
+            parts.append("\(minutes) min at \(DocumentSummary.readingRate) wpm")
+        }
+        if counts.openQuestions > 0 { parts.append("\(counts.openQuestions) open") }
+        guard !parts.isEmpty else { return "" }
+        // While the walk is still going the numbers are a lower bound, and the
+        // ellipsis is what says so.
+        return parts.joined(separator: " · ") + (counts.isComplete ? "" : " …")
     }
 
     private func visibleRangeChanged(_ range: Range<Int>) {

@@ -1,5 +1,6 @@
 import AppKit
 import MarkdownKit
+import MarkioRender
 
 /// The heading tree, as a plain list with indentation.
 ///
@@ -14,6 +15,10 @@ final class OutlineSidebar: NSView {
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
     private var headings: [Document.Heading] = []
+    /// Ticked-of-total per section, as the background count reports it. Empty
+    /// until the first batch arrives, and shorter than `headings` while the
+    /// count is still walking the document.
+    private var progress: [DocumentSummary.SectionProgress] = []
     private var current = -1
     private var suppressSelectionCallback = false
 
@@ -53,8 +58,20 @@ final class OutlineSidebar: NSView {
 
     func setHeadings(_ headings: [Document.Heading]) {
         self.headings = headings
+        progress = []
         current = -1
         tableView.reloadData()
+    }
+
+    /// The per-section counts, from the summary. Called repeatedly while the
+    /// numbers settle, so it redraws the rows rather than rebuilding them.
+    func setProgress(_ progress: [DocumentSummary.SectionProgress]) {
+        guard progress != self.progress else { return }
+        self.progress = progress
+        let rows = IndexSet(integersIn: 0..<max(0, headings.count))
+        guard !rows.isEmpty else { return }
+        tableView.reloadData(
+            forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
 
     /// Highlight the section the reader is in, following the scroll rather than
@@ -85,7 +102,7 @@ extension OutlineSidebar: NSTableViewDataSource, NSTableViewDelegate {
         let cell =
             tableView.makeView(withIdentifier: identifier, owner: self) as? HeadingCell
             ?? HeadingCell(identifier: identifier)
-        cell.configure(headings[row])
+        cell.configure(headings[row], progress: row < progress.count ? progress[row] : nil)
         return cell
     }
 
@@ -102,6 +119,9 @@ extension OutlineSidebar: NSTableViewDataSource, NSTableViewDelegate {
 @MainActor
 private final class HeadingCell: NSTableCellView {
     private let label = NSTextField(labelWithString: "")
+    /// Ticked-of-total for this section, so the unfinished part of a report can
+    /// be found without scrolling to it.
+    private let badge = NSTextField(labelWithString: "")
     private var indentConstraint: NSLayoutConstraint!
 
     init(identifier: NSUserInterfaceItemIdentifier) {
@@ -110,12 +130,20 @@ private final class HeadingCell: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingTail
         label.font = NSFont.systemFont(ofSize: 11.5)
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        badge.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        badge.textColor = .secondaryLabelColor
+        badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(label)
+        addSubview(badge)
         indentConstraint = label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
         NSLayoutConstraint.activate([
             indentConstraint,
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            label.trailingAnchor.constraint(
+                lessThanOrEqualTo: badge.leadingAnchor, constant: -6),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            badge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         textField = label
     }
@@ -123,7 +151,7 @@ private final class HeadingCell: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("built in code only") }
 
-    func configure(_ heading: Document.Heading) {
+    func configure(_ heading: Document.Heading, progress: DocumentSummary.SectionProgress?) {
         label.stringValue = heading.text
         indentConstraint.constant = 8 + CGFloat(max(0, heading.level - 1)) * 11
         label.font = NSFont.systemFont(
@@ -131,5 +159,14 @@ private final class HeadingCell: NSTableCellView {
             weight: heading.level <= 2 ? .semibold : .regular
         )
         label.textColor = heading.level <= 2 ? .labelColor : .secondaryLabelColor
+        // A section with no checkboxes shows nothing rather than "0/0": the
+        // badge is a fact about the section, not a slot that must be filled.
+        guard let progress, progress.tasks > 0 else {
+            badge.stringValue = ""
+            return
+        }
+        badge.stringValue = "\(progress.done)/\(progress.tasks)"
+        badge.textColor =
+            progress.done == progress.tasks ? .tertiaryLabelColor : .secondaryLabelColor
     }
 }
