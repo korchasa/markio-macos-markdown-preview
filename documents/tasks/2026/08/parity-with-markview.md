@@ -26,6 +26,47 @@ Still open, and open on purpose:
   renderers, differences read by eye — has not been made. It is the remaining
   work on markdown coverage, and it needs the old tree, which is read-only.
 
+## Status — 2026-08-22, later: the running-build list, checked by machine
+
+Most of that list did not need a person after all. The app can be driven
+offscreen — `--capture-click`, `--capture-scroll`, `--dump-menu` — and what
+came back was three defects, all of them now fixed and covered by tests.
+
+- **A reader always came back to the first line.** Restoring the reading
+  position asked the document view to scroll itself, which does nothing before
+  that view has drawn, and the position was marked restored before it had been
+  put back — so the bounds change at the top wrote a zero over what was being
+  restored. One failed restore erased the memory for good, which is why the
+  preferences held zeroes for documents that had certainly been read further
+  down. Proven by a scrolled shot and a shot after a relaunch showing the same
+  page.
+- **The File menu had two Open Recents,** one of them empty: AppKit gives a
+  document app one and this app built a second. The guard meant to remove ours
+  fired from the menu's delegate, which runs when a person opens the menu — by
+  which time they had seen the duplicate.
+- **A file name with a line number was read as a URL scheme.** A dot is legal
+  in a scheme, so `main.swift:214` was refused as a scheme the app does not
+  serve; `scripts/check.ts:42` never hit it, because the slash disqualifies the
+  scheme. Found while writing the tests `LinkResolver` never had — it decides
+  the whole of the app's link safety and had none.
+
+Checked and correct: opening a file that is already open reuses it
+(`OpenAgainTests`); recents survive a relaunch (a fresh process reports six);
+windows come back after a quit (macOS restores them, and a launch that must
+show one document needs `-ApplePersistenceIgnoreState YES`); an anchor link
+scrolls this document (clicked offscreen, the target came into view).
+
+Two things a machine still cannot settle here. **Menu enablement** needs the
+app frontmost, and this environment refuses to let it come forward: every
+document command then validates as disabled, which reads as a broken menu. The
+dump says so in its first line now — `active=false` means its verdicts are
+worthless. And an **external link** was left alone on purpose: verifying it
+means opening a browser.
+
+One observation, not a defect: an anchor jump reveals its target rather than
+putting it at the top of the window, so a click near the end of a document
+leaves the heading at the bottom edge.
+
 ## Where the old behaviour is written down
 
 Four sources, each catching a class the others miss. Together they are the
@@ -102,20 +143,20 @@ never enabled.
 Code cannot answer these; they need the app open and, for the menu items, an
 accessibility pass like the one the old `menu.md` describes.
 
-- Whether `Copy File Path` and `Close` are **enabled** when a document window is
-  key. Both are routed through the responder chain, so a chain that does not
-  reach `DocumentWindowController` leaves a visible item that does nothing.
-  This is the likeliest explanation for the original report, since both
-  commands demonstrably exist in the code.
-- Menu order and separators: one separator between groups, no stray or
-  duplicate items after opening File repeatedly.
-- Opening a file that is already open focuses the existing window instead of
-  making a second one.
-- Recents survive a relaunch; windows and their scroll positions come back
-  after ⌘Q.
-- Local links: anchor within the document, `.md` link to a new window, anchor
-  into an already-open document, external link to the browser, non-Markdown
-  link doing nothing.
+- **Open.** Whether `Copy File Path` and `Close` are enabled when a document
+  window is key. Both are routed through the responder chain, so a chain that
+  does not reach `DocumentWindowController` leaves a visible item that does
+  nothing. `--dump-menu` answers this in one line, but only from an app that is
+  frontmost, and this session cannot bring one forward.
+- **Done.** Menu order and separators, and no duplicate items: the File menu
+  carried two Open Recents and now carries one.
+- **Done.** Opening a file that is already open reuses it — `OpenAgainTests`.
+- **Done.** Recents survive a relaunch, windows come back, and the reading
+  position comes back — the last of those was broken and is fixed.
+- **Done, less the browser.** Anchors, `.md` neighbours, anchors into another
+  document, source files and every refusal are covered by `LinkResolverTests`,
+  and an anchor click was driven offscreen against the running app. The
+  external link is left to a person, because checking it opens a browser.
 - Quick Look: rendered preview rather than plain text, tables and task lists,
   Mermaid as a diagram, KaTeX typeset, frontmatter box, links inert, non-UTF-8
   falling back to the system preview.
