@@ -149,6 +149,15 @@ enum AttributedBuilder {
                 )
             }
         }
+        // A link's destination rides along on the text itself, so a copy can
+        // carry it into a paste. CoreText has no idea what `.link` is and draws
+        // exactly what it drew before; the underline is still geometry.
+        for span in spans where span.style.contains(.link) && span.link >= 0 {
+            guard Int(span.link) < inline.links.count else { continue }
+            let link = inline.links[Int(span.link)]
+            guard !link.isImage, !link.destination.isEmpty else { continue }
+            attributed.addAttribute(.link, value: link.destination, range: span.range)
+        }
         return StyledText(attributed: attributed, spans: spans)
     }
 

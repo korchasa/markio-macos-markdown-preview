@@ -761,10 +761,35 @@ public final class DocumentView: NSView {
         needsDisplay = true
     }
 
+    /// The selection with its styles, ready for an application that can keep
+    /// them. Empty when nothing is selected.
+    public var selectedRichText: NSAttributedString {
+        guard let selection = orderedSelection() else { return NSAttributedString() }
+        let result = NSMutableAttributedString()
+        for ordinal in selection.start.ordinal...selection.end.ordinal {
+            guard let box = layout.box(at: ordinal) else { continue }
+            let length = (box.plainText as NSString).length
+            let from = ordinal == selection.start.ordinal ? selection.start.offset : 0
+            let to = ordinal == selection.end.ordinal ? selection.end.offset : length
+            let piece = RichText.attributed(box: box, from: from, to: to)
+            if result.length > 0 { result.append(NSAttributedString(string: "\n\n")) }
+            result.append(piece)
+        }
+        return result
+    }
+
+    /// Copy the selection in both flavours.
+    ///
+    /// The rich one is what Mail, Notes and TextEdit take; the plain one is
+    /// character for character what this wrote before there was a rich one, so
+    /// a paste into a code editor or a shell is unchanged.
     @objc public func copy(_ sender: Any?) {
         let text = selectedText
         guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
+        if let rtf = RichText.rtf(selectedRichText) {
+            NSPasteboard.general.setData(rtf, forType: .rtf)
+        }
         NSPasteboard.general.setString(text, forType: .string)
     }
 
