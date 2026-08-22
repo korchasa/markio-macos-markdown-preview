@@ -46,6 +46,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let target = pdfTarget() { exportPDF(to: target) }
         if let directory = snapshotDirectory() { runSnapshot(into: directory) }
         if let target = captureTarget() { capture(to: target) }
+        if CommandLine.arguments.contains("--dump-menu") { dumpMenu() }
+    }
+
+    /// `--dump-menu`: print the menu bar as AppKit has it, and quit.
+    ///
+    /// Whether a command is *enabled* is a question about the responder chain,
+    /// not about the code that built the menu: an item routed to a controller
+    /// the chain never reaches is visible and does nothing. `NSMenu.update()`
+    /// runs the same validation the menu bar runs when it is opened, so this
+    /// prints the answer a person would get by looking, and prints it twice to
+    /// show that opening a menu does not add to it.
+    private func dumpMenu() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            for pass in 1...2 {
+                print("--- pass \(pass) ---")
+                guard let bar = NSApp.mainMenu else { break }
+                for top in bar.items {
+                    guard let menu = top.submenu else { continue }
+                    menu.update()
+                    print("\(top.title)")
+                    for item in menu.items {
+                        if item.isSeparatorItem {
+                            print("  ----")
+                            continue
+                        }
+                        let key =
+                            item.keyEquivalent.isEmpty
+                            ? "" : " [\(AppDelegate.shortcut(for: item))]"
+                        // Who would actually receive the command, so a disabled
+                        // item says whether the chain reaches nobody or whether
+                        // somebody deliberately said no.
+                        var target = ""
+                        if let action = item.action {
+                            let receiver = NSApp.target(
+                                forAction: action, to: item.target, from: item)
+                            target =
+                                " → \(receiver.map { String(describing: type(of: $0)) } ?? "nobody")"
+                        }
+                        print("  \(item.isEnabled ? "on " : "off")\(item.title)\(key)\(target)")
+                    }
+                }
+            }
+            NSApp.terminate(nil)
+        }
+    }
+
+    private static func shortcut(for item: NSMenuItem) -> String {
+        var out = ""
+        if item.keyEquivalentModifierMask.contains(.control) { out += "⌃" }
+        if item.keyEquivalentModifierMask.contains(.option) { out += "⌥" }
+        if item.keyEquivalentModifierMask.contains(.shift) { out += "⇧" }
+        if item.keyEquivalentModifierMask.contains(.command) { out += "⌘" }
+        return out + item.keyEquivalent.uppercased()
     }
 
     /// `--snapshot <dir>`: take the store screenshots and quit.
@@ -350,55 +403,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func capture(to url: URL) {
-        // At least one turn of the run loop, so the document window has laid
-        // out and the first visible blocks have been measured.
-        DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay()) {
-            // The window a viewer would be looking at: the frontmost of the
-            // highest layer. A deck sits above the document window it was
-            // opened from, and a shot of the document behind it is a picture
-            // of the wrong thing — which is exactly what came out before this
-            // walked the layers instead of taking the first visible window.
-            var visible: NSWindow?
-            for window in NSApp.orderedWindows
-            where window.isVisible
-                && (visible == nil || window.level.rawValue > visible!.level.rawValue)
-            {
-                visible = window
-            }
-            if let offset = self.scrollOffset(), let window = visible {
-                // Twice, with a turn of the run loop between: the first scroll
-                // measures the blocks it lands on, which is what gives the
-                // document its real height, and only then can the second one
-                // reach the offset that was asked for.
-                self.scroll(window, to: offset)
-                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-                self.scroll(window, to: offset)
-            }
-            if let point = self.hoverPoint(), let window = visible {
-                self.sendHover(point, to: window)
-                window.contentView?.displayIfNeeded()
-            }
-            if let point = self.clickPoint(), let window = visible {
-                self.sendClick(point, to: window)
-                window.contentView?.displayIfNeeded()
-            }
-            if let typed = self.typedText(), let window = visible {
-                self.sendTyping(typed, to: window)
-                window.contentView?.displayIfNeeded()
-            }
-            guard let view = visible?.contentView,
-                let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-            else {
-                FileHandle.standardError.write(Data("capture: no visible window\n".utf8))
+        // A timer rather than a block on the main queue, and the difference
+        // matters: a main-queue block cannot be interrupted by another one, so
+        // anything the app defers with `DispatchQueue.main.async` — the map
+        // rebuilding its window of lines after a scroll — would never run
+        // before the shot, and the picture would show a state no reader ever
+        // sees. A timer fires from the run loop itself, so the nested run loop
+        // below drains that work first.
+        Timer.scheduledTimer(withTimeInterval: captureDelay(), repeats: false) { _ in
+            MainActor.assumeIsolated {
+                // The window a viewer would be looking at: the frontmost of the
+                // highest layer. A deck sits above the document window it was
+                // opened from, and a shot of the document behind it is a picture
+                // of the wrong thing — which is exactly what came out before this
+                // walked the layers instead of taking the first visible window.
+                var visible: NSWindow?
+                for window in NSApp.orderedWindows
+                where window.isVisible
+                    && (visible == nil || window.level.rawValue > visible!.level.rawValue)
+                {
+                    visible = window
+                }
+                if let offset = self.scrollOffset(), let window = visible {
+                    // Twice, with a turn of the run loop between: the first scroll
+                    // measures the blocks it lands on, which is what gives the
+                    // document its real height, and only then can the second one
+                    // reach the offset that was asked for.
+                    self.scroll(window, to: offset)
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                    self.scroll(window, to: offset)
+                    // And once more afterwards, so anything a scroll defers to the
+                    // next turn — the map's window of lines — is in the picture.
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                }
+                if let point = self.hoverPoint(), let window = visible {
+                    self.sendHover(point, to: window)
+                    window.contentView?.displayIfNeeded()
+                }
+                if let point = self.clickPoint(), let window = visible {
+                    self.sendClick(point, to: window)
+                    window.contentView?.displayIfNeeded()
+                }
+                if let typed = self.typedText(), let window = visible {
+                    self.sendTyping(typed, to: window)
+                    window.contentView?.displayIfNeeded()
+                }
+                guard let view = visible?.contentView,
+                    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+                else {
+                    FileHandle.standardError.write(Data("capture: no visible window\n".utf8))
+                    NSApp.terminate(nil)
+                    return
+                }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: url)
+                    print("captured \(Int(rep.size.width))x\(Int(rep.size.height)) -> \(url.path)")
+                }
                 NSApp.terminate(nil)
-                return
             }
-            view.cacheDisplay(in: view.bounds, to: rep)
-            if let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: url)
-                print("captured \(Int(rep.size.width))x\(Int(rep.size.height)) -> \(url.path)")
-            }
-            NSApp.terminate(nil)
         }
     }
 
