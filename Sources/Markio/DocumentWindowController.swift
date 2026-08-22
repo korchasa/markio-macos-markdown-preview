@@ -23,6 +23,8 @@ final class DocumentWindowController: NSWindowController {
     private let outline = OutlineSidebar()
     private let findBar = FindBar()
     private let mapStrip: DocumentMapStrip
+    /// Guards the one path that resizes the page and refits the column in it.
+    private var isSyncingWidth = false
     private let findEngine = FindEngine()
     private let widthSlider = NSSlider()
     private let widthLabel = NSTextField(labelWithString: "")
@@ -409,8 +411,15 @@ final class DocumentWindowController: NSWindowController {
     /// A column never gets wider than the pane holding it. Half a window is
     /// narrower than the reading width most people choose, and a column that does
     /// not fit is a column with its right-hand words cut off.
+    /// The width a column may actually take in a pane.
+    ///
+    /// For the pane the map sits over, the room is what the map leaves — not
+    /// the width of the clip view, which still runs underneath the strip. Fitted
+    /// to the clip view, a wide reading column ran past the map's left edge and
+    /// was cut off there, which is what a reader sees as text on the map.
     private func fitted(_ preferred: CGFloat, in pane: NSScrollView) -> CGFloat {
-        let room = pane.contentView.bounds.width - 48
+        let width = pane === scrollView ? availableReadingWidth : pane.contentView.bounds.width
+        let room = width - 48
         guard room > 200 else { return preferred }
         return min(preferred, room)
     }
@@ -843,14 +852,30 @@ final class DocumentWindowController: NSWindowController {
     /// the first. With the map away, the reading area still leaves the scroller
     /// its lane so a floating scroller has something other than text under it.
     fileprivate func syncDocumentWidth() {
-        let clip = scrollView.contentView
-        let available =
-            mapStrip.isHidden
-            ? clip.bounds.width - DocumentWindowController.scrollerLane
-            : mapStrip.convert(mapStrip.bounds, to: clip).minX
-        let width = max(120, available)
-        guard abs(documentView.frame.width - width) > 0.5 else { return }
+        let width = availableReadingWidth
+        guard abs(documentView.frame.width - width) > 0.5, !isSyncingWidth else { return }
+        isSyncingWidth = true
         documentView.setFrameSize(NSSize(width: width, height: documentView.frame.height))
+        // The column follows the page. A reading width is a preference, and a
+        // preference cannot be honoured past the edge of what there is to read
+        // on: without this the text kept the width it was asked for and was
+        // simply cut off where the map begins.
+        applyColumnWidth()
+        isSyncingWidth = false
+    }
+
+    /// How wide the reading area is, once the map and the scroller have taken
+    /// their part of the right edge.
+    private var availableReadingWidth: CGFloat {
+        let clip = scrollView.contentView
+        let lane = DocumentWindowController.scrollerLane
+        guard !mapStrip.isHidden else { return max(120, clip.bounds.width - lane) }
+        // Measured off the strip's own frame, so one arithmetic decides the
+        // edge — except before the first layout pass, when the strip has no
+        // frame yet and its declared width is the honest answer.
+        let edge = mapStrip.convert(mapStrip.bounds, to: clip).minX
+        let measured = edge > 1 ? edge : clip.bounds.width - DocumentMapStrip.width - lane
+        return max(120, measured)
     }
 
     /// A document shorter than the window has no shape worth drawing, so the

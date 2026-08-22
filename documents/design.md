@@ -1147,12 +1147,21 @@ landed first owns the walk, and the summary landed first.
 scroller's width short of its trailing edge, so the scroller draws to the right
 of the map instead of over it — the map is aimed at with the pointer, and it
 cannot be the one thing the scroller covers. What the map leaves is the reading
-area, and the document view is resized to it in `ReadingClipView.layout` rather
-than from a resize notification. Both halves of that were found the hard way:
-`contentInsets` shifts what can be scrolled to without narrowing the document
-view, so the text ran under the map on any document wide enough to reach it; and
-a notification arrives after the pass that moved the edge, which a store
-screenshot — drawn straight after layout — recorded as text at the old width.
+area, and it decides two widths, not one: the document view is resized to it in
+`ReadingClipView.layout`, and the reading column is fitted into it in `fitted`.
+Each of the three was wrong on its own at some point. `contentInsets` shifts
+what can be scrolled to without narrowing the document view, so the text ran
+under the map on any document wide enough to reach it. A resize notification
+arrives after the pass that moved the edge, which a store screenshot — drawn
+straight after layout — recorded as text at the old width. And a column fitted
+to the clip view, which runs on beneath the strip, reached past the map's left
+edge and was cut off there: 112 points of text on the map at the widest reading
+setting, which is what the reader saw and the geometry alone did not show.
+
+*The map is pale until it is used.* It is beside the page for as long as the
+document is open, and at full strength it competes with the words being read. It
+draws at a little over half strength, and the pointer entering the strip brings
+it back to full.
 
 `DocumentMapStrip` draws the text, then the comparison marks, then the find
 marks, then the reading rectangle. It grew out of the find overview, which was

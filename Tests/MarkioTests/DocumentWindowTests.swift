@@ -122,6 +122,42 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertGreaterThan(textFrame.width, 100, "the reading area is still the bulk of it")
     }
 
+    /// The widest reading column a reader can ask for still stops at the map.
+    ///
+    /// The column was fitted to the clip view, which runs on underneath the
+    /// strip, so a wide column reached past the map's left edge and was cut off
+    /// there — from a reader's chair, text running onto the map.
+    func testTheWidestColumnStillStopsAtTheMap() throws {
+        let saved = UserDefaults.standard.object(forKey: "readingWidthCharacters")
+        UserDefaults.standard.set(
+            Preferences.widthRange.upperBound, forKey: "readingWidthCharacters")
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: "readingWidthCharacters")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "readingWidthCharacters")
+            }
+        }
+
+        let text = (0..<300)
+            .map { "Paragraph \($0), long enough to take a line of its own." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        controller.showWindow(nil)
+        let root = try XCTUnwrap(controller.window?.contentView)
+        root.layoutSubtreeIfNeeded()
+
+        let map = try XCTUnwrap(mapStrip(in: root))
+        XCTAssertFalse(map.isHidden, "a document this long is what the map is for")
+        let scroller = try XCTUnwrap(documentScroller(in: root))
+        let page = try XCTUnwrap(scroller.documentView as? DocumentView)
+        // The column, where it is drawn, ends inside the page — and the page
+        // ends where the map begins, which the test above holds to.
+        XCTAssertLessThanOrEqual(page.contentX + page.layout.columnWidth, page.frame.width + 1)
+    }
+
     private func mapStrip(in view: NSView) -> DocumentMapStrip? {
         if let strip = view as? DocumentMapStrip { return strip }
         for child in view.subviews {

@@ -128,6 +128,31 @@ would have gone out to the store.
 Measured on the running app at the widest reading column: the text stops at
 1296.5 points, the map runs 1303 to 1423, and the scroller has 1423 to 1440.
 
+## Status — 2026-08-22, last: the column had to be fitted too, and the map faded
+
+The owner looked at the running build and said the text still ran onto the map.
+It did, and the measurement above is how it hid: the page had been narrowed, so
+the text ended at 1296.5 points — but it ended there because it was **cut off**
+at the edge of the page, not because it fitted. The reading column is fitted by
+`fitted`, and that was still measuring the clip view, which runs on underneath
+the strip. At the widest reading setting the column overshot the page by 112
+points, and every line long enough was clipped mid-word against the map.
+
+Two things follow, and both are now in the code:
+
+- The column is fitted to what the map leaves, not to the clip view, and the
+  page and the column are set in one place — resizing the page refits the
+  column, so a window drag, a map toggled away and a slider all agree.
+- A number that looks right is not a verification. Text ending 6 points short of
+  the map read as "it fits" when it meant "it is being cut here". The test now
+  asserts the column against the page (`testTheWidestColumnStillStopsAtTheMap`),
+  and without the fix it fails with 935 against 823.
+
+The owner also asked for a paler map, so it stops pulling the eye when nobody is
+using it. It draws at 0.55 of full strength, and the pointer entering the strip
+brings it back to full — the shapes are still readable at rest, which is all the
+map is for while the reader is reading.
+
 ## What it stands on
 
 Almost all of it exists; this is assembly, not new architecture.

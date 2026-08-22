@@ -53,6 +53,9 @@ final class DocumentMapStrip: NSView {
     private var theme: Theme
     private var dragging = false
     private var lastNamed = -1
+    /// The pointer is on the strip, so the reader is using it rather than
+    /// reading past it.
+    private var hovering = false
 
     init(theme: Theme) {
         self.theme = theme
@@ -113,10 +116,20 @@ final class DocumentMapStrip: NSView {
         drawReading(in: context)
     }
 
+    /// How strong the text on the map is when nobody is using the map.
+    ///
+    /// The strip is beside the page the whole time a document is open, and at
+    /// full strength it competes with the words the reader is actually reading.
+    /// Pale is enough to recognise a shape by; the pointer brings it back.
+    private static let restingStrength: CGFloat = 0.55
+
     /// The words of the document, gathered by colour so a screenful of lines is
     /// a handful of fills rather than one per word.
     private func drawText(in context: CGContext) {
         guard !rows.isEmpty else { return }
+        context.saveGState()
+        defer { context.restoreGState() }
+        context.setAlpha(hovering ? 1 : DocumentMapStrip.restingStrength)
         var byKind: [DocumentMap.Kind: [CGRect]] = [:]
         for (index, row) in rows.enumerated() where !row.isBlank {
             let y = CGFloat(index) * DocumentMapStrip.rowHeight
@@ -288,9 +301,16 @@ final class DocumentMapStrip: NSView {
         toolTip = row.ordinal >= 0 ? onName?(row.ordinal) : nil
     }
 
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        needsDisplay = true
+    }
+
     override func mouseExited(with event: NSEvent) {
+        hovering = false
         lastNamed = -1
         toolTip = nil
+        needsDisplay = true
     }
 
     override func resetCursorRects() {
