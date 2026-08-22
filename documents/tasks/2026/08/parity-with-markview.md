@@ -8,6 +8,24 @@ so this is a systematic sweep rather than a list of complaints.
 The old tree is read-only and has no remote — it is the sole copy of that
 history. Nothing here writes to it.
 
+## Status — 2026-08-22: the five gaps are closed, the manual checks are not
+
+Everything under "Genuinely missing" below shipped in `5bcfd3a`: `Close All`
+(⌥⌘W), the standard Edit items present and greyed out on a read-only document,
+`Compare…` back on ⇧⌘C, window tabs refused outright (`tabbingMode =
+.disallowed`), and `Side by Side` moved back under View beside the Table of
+Contents. `MenuTests` covers the shape of the menu, so a later edit cannot
+quietly drop an item again.
+
+Still open, and open on purpose:
+
+- **"To check on a running build"** is a list of things code cannot answer. They
+  need the app open in front of a person, and an accessibility pass for the menu
+  items.
+- **The corpus comparison** — one shared set of documents through both
+  renderers, differences read by eye — has not been made. It is the remaining
+  work on markdown coverage, and it needs the old tree, which is read-only.
+
 ## Where the old behaviour is written down
 
 Four sources, each catching a class the others miss. Together they are the

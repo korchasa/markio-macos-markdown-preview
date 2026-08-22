@@ -53,15 +53,37 @@ Markio reads. It never writes a file it opens.
 
 ## Reading it
 
-- **⌘O** open, **⌘W** close, **⌘⇧C** copy the document's path
+- **⌘O** open, **⌘W** close, **⌥⌘W** close every window, **⌘⇧C** copy the
+  document's path
 - **⌘F** find, **⌘G** / **⌘⇧G** next and previous match
-- **⌥⌘S** the table of contents — the heading tree, click to jump
+- **⌥⌘S** the table of contents — the heading tree, click to jump, with each
+  section's ticked-of-total beside it
+- **⌥⌘M** the map down the right edge: the shape of the whole document —
+  headings, code, tables, diagrams and pictures in their own colours, the find
+  matches and the changed blocks on the same strip, and a rectangle showing
+  where you are. Click to go there, drag to scroll, hover to see which section
+  it is
+- **⌥⌘F** focus: fold the document down to the section you are reading, keeping
+  every heading, so the file reads as its own table of contents with one part
+  open
+- **⌥⌘P** presentation: the document a screenful at a time, split where the
+  author split it — on their thematic breaks, or failing that on their headings
+- **⇧⌘E** export as PDF, **⌘P** print — real glyphs and vector diagrams, not a
+  picture of the window
 - **⌘+** / **⌘−** reading column width, also on the slider in the bottom bar
-- Select text with the mouse, **⌘A** select all, **⌘C** copy
+- Select text with the mouse, **⌘A** select all, **⌘C** copy — with its styles
+  where they are wanted, and as plain text everywhere else
 - Click a link to open it; light and dark follow the system
 - Drop a Markdown file on a window to open it
-- While searching, the strip at the right edge shows where the matches are;
-  click one to go there
+- A file path a report names — `Sources/Markio/main.swift:42` — is a link when
+  the file is really there, and opens at that line in your editor
+- Click a table's header to sort by it, again to reverse it, and a third time
+  to get the author's order back; type in its filter row to keep the rows that
+  match. The header stays put while the rows scroll, and the file is never
+  touched
+- The bottom bar says what the document says about itself: how many of its
+  boxes are ticked, how long it takes to read, how many open questions it still
+  carries
 - Hover a code block for its language and a Copy button; a diagram also offers
   Copy PNG, and clicking one shows it large over the window
 - Click a footnote's marker to jump to the note
@@ -107,9 +129,12 @@ without a screen:
 ```
 
 Add `--capture-hover=<x>,<y>` to park the pointer first, for the controls that
-only appear under it, or `--capture-click=<x>,<y>` for what only a click shows.
-`--compare=<path>` (with `--side-by-side`) captures a comparison without a hand
-on the mouse. The bench harness renders offscreen, and takes a baseline
+only appear under it, `--capture-click=<x>,<y>` for what only a click shows,
+`--capture-type=<text>` to type into whatever that click focused, or
+`--capture-scroll=<points>` for what only appears once a document has been
+scrolled. `--compare=<path>` (with `--side-by-side`) captures a comparison
+without a hand on the mouse, `--present [--slide=<n>]` opens the deck, and
+`--export-pdf=<path>` writes the PDF and quits. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 
 ```bash

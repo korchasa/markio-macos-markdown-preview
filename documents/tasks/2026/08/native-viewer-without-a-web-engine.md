@@ -2,6 +2,27 @@
 
 **2026-08-08**
 
+## Status — 2026-08-22: built, and three of the four "Not done" items are done
+
+The app described here exists and is the one being shipped. What changed since
+this file was written, in the order it appears under "Not done" at the end:
+
+- **Diagrams and typeset mathematics are in.** Both turned out to be worth
+  writing rather than importing: `Mermaid*.swift` draws the diagram kinds an
+  agent's report uses, and `MathLayout`/`MathFormula` typeset formulas with
+  CoreText. That is most of the render target by line count.
+- **The compare view has a side-by-side layout.** Two panes, two scrollers kept
+  in step, switched by which constraint holds the main pane's leading edge.
+- **Window restoration is still unconfirmed** on this machine, for the same
+  reason: it has no saved application state for any app.
+- **Signing, packaging and release happen outside this repository**, and that
+  is arranged. Nothing about it lives here.
+
+Two waves of work landed on top of this foundation and have task files of their
+own: the six reader tools (`reader-tools-wave.md`) and the map down the right
+edge (`document-map-strip.md`). The parity sweep against the old web
+implementation is `parity-with-markview.md`.
+
 ## Goal
 
 Build a separate, independent Markdown viewer, using Markio only as a

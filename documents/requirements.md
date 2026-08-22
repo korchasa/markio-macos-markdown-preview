@@ -263,6 +263,54 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   until that would make it more than eight thousand pixels across, and records
   the resolution it settled on, so a viewer's full size is the size the diagram
   was drawn at either way.
+- **VIEW-30** Focus (⌥⌘F) folds the document down to the section the reader is
+  in: every heading stays, everything outside that section takes no room, and
+  clicking a heading moves the focus to it. Nothing is dropped — find, copy and
+  the outline still see the folded text — and folding again brings the document
+  back as it was.
+- **VIEW-31** Presentation (⌥⌘P) shows the document a screenful at a time, full
+  screen, split where the author split it: on their thematic breaks, or failing
+  those on the shallowest heading level that divides the document more than
+  once. A document with neither is not a deck, and the app says so rather than
+  cutting the text into screen-sized pieces nobody chose. Arrow keys and Escape
+  move and leave; each slide is scaled to fit rather than laid out again.
+- **VIEW-32** Export as PDF (⇧⌘E) and Print (⌘P) write the document as pages of
+  real glyphs and vector diagrams, not a picture of the window. Pages break
+  between lines rather than through them, at a light theme and the page's own
+  width — what is on screen belongs to the reader's eyes and the window they
+  chose, and neither is a property of the document.
+- **VIEW-33** A file path a document names — with or without a line number — is
+  a link when that file exists beside the document, and opens there at that line
+  in the editor the reader chose. A path that names nothing stays plain text, so
+  a link never goes nowhere.
+- **VIEW-34** A table can be sorted by clicking a column header, reversed by
+  clicking it again, and put back into the author's order by a third click; a
+  filter row keeps the rows that match what is typed into it; the header stays
+  in view while the rows scroll under it. None of this touches the file: it is
+  state on the window, like the zoom, and a filtered-away row is still found by
+  find. A table with a merged cell keeps its header inert rather than sorting
+  wrongly, and a printed page or a slide gets the table with no filter row.
+- **VIEW-35** The bottom bar says what the document says about itself: how many
+  of its task boxes are ticked out of how many, how long it takes to read at a
+  stated rate, and how many open questions — `TODO` and `FIXME` markers, and
+  nothing else — it still carries. The outline shows the same counts per
+  heading. The count runs off the main thread and shows its figures settling
+  rather than delaying the first window.
+- **VIEW-36** Copy puts the selection on the pasteboard twice: with its styles,
+  for an application that can keep them, and as plain text, character for
+  character what it has always been.
+- **VIEW-37** A map (⌥⌘M) down the right edge shows the shape of the whole
+  document — headings, code, tables, diagrams, pictures, quotes and lists in
+  colours derived from the palette — with the find matches, the blocks a
+  comparison changed, and a rectangle showing where the reader is drawn as
+  layers on the same strip. Clicking a find mark selects that match, clicking
+  elsewhere goes there, dragging scrolls, and hovering names the section. It
+  costs one byte per block and is hidden on a document shorter than the window.
+  Its visibility persists.
+- **VIEW-38** The menu bar carries what a macOS reader expects of it: Close All
+  (⌥⌘W), the standard Edit items present and disabled on a document that cannot
+  be edited, and Compare… on ⇧⌘C. Window tabbing is refused outright, because
+  one window per document is what the app is.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
   older version on the left with what it lost, the current file on the right
   with what it gained. The two scroll together. Find, the outline and every

@@ -215,6 +215,31 @@ The caller then shows the source, which is never wrong, only unhelpful. This is
 not a step towards an HTML engine: it exists because an author who needs a
 merged cell has no other way to write one.
 
+### Rearranging a table
+
+Sorting and filtering happen on the way into the layout, in `layoutGrid`:
+`TableArrangement` is applied to the `HTMLTable` before a single cell is
+measured, so the document keeps the order its author wrote and only the picture
+of it changes. The arrangement is held per leaf on `BlockLayoutEngine` and
+reached through `DocumentLayout`, beside the other state that belongs to a
+window rather than to a file. Changing one drops that block's box and its
+height, exactly as opening a `<details>` section does.
+
+Sorting is stable and numeric-aware — a column of `40 min`, `$12` and `1,024`
+sorts as numbers, or 10 comes before 9 — and a table with a merged cell reports
+`canRearrange == false` and is left alone: moving one of its rows would move
+text that belongs to a neighbour.
+
+The filter row is drawn between the header and the body by shifting every row
+below it down by its own height, so the cells measured above it need no
+re-measuring. Its text is a decoration, not content: the segment carries
+`textOffset: -1`, which is what keeps find and copy from seeing a word the
+document never said. `BlockBox.TableRegion` records the table's frame, its
+header cells and its filter row in block coordinates, which is all the view
+needs to hit-test a click and to draw the header again over a table that has
+scrolled half off the top — `DocumentView.stickyHeaderStrip` decides where that
+goes, and draws it by drawing the whole table clipped to one strip.
+
 ### Formulas
 
 `MathParser` reads the source between the dollars into a small tree — rows,
@@ -1058,6 +1083,63 @@ is a path of short segments rather than a sixth case every renderer would have
 to honour. The block types nothing: the fence's own text stays the block's
 plain text, which keeps the diagram findable and copyable as the source its
 author wrote.
+
+### Pages, slides and focus
+
+Three ways of showing the same layout, none of them a second renderer.
+
+`PageLayout` walks the blocks in order and cuts where a page ends, at a line
+boundary inside a block rather than through a line; `PDFExport` draws each slice
+with `DocumentRenderer.draw` into a PDF context, which is what makes the text
+real glyphs and the diagrams vector paths. It lays out one block at a time so
+the box cache's eviction still bounds memory on a document nobody could hold at
+once. `PrintableDocument` is the same drawing behind `NSView`, so Print and
+Export are one path.
+
+`Slides.split` answers where a deck breaks — the author's thematic breaks if
+there are any, otherwise the shallowest heading level that divides the document
+more than once — and returns an empty list for a document that is not a deck.
+`PresentationWindow` shows one range at a time and scales it to fit rather than
+laying it out again at another width.
+
+Focus is the disclosure machinery pointed at headings: `DocumentLayout.setFocus`
+adds the folded ranges to the same sorted `hidden` list a closed `<details>`
+uses, keeping every heading visible. Nothing is dropped, so find, copy and the
+outline are unaffected, and the blocks that are folded away simply have no
+height.
+
+### The map down the right edge
+
+`DocumentMap` is arithmetic over the flat block array and the heights the layout
+already keeps, with no AppKit in it. `classify` answers what one leaf is from
+`kind`, `level` and `info` alone — a Mermaid fence by its info string, a picture
+by a leaf whose first bytes past the container scaffolding are `![` — and the
+result is one byte per leaf. `bins` turns those bytes into one entry per row of
+the strip, each naming what fills it and flagging what else landed there, with
+prose counted at half because prose is the background a reader scans past.
+
+Two decisions are load-bearing. The axis is document height rather than byte
+offset, so a click on the map lands where the scrollbar beside it says it will.
+And the classification rides on the walk `DocumentSummary` already makes, rather
+than starting a second pass over half a million blocks: whichever of the two
+landed first owns the walk, and the summary landed first.
+
+`DocumentMapStrip` draws the structure, then the comparison marks, then the find
+marks, then the reading rectangle. It grew out of the find overview, which was
+the third of those layers all along. The controller rebins at most once a turn
+of the run loop and only when the document's height has moved by more than a row
+of the strip is worth — every block scrolled into view replaces an estimate, and
+rebinning on each one would be a full pass over the class array per block.
+
+### Copying with styles
+
+`RichText` translates the CoreText attributes a box already carries into the
+AppKit ones RTF wants — the font key is the same string, the colour key is not,
+and its value is a `CGColor` where AppKit wants an `NSColor`. A link's
+destination is set on the attributed text when it is built, which CoreText
+ignores and the RTF writer does not. The plain flavour is written exactly as
+before, separators between table cells included, because a rich paste is an
+addition and nothing that pastes today may paste differently.
 
 ### Comparing versions
 

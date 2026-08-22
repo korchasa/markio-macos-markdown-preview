@@ -20,6 +20,40 @@ the six reader tools do — it makes reading a large document better rather than
 making the app a different kind of product — so it goes after that wave, and
 it shares one piece of machinery with it (see "Ordering" below).
 
+## Status — 2026-08-22: shipped (`e41a9fd`)
+
+The strip is there on open, in both appearances, and hides itself on a document
+shorter than the window. Structure, comparison marks, find marks and the
+reading rectangle are four layers on one strip; `FindOverview` is gone as a view
+of its own and find behaves as it did. A click on a find mark still selects that
+match, a click anywhere else goes to that part of the document, a drag scrolls
+it, and hovering names the section. ⌥⌘M and the View menu hide and show it, and
+the choice is remembered.
+
+The Ordering section below was followed: the summary walk owns the pass and
+publishes the classes, so nothing walks the block array a second time. The cost
+is one byte per leaf — 0.2 MB on the 32 MB document the bench generates — and
+the bench itself is unchanged, because it measures parsing and structure and
+never opens a window.
+
+Two things to know that the plan did not say:
+
+- **A Mermaid fence is classified by its info string alone.** The layout also
+  asks whether the diagram parses; the map does not, because reading every fence
+  in the document to colour a strip 14 points wide costs more than the strip is
+  worth. A fence that says `mermaid` and does not parse therefore shows on the
+  map as a diagram and on the page as a fence.
+- **A row is named by whatever fills most of it, with prose counted at half.**
+  Prose is the background a reader scans past, so where a row holds both, the
+  other one is the informative answer. Anything else that landed in the row
+  keeps a bit in the row's flag set, and a diagram, table or picture also gets a
+  dash of its own colour — which is what keeps one picture visible in a
+  thousand screens of prose.
+
+Left undone on purpose: the hover tip names the section but does not preview it,
+and the strip is not drawn in the Quick Look extension, which has no scroll view
+to pin it beside.
+
 ## What it stands on
 
 Almost all of it exists; this is assembly, not new architecture.

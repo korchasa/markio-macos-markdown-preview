@@ -12,6 +12,38 @@ line of code it names, prints it as a vector PDF and shows it as a deck is not
 the same product as a Markdown previewer. That is the argument these six make
 together, and it is a better answer to 4.3(a) than any single one of them.
 
+## Status — 2026-08-22: all six shipped
+
+Every feature in this file is built, tested and proved by a picture of the
+running app. The gate below was cleared first, since two of the six needed it.
+
+- The gate — the sandbox reaches the document's folder: **done** (`0451580`).
+- 1. Clickable code paths: **done** (`4aeae16`). A path renders as a link only
+  when the file is really there, and opens in the editor the reader chose.
+- 2. Vector PDF export and print: **done** (`5a799c5`). ⇧⌘E writes real glyphs
+  and vector diagrams, and `--export-pdf=<path>` proves it without a panel.
+- 3. Presentation: **done** (`b2293ee`). ⌥⌘P opens the deck, and `--present
+  --slide=N` was added so a slide could be captured and looked at. Focus:
+  **done** (`e61a0c8`) — ⌥⌘F folds the document to one section, keeping every
+  heading, and the headings move the reader between sections.
+- 4. Tables you can sort and filter: **done** (`fa1c2fb`). Header sorts,
+  re-click reverses, a third click restores the author's order; the filter row
+  hides rows and find still reaches them; the header pins while the rows
+  scroll; a merged cell refuses to sort.
+- 5. A document summary in the bottom bar: **done** (`2c69419`). Ticked boxes,
+  reading time at a stated rate, open questions, and the same counts per
+  section in the outline.
+- 6. Copy with formatting: **done, step one** (`51eee01`). Styled text,
+  headings, code spans, lists and links paste with their styles; plain text is
+  unchanged, character for character. Step two — tables as `NSTextTable` and
+  diagrams as images — was deliberately left, as this file proposed.
+
+One correction to what is written below. Section 5 says `BlockFlags` carries
+`.task` and `.taskChecked` "set during the scan": the two flags are declared
+and never set, so the count reads the checkbox out of the text of a paragraph
+that heads a list item, which is the cheap test that keeps it from reading
+every block.
+
 ## The gate: the sandbox reaches the document and nothing beside it
 
 **Two of the five need a file the reader did not open, and today the app cannot
@@ -66,6 +98,8 @@ image defect is worth fixing on its own.
 
 ## 1. Clickable code paths (high)
 
+**Done — `4aeae16`.**
+
 An agent's report is full of `Sources/MarkioRender/Mermaid.swift:214`, and today
 that is inert text. Recognise it, and a click opens the file at that line in the
 editor that owns it.
@@ -111,6 +145,8 @@ Cost: two to three sessions, the editor preference included.
 
 ## 2. Vector PDF export and print (high)
 
+**Done — `5a799c5`.**
+
 `DocumentRenderer` already draws through one path for the screen and the
 offscreen PNG. A `CGPDFContext` is a third caller of the same code, and because
 CoreText draws real glyphs and Mermaid draws `CGPath`s, the result is a PDF
@@ -147,6 +183,8 @@ Cost: two to three sessions, most of it pagination.
 
 ## 3. Presentation mode and focus mode (high)
 
+**Done — `b2293ee` (presentation) and `e61a0c8` (focus).**
+
 Two ways of reading the same document, sharing one idea: show less of it.
 
 **Focus** collapses every section but the one the reader is in, by heading.
@@ -177,6 +215,8 @@ Cost: focus, half a session to one. Presentation, two.
 
 ## 4. Tables you can sort and filter (medium)
 
+**Done — `fa1c2fb`.**
+
 Click a column header to sort, type in a filter row to keep the rows that match,
 and the header stays put while the rows scroll. The file is never touched — this
 is state on the window, like zoom or the scroll position, and it must not be
@@ -203,6 +243,8 @@ to sort.
 Cost: one and a half to two sessions.
 
 ## 5. A document summary in the bottom bar (medium)
+
+**Done — `2c69419`.**
 
 The first question anyone asks of an agent's report is whether the work is
 finished, and the document already answers it — in checkboxes nobody counts.
@@ -247,6 +289,9 @@ Cost: one session, most of it in the background counting rather than the
 display.
 
 ## 6. Copy with formatting (low)
+
+**Done, step one — `51eee01`.** Tables and diagrams as rich objects are
+still the second step, and still optional.
 
 Copy a selection and paste it into Mail, Slack or Notes with its styles intact.
 The pieces are there: each `BlockBox.Segment` holds an `NSAttributedString`, so
