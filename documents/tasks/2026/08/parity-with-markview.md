@@ -56,11 +56,28 @@ windows come back after a quit (macOS restores them, and a launch that must
 show one document needs `-ApplePersistenceIgnoreState YES`); an anchor link
 scrolls this document (clicked offscreen, the target came into view).
 
-Two things a machine still cannot settle here. **Menu enablement** needs the
-app frontmost, and this environment refuses to let it come forward: every
-document command then validates as disabled, which reads as a broken menu. The
-dump says so in its first line now — `active=false` means its verdicts are
-worthless. And an **external link** was left alone on purpose: verifying it
+**Menu enablement is settled too, and it was hiding a fourth defect.** The
+owner said Open… was greyed out in the running app; a dump taken from an
+inactive one had been read as inconclusive, because an inactive app has no key
+window and every document command validates as disabled. It was real. The
+document controller answered `documentClassNames` with `MarkdownDocument`, and
+no such class exists as far as the Objective-C runtime is concerned — a Swift
+class is `Markio.MarkdownDocument` — so AppKit found nothing, concluded the app
+could open no kind of document, and disabled the command. Opening from Finder
+went on working the whole time, because that path reads the plist. The
+controller names no class now; `packaging/Info.plist` is the one place it is
+named.
+
+With the app frontmost the File menu resolves completely: Open…, Compare…,
+Export as PDF, Print, Copy File Path and Close all enabled, Stop Comparing
+correctly not. **So the suspicion about `Copy File Path` and `Close` was
+unfounded** — the fault was one item further up. In the Edit menu, Copy and
+Select All are enabled and Cut, Paste, Delete, Undo and Redo are not, which is
+what a read-only viewer should show. The repeated Start Dictation and Emoji &
+Symbols entries are macOS's own variants for different keyboards, all but one
+hidden; the dump marks them.
+
+One thing was left alone on purpose: an **external link**, because verifying it
 means opening a browser.
 
 One observation, not a defect: an anchor jump reveals its target rather than
@@ -143,11 +160,9 @@ never enabled.
 Code cannot answer these; they need the app open and, for the menu items, an
 accessibility pass like the one the old `menu.md` describes.
 
-- **Open.** Whether `Copy File Path` and `Close` are enabled when a document
-  window is key. Both are routed through the responder chain, so a chain that
-  does not reach `DocumentWindowController` leaves a visible item that does
-  nothing. `--dump-menu` answers this in one line, but only from an app that is
-  frontmost, and this session cannot bring one forward.
+- **Done.** Menu enablement, from a dump of an app that was frontmost: the
+  whole File menu resolves, and the item that was actually broken was Open…,
+  not the two this list suspected.
 - **Done.** Menu order and separators, and no duplicate items: the File menu
   carried two Open Recents and now carries one.
 - **Done.** Opening a file that is already open reuses it — `OpenAgainTests`.
