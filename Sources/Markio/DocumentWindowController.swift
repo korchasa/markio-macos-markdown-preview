@@ -804,9 +804,13 @@ final class DocumentWindowController: NSWindowController {
 
     /// A document shorter than the window has no shape worth drawing, so the
     /// strip stays away rather than decorating the edge.
+    ///
+    /// Find is the exception in both directions: while there are matches the
+    /// strip is there to show where they are, even on a short document and even
+    /// with the map turned off, which is what it did before the map existed.
     private func refreshMapVisibility() {
         let tall = documentView.documentHeight > scrollView.contentView.bounds.height + 8
-        mapStrip.isHidden = !(Preferences.mapVisible && tall)
+        mapStrip.isHidden = !((Preferences.mapVisible && tall) || !findMatches.isEmpty)
     }
 
     /// Rebin at most once a turn of the run loop, and only when the document's
@@ -975,6 +979,7 @@ final class DocumentWindowController: NSWindowController {
         currentMatch = -1
         documentView.setFindMatches([], current: -1)
         mapStrip.setMarks([], current: -1)
+        scheduleRebin()
         window?.makeFirstResponder(documentView)
     }
 
@@ -984,6 +989,7 @@ final class DocumentWindowController: NSWindowController {
             currentMatch = -1
             documentView.setFindMatches([], current: -1)
             mapStrip.setMarks([], current: -1)
+            scheduleRebin()
             findBar.setCounter(current: 0, total: 0)
             return
         }
@@ -1012,11 +1018,13 @@ final class DocumentWindowController: NSWindowController {
     private func updateFindOverview() {
         guard !findMatches.isEmpty else {
             mapStrip.setMarks([], current: -1)
+            scheduleRebin()
             return
         }
         let total = max(1, layout.totalHeight)
         let marks = findMatches.map { layout.offset(of: $0.ordinal) / total }
         mapStrip.setMarks(marks, current: currentMatch)
+        scheduleRebin()
     }
 
     private func jumpToMatch(_ index: Int) {
