@@ -86,6 +86,50 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(Preferences.scrollPosition(for: url)), 1500, accuracy: 1)
     }
 
+    /// The map has a lane of its own: the scroller to the right of it, the text
+    /// to the left, and neither underneath it.
+    ///
+    /// Both halves were wrong at once. The strip was pinned to the trailing
+    /// edge of the scroll view, where the scroller draws, so it covered the
+    /// scroller; and the reading area was told about the strip through
+    /// `contentInsets`, which shifts what can be scrolled to without narrowing
+    /// the document view — so a document wide enough ran its text under the map.
+    func testTheMapTakesALaneOfItsOwnBesideTheScroller() throws {
+        let text = (0..<300)
+            .map { "Paragraph \($0), long enough to take a line of its own." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        controller.showWindow(nil)
+        let root = try XCTUnwrap(controller.window?.contentView)
+        root.layoutSubtreeIfNeeded()
+
+        let scroller = try XCTUnwrap(documentScroller(in: root))
+        let map = try XCTUnwrap(mapStrip(in: root))
+        let documentView = try XCTUnwrap(scroller.documentView)
+        XCTAssertFalse(map.isHidden, "a document this long is what the map is for")
+
+        let mapFrame = map.convert(map.bounds, to: root)
+        let scrollFrame = scroller.convert(scroller.bounds, to: root)
+        let textFrame = documentView.convert(documentView.bounds, to: root)
+
+        // A scroller's width of clear space between the map and the edge.
+        XCTAssertEqual(
+            scrollFrame.maxX - mapFrame.maxX, DocumentWindowController.scrollerLane, accuracy: 1)
+        // And the text stops where the map starts, however wide the window is.
+        XCTAssertLessThanOrEqual(textFrame.maxX, mapFrame.minX + 1)
+        XCTAssertGreaterThan(textFrame.width, 100, "the reading area is still the bulk of it")
+    }
+
+    private func mapStrip(in view: NSView) -> DocumentMapStrip? {
+        if let strip = view as? DocumentMapStrip { return strip }
+        for child in view.subviews {
+            if let found = mapStrip(in: child) { return found }
+        }
+        return nil
+    }
+
     private func window() throws -> NSWindow {
         try XCTUnwrap(try controller().window)
     }

@@ -124,11 +124,15 @@ final class DocumentWindowController: NSWindowController {
         scrollView.drawsBackground = true
         scrollView.backgroundColor =
             NSColor(cgColor: layout.theme.palette.background) ?? .textBackgroundColor
-        // The reading column is a fixed number of characters wide, so the view
-        // has to span the whole scroll area — otherwise there is nothing for
-        // `DocumentView.contentX` to centre the column inside and the text sits
-        // against the left edge.
-        documentView.autoresizingMask = [.width]
+        // The document view's width is set by hand rather than by the clip
+        // view, because the map takes a strip off the right of the reading area
+        // and `contentInsets` does not shrink the document view — it only
+        // shifts what can be scrolled to. Left to the clip view, the text ran
+        // under the map on any document wide enough to reach it.
+        documentView.autoresizingMask = []
+        let clip = ReadingClipView()
+        clip.onLayout = { [weak self] in self?.syncDocumentWidth() }
+        scrollView.contentView = clip
         scrollView.documentView = documentView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
@@ -185,7 +189,12 @@ final class DocumentWindowController: NSWindowController {
             scrollView.topAnchor.constraint(equalTo: container.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
-            mapStrip.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            // A lane for the scroller to the right of the map. The scroller
+            // belongs to the scroll view and draws at its trailing edge, so the
+            // map has to stop short of it or one covers the other.
+            mapStrip.trailingAnchor.constraint(
+                equalTo: scrollView.trailingAnchor,
+                constant: -DocumentWindowController.scrollerLane),
             mapStrip.topAnchor.constraint(equalTo: scrollView.topAnchor),
             mapStrip.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             mapStrip.widthAnchor.constraint(equalToConstant: DocumentMapStrip.width),
@@ -240,12 +249,7 @@ final class DocumentWindowController: NSWindowController {
 
         setSidebarVisible(Preferences.outlineVisible, animated: false)
         findBar.isHidden = true
-        // The text keeps its distance from the strip rather than running under
-        // it — the overlay scroller already floats there, and a permanent strip
-        // makes that permanent.
         scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentInsets = NSEdgeInsets(
-            top: 0, left: 0, bottom: 0, right: DocumentMapStrip.width)
         setMapVisible(Preferences.mapVisible)
 
         documentView.onActivateLink = { [weak self] link in self?.open(link: link) }
@@ -819,10 +823,34 @@ final class DocumentWindowController: NSWindowController {
 
     private func setMapVisible(_ visible: Bool) {
         Preferences.mapVisible = visible
-        scrollView.contentInsets = NSEdgeInsets(
-            top: 0, left: 0, bottom: 0, right: visible ? DocumentMapStrip.width : 0)
         refreshMapVisibility()
         if visible { scheduleRebin() }
+    }
+
+    /// The lane the scroller draws in, which the map is kept out of.
+    ///
+    /// A floating scroller takes no column of its own, so without this it would
+    /// be drawn over whatever is at the trailing edge — the map, which is the
+    /// one thing on the strip a reader aims the pointer at.
+    static let scrollerLane = NSScroller.scrollerWidth(
+        for: .regular, scrollerStyle: .legacy)
+
+    /// Keep the reading area clear of the map.
+    ///
+    /// The width is measured off the map's own frame rather than worked out
+    /// from constants: the strip is laid out by constraints, and a second
+    /// arithmetic for the same edge is a second answer waiting to disagree with
+    /// the first. With the map away, the reading area still leaves the scroller
+    /// its lane so a floating scroller has something other than text under it.
+    fileprivate func syncDocumentWidth() {
+        let clip = scrollView.contentView
+        let available =
+            mapStrip.isHidden
+            ? clip.bounds.width - DocumentWindowController.scrollerLane
+            : mapStrip.convert(mapStrip.bounds, to: clip).minX
+        let width = max(120, available)
+        guard abs(documentView.frame.width - width) > 0.5 else { return }
+        documentView.setFrameSize(NSSize(width: width, height: documentView.frame.height))
     }
 
     /// A document shorter than the window has no shape worth drawing, so the
@@ -834,6 +862,7 @@ final class DocumentWindowController: NSWindowController {
     private func refreshMapVisibility() {
         let tall = documentView.documentHeight > scrollView.contentView.bounds.height + 8
         mapStrip.isHidden = !((Preferences.mapVisible && tall) || !findMatches.isEmpty)
+        syncDocumentWidth()
     }
 
     /// Redraw the map at most once a turn of the run loop.
@@ -1224,5 +1253,21 @@ extension DocumentWindowController: NSMenuItemValidation {
 extension NSAppearance {
     var isDark: Bool {
         bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+}
+
+/// The clip view holding the document, which narrows the document to whatever
+/// the map has left of the reading area.
+///
+/// It has to happen here rather than on a resize notification. A notification
+/// arrives after the pass that moved the edge, so anything drawn in between —
+/// a store screenshot above all, which is drawn straight after layout — shows
+/// the text at the width it had before the edge moved.
+private final class ReadingClipView: NSClipView {
+    var onLayout: (() -> Void)?
+
+    override func layout() {
+        super.layout()
+        onLayout?()
     }
 }

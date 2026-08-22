@@ -111,8 +111,6 @@ final class DocumentMapStrip: NSView {
         drawChanges(in: context)
         drawMarks(in: context)
         drawReading(in: context)
-        context.setFillColor(NSColor.separatorColor.withAlphaComponent(0.6).cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: 1, height: bounds.height))
     }
 
     /// The words of the document, gathered by colour so a screenful of lines is

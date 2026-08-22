@@ -99,6 +99,35 @@ Worth knowing outside this repository: the store screenshots are shots of the
 whole window, so they now show a 120-point minimap and need regenerating before
 the next submission.
 
+## Status — 2026-08-22, later still: the map got a lane of its own
+
+Three things were wrong with where the strip sat, all reported from the running
+app, and all now fixed and covered by
+`testTheMapTakesALaneOfItsOwnBesideTheScroller`:
+
+- **The scrollbar belongs to the right of the map.** The strip was pinned to the
+  trailing edge of the scroll view, which is where the scroller draws, so one
+  covered the other. It now stops a scroller's width short of that edge, and the
+  scroller has the lane past it to itself.
+- **There is no line down the left of the map.** The strip drew a one-point
+  separator there; against the map's own background it read as a black stripe,
+  and the edge of the text is enough on its own.
+- **The reading area now counts the map.** It was told about the strip through
+  `contentInsets`, which shifts what can be scrolled to without narrowing the
+  document view — so on a document wide enough the text ran under the map. The
+  document view is now sized to what the map leaves, measured off the strip's own
+  frame.
+
+The width is set in `ReadingClipView.layout`, and the first attempt at it — a
+resize notification — is worth recording as a trap. The notification arrives
+after the layout pass that moved the edge, so anything drawn in between shows
+the old width; that surfaced as two offscreen snapshots of one document coming
+out different sizes in a single run, which is exactly the kind of picture that
+would have gone out to the store.
+
+Measured on the running app at the widest reading column: the text stops at
+1296.5 points, the map runs 1303 to 1423, and the scroller has 1423 to 1440.
+
 ## What it stands on
 
 Almost all of it exists; this is assembly, not new architecture.
