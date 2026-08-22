@@ -119,7 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 " {\(menu.identifier?.rawValue ?? "-") via \(owner): "
                 + "\(titles.joined(separator: ", "))}"
         }
-        return "  \(item.isEnabled ? "on " : "off ")\(item.title)\(key)\(target)\(submenu)\n"
+        let hidden = item.isHidden ? " hidden" : ""
+        return "  \(item.isEnabled ? "on " : "off ")\(item.title)\(key)\(target)\(submenu)"
+            + "\(hidden)\n"
     }
 
     private static func shortcut(for item: NSMenuItem) -> String {
@@ -556,13 +558,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 /// A document controller that never offers to create a new document: Markio
 /// reads Markdown, it does not write it.
 ///
-/// The type lookups stay `nonisolated`: they return a metatype and a constant,
-/// touch no state, and AppKit is free to ask for them from whichever queue it
-/// happens to be on.
+/// It does not name its document class either. It used to, and the name it
+/// gave — `MarkdownDocument` — is not a name AppKit can resolve: a Swift class
+/// is `Markio.MarkdownDocument` to the Objective-C runtime, so `documentClassNames`
+/// answered with something that looked up to nothing, AppKit concluded the app
+/// could open no kind of document, and **Open… sat greyed out in the File
+/// menu**. The one place that names the class is `packaging/Info.plist`, where
+/// it has been right all along; two places naming it is what made a
+/// disagreement possible.
+///
+/// The type lookup stays `nonisolated`: it returns a metatype, touches no
+/// state, and AppKit is free to ask for it from whichever queue it happens to
+/// be on.
 final class MarkdownDocumentController: NSDocumentController {
     override func newDocument(_ sender: Any?) {}
-
-    nonisolated override var documentClassNames: [String] { ["MarkdownDocument"] }
 
     nonisolated override func documentClass(forType typeName: String) -> AnyClass? {
         MarkdownDocument.self
