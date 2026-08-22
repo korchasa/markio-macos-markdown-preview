@@ -2,6 +2,7 @@ import AppKit
 import XCTest
 
 @testable import Markio
+@testable import MarkioRender
 
 /// The document window itself: how big it opens, and what a drag on its edge is
 /// allowed to do to it.
@@ -35,6 +36,54 @@ final class DocumentWindowTests: XCTestCase {
             from: Data("# One\n\nTwo paragraphs, so there is something to lay out.\n".utf8),
             ofType: "net.daringfireball.markdown")
         return DocumentWindowController(document: document)
+    }
+
+    /// The scroller holding the document, found the way the app's own capture
+    /// harness finds it: the one whose document view is the document.
+    private func documentScroller(in view: NSView) -> NSScrollView? {
+        if let scroller = view as? NSScrollView, scroller.documentView is DocumentView,
+            !scroller.isHidden
+        {
+            return scroller
+        }
+        for child in view.subviews {
+            if let found = documentScroller(in: child) { return found }
+        }
+        return nil
+    }
+
+    /// Coming back to a document opens it where it was left.
+    ///
+    /// The restore has two parts and both were wrong at once: the scroll went
+    /// through the document view, which does nothing before it has drawn, and
+    /// the position was saved again the moment the window appeared — at the top
+    /// — so one failed restore erased the memory for good.
+    func testAReaderComesBackToWhereTheyLeftTheDocument() throws {
+        let url = URL(fileURLWithPath: "/tmp/markio-restore-\(UUID().uuidString).md")
+        let text = (0..<300)
+            .map { "Paragraph \($0), long enough to take a line of its own." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        document.fileURL = url
+        Preferences.setScrollPosition(1500, for: url)
+
+        let controller = DocumentWindowController(document: document)
+        controller.showWindow(nil)
+
+        let root = try XCTUnwrap(controller.window?.contentView)
+        let scroller = try XCTUnwrap(documentScroller(in: root))
+        // Straight away: the scroll goes through the clip view, which needs no
+        // drawn document view. Asking the document view to scroll itself does
+        // nothing at all before it has drawn, and that is what left every
+        // reader at the first line.
+        XCTAssertEqual(scroller.contentView.bounds.minY, 1500, accuracy: 1)
+        // The second half of the restore lands on the next turn of the run
+        // loop, once the blocks it scrolled onto have been measured.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(scroller.contentView.bounds.minY, 1500, accuracy: 1)
+        // And the position it restored is still the position it remembers.
+        XCTAssertEqual(try XCTUnwrap(Preferences.scrollPosition(for: url)), 1500, accuracy: 1)
     }
 
     private func window() throws -> NSWindow {

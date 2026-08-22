@@ -691,13 +691,38 @@ final class DocumentWindowController: NSWindowController {
         restoreScrollPosition()
     }
 
+    /// Put the reader back where they left this document.
+    ///
+    /// Twice, and neither is redundant. `NSView.scroll(_:)` on a document view
+    /// that has not drawn yet does nothing at all — the view learns its real
+    /// height only when it is asked to draw the blocks it lands on — so the
+    /// scroll goes through the clip view, which does not need it. And the
+    /// height it lands on is an estimate until those blocks have been measured,
+    /// so a second scroll on the next turn corrects for what the first one
+    /// learned.
     private func restoreScrollPosition() {
         guard !restoredScroll, let url = markdownDocument.fileURL else { return }
-        restoredScroll = true
-        guard let y = Preferences.scrollPosition(for: url), y > 0 else { return }
-        // The document view has to know its height before a scroll can land.
+        guard let y = Preferences.scrollPosition(for: url), y > 0 else {
+            restoredScroll = true
+            return
+        }
         documentView.layoutSubtreeIfNeeded()
-        documentView.scroll(NSPoint(x: 0, y: min(y, max(0, documentView.documentHeight - 10))))
+        scrollDocument(to: y)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.scrollDocument(to: y)
+            // Saving stays off until the position is actually back, or the
+            // bounds change that arrives while the document still sits at its
+            // first line writes a zero over the very position being restored —
+            // which is how one failed restore erased the memory for good.
+            self.restoredScroll = true
+        }
+    }
+
+    private func scrollDocument(to y: CGFloat) {
+        let limit = max(0, documentView.documentHeight - scrollView.contentView.bounds.height)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(y, limit)))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     @objc private func scrollDidChange() {

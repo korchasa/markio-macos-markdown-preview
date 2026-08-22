@@ -462,9 +462,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     self.scroll(window, to: offset)
                     RunLoop.current.run(until: Date().addingTimeInterval(0.2))
                     self.scroll(window, to: offset)
-                    // And once more afterwards, so anything a scroll defers to the
-                    // next turn — the map's window of lines — is in the picture.
-                    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                    // And once more afterwards, long enough for everything a
+                    // scroll defers: the map's window of lines on the next turn,
+                    // and the reading position, which is written after a third
+                    // of a second of stillness so a drag does not write on
+                    // every frame.
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
                 }
                 if let point = self.hoverPoint(), let window = visible {
                     self.sendHover(point, to: window)
@@ -490,6 +493,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     try? png.write(to: url)
                     print("captured \(Int(rep.size.width))x\(Int(rep.size.height)) -> \(url.path)")
                 }
+                // A real quit flushes what the app has written to its defaults;
+                // this one happens a fraction of a second after the write, so
+                // the reading position of a captured scroll would be lost and
+                // the harness could never see it restored.
+                UserDefaults.standard.synchronize()
                 NSApp.terminate(nil)
             }
         }
