@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             documentController.openDocument(withContentsOf: url, display: true) { _, _, _ in }
         }
         if let baseline = baselineFromCommandLine() { startComparison(against: baseline) }
+        if CommandLine.arguments.contains("--present") { startPresentation() }
         if let target = pdfTarget() { exportPDF(to: target) }
         if let directory = snapshotDirectory() { runSnapshot(into: directory) }
         if let target = captureTarget() { capture(to: target) }
@@ -121,6 +122,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             files.append(url)
         }
         return files
+    }
+
+    /// `--present [--slide=<n>]`: open the deck, so a slide can be captured.
+    ///
+    /// The reader's way in is the View menu. This is the same road `--compare`
+    /// takes: a gesture a script cannot make, made once at launch.
+    private func startPresentation() {
+        let prefix = "--slide="
+        let slide =
+            CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+            .flatMap { Int($0.dropFirst(prefix.count)) }.map { $0 - 1 } ?? 0
+        // The documents named on the command line open asynchronously, so at
+        // this point in launch there is no window to present from yet.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let controllers = NSApp.windows.compactMap {
+                $0.windowController as? DocumentWindowController
+            }
+            guard let controller = controllers.first else {
+                FileHandle.standardError.write(Data("present: no document window\n".utf8))
+                return
+            }
+            controller.present(slide: max(0, slide))
+        }
     }
 
     /// `--export-pdf=<path>`: write the open document out as a PDF and quit.
@@ -255,7 +279,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // At least one turn of the run loop, so the document window has laid
         // out and the first visible blocks have been measured.
         DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay()) {
-            let visible = NSApp.windows.first(where: { $0.isVisible })
+            // The key window, when there is one: a deck opens over the
+            // document window, and a shot of the document behind it would be a
+            // picture of the wrong thing.
+            // The window a viewer would be looking at: the frontmost of the
+            // highest layer. A deck sits above the document window it was
+            // opened from, and a shot of the document behind it is a picture
+            // of the wrong thing — which is exactly what came out before this
+            // walked the layers instead of taking the first visible window.
+            var visible: NSWindow?
+            for window in NSApp.orderedWindows
+            where window.isVisible
+                && (visible == nil || window.level.rawValue > visible!.level.rawValue)
+            {
+                visible = window
+            }
             if let point = self.hoverPoint(), let window = visible {
                 self.sendHover(point, to: window)
                 window.contentView?.displayIfNeeded()

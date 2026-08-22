@@ -50,6 +50,8 @@ final class DocumentWindowController: NSWindowController {
     private var syncingScroll = false
     /// How much larger than the reading size this window draws.
     private var zoom: CGFloat
+    /// The deck, while one is on screen.
+    private var presentation: PresentationWindow?
 
     init(document: MarkdownDocument) {
         self.markdownDocument = document
@@ -906,6 +908,23 @@ final class DocumentWindowController: NSWindowController {
         }
     }
 
+    // MARK: - Presentation
+
+    /// The deck this document makes, if it makes one.
+    private var slideCount: Int { Slides.split(displayed).count }
+
+    /// Show the document full screen, one slide at a time.
+    @objc func present(_ sender: Any?) {
+        present(slide: 0)
+    }
+
+    func present(slide: Int) {
+        presentation?.leave()
+        presentation = PresentationWindow.present(
+            document: displayed, baseURL: markdownDocument.fileURL, over: window,
+            startingAt: slide)
+    }
+
     // MARK: - PDF
 
     /// Write the document out as a PDF.
@@ -966,6 +985,12 @@ extension DocumentWindowController: NSMenuItemValidation {
         if item.action == #selector(toggleSideBySide(_:)) {
             item.state = sideBySide ? .on : .off
             return true
+        }
+        if item.action == #selector(present(_:)) {
+            // A document with no thematic breaks and no headings is not a deck,
+            // and offering to present it would promise something this cannot
+            // do: guess where the author wanted the screens to end.
+            return slideCount > 0
         }
         if item.action == #selector(toggleFocus(_:)) {
             item.state = isFocused ? .on : .off

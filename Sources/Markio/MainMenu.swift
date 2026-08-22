@@ -243,6 +243,12 @@ enum MainMenu {
             action: #selector(DocumentWindowController.toggleSideBySide(_:)),
             keyEquivalent: ""
         )
+        let present = menu.addItem(
+            withTitle: "Presentation",
+            action: #selector(DocumentWindowController.present(_:)),
+            keyEquivalent: "p"
+        )
+        present.keyEquivalentModifierMask = [.command, .option]
         let focus = menu.addItem(
             withTitle: "Focus on Section",
             action: #selector(DocumentWindowController.toggleFocus(_:)),
