@@ -236,6 +236,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return CGPoint(x: x, y: y)
     }
 
+    /// `--capture-scroll=<points>`: scroll the document down before the shot.
+    ///
+    /// Anything that only happens once a document has been scrolled — a table's
+    /// header pinned to the top of the viewport — cannot be seen in a picture of
+    /// a document sitting at its first line.
+    private func scrollOffset() -> CGFloat? {
+        let prefix = "--capture-scroll="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) }),
+            let offset = Double(argument.dropFirst(prefix.count))
+        else { return nil }
+        return CGFloat(offset)
+    }
+
+    private func scroll(_ window: NSWindow, to offset: CGFloat) {
+        guard let root = window.contentView, let scrollView = AppDelegate.scrollView(in: root)
+        else { return }
+        // The document view has to know its height before a scroll can land,
+        // and it only learns it by measuring the blocks it is about to draw —
+        // which is what `viewWillDraw` does, and what a clean view never gets
+        // asked to do.
+        guard let documentView = scrollView.documentView else { return }
+        documentView.setNeedsDisplay(documentView.bounds)
+        documentView.viewWillDraw()
+        documentView.scroll(NSPoint(x: 0, y: offset))
+        documentView.displayIfNeeded()
+    }
+
+    /// The scroller holding the document the reader is looking at.
+    ///
+    /// Not simply the first one in the window: the outline sidebar has one of
+    /// its own, and the baseline of a comparison has a second document view
+    /// that is hidden until there is a comparison to show.
+    private static func scrollView(in view: NSView) -> NSScrollView? {
+        if let found = view as? NSScrollView, found.documentView is DocumentView, !found.isHidden {
+            return found
+        }
+        for child in view.subviews {
+            if let found = scrollView(in: child) { return found }
+        }
+        return nil
+    }
+
+    /// `--capture-type=<text>`: type into whatever the click just focused.
+    ///
+    /// A table's filter row shows what it is for only once there is something
+    /// in it, and typing is the one way to put it there.
+    private func typedText() -> String? {
+        let prefix = "--capture-type="
+        guard let argument = CommandLine.arguments.first(where: { $0.hasPrefix(prefix) })
+        else { return nil }
+        return String(argument.dropFirst(prefix.count))
+    }
+
+    private func sendTyping(_ text: String, to window: NSWindow) {
+        guard let target = window.firstResponder else { return }
+        for character in text {
+            guard
+                let event = NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    characters: String(character),
+                    charactersIgnoringModifiers: String(character),
+                    isARepeat: false,
+                    keyCode: 0
+                )
+            else { continue }
+            target.keyDown(with: event)
+        }
+    }
+
     private func sendClick(_ point: CGPoint, to window: NSWindow) {
         guard
             let target = window.contentView?.hitTest(point),
@@ -279,9 +353,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // At least one turn of the run loop, so the document window has laid
         // out and the first visible blocks have been measured.
         DispatchQueue.main.asyncAfter(deadline: .now() + captureDelay()) {
-            // The key window, when there is one: a deck opens over the
-            // document window, and a shot of the document behind it would be a
-            // picture of the wrong thing.
             // The window a viewer would be looking at: the frontmost of the
             // highest layer. A deck sits above the document window it was
             // opened from, and a shot of the document behind it is a picture
@@ -294,12 +365,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             {
                 visible = window
             }
+            if let offset = self.scrollOffset(), let window = visible {
+                // Twice, with a turn of the run loop between: the first scroll
+                // measures the blocks it lands on, which is what gives the
+                // document its real height, and only then can the second one
+                // reach the offset that was asked for.
+                self.scroll(window, to: offset)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+                self.scroll(window, to: offset)
+            }
             if let point = self.hoverPoint(), let window = visible {
                 self.sendHover(point, to: window)
                 window.contentView?.displayIfNeeded()
             }
             if let point = self.clickPoint(), let window = visible {
                 self.sendClick(point, to: window)
+                window.contentView?.displayIfNeeded()
+            }
+            if let typed = self.typedText(), let window = visible {
+                self.sendTyping(typed, to: window)
                 window.contentView?.displayIfNeeded()
             }
             guard let view = visible?.contentView,
@@ -359,7 +443,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// having to be rebuilt.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard item.action == #selector(chooseCodeEditor(_:)) else { return true }
-        item.state = (item.representedObject as? String) == Preferences.codeEditor.rawValue
+        item.state =
+            (item.representedObject as? String) == Preferences.codeEditor.rawValue
             ? .on : .off
         return true
     }

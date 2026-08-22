@@ -201,6 +201,71 @@ public final class DocumentLayout {
         return false
     }
 
+    // MARK: - Tables the reader has rearranged
+
+    /// How a table is currently sorted and filtered.
+    ///
+    /// Keyed by ordinal and held here rather than in the document, because
+    /// sorting a table is a way of looking at it: the file keeps the order its
+    /// author wrote, and closing the window forgets what the reader did.
+    public func arrangement(at ordinal: Int) -> TableArrangement {
+        guard ordinal >= 0, ordinal < document.leaves.count else { return TableArrangement() }
+        return engine.tableArrangements[document.leaves[ordinal]] ?? TableArrangement()
+    }
+
+    public func setArrangement(_ arrangement: TableArrangement, at ordinal: Int) {
+        guard ordinal >= 0, ordinal < document.leaves.count else { return }
+        let leaf = document.leaves[ordinal]
+        if arrangement.isPlain {
+            engine.tableArrangements.removeValue(forKey: leaf)
+        } else {
+            engine.tableArrangements[leaf] = arrangement
+        }
+        invalidate(ordinal)
+    }
+
+    /// Sort by a column, reverse it, then go back to the author's order.
+    public func clickTableHeader(at ordinal: Int, column: Int) {
+        setArrangement(arrangement(at: ordinal).clicking(column: column), at: ordinal)
+    }
+
+    /// Whether tables offer a filter row.
+    ///
+    /// A printed page and a slide are not places anyone can type, so they show
+    /// the table the document describes and nothing added to it.
+    public var showsTableFilters: Bool {
+        get { engine.showsTableFilters }
+        set {
+            guard newValue != engine.showsTableFilters else { return }
+            engine.showsTableFilters = newValue
+            boxes.removeAll(keepingCapacity: true)
+            rebuildEstimates()
+        }
+    }
+
+    /// The table whose filter row is taking keystrokes, by ordinal.
+    public var filterEditing: Int? {
+        get { engine.filterEditingTable.flatMap { leaf in document.leaves.firstIndex(of: leaf) } }
+        set {
+            let leaf = newValue.flatMap { ordinal -> Int32? in
+                guard ordinal >= 0, ordinal < document.leaves.count else { return nil }
+                return document.leaves[ordinal]
+            }
+            guard leaf != engine.filterEditingTable else { return }
+            let previous = engine.filterEditingTable
+            engine.filterEditingTable = leaf
+            for changed in [previous, leaf].compactMap({ $0 }) {
+                if let ordinal = document.leaves.firstIndex(of: changed) { invalidate(ordinal) }
+            }
+        }
+    }
+
+    /// Drop one block's box so it is laid out again from its current state.
+    private func invalidate(_ ordinal: Int) {
+        boxes.removeValue(forKey: ordinal)
+        heights.setHeight(estimatedHeight(of: ordinal), at: ordinal)
+    }
+
     /// Open or close the section whose `<details>` sits at this ordinal.
     ///
     /// Returns false when that ordinal is not a section header, so a caller can

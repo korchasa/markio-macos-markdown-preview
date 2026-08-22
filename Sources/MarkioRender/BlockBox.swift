@@ -45,6 +45,24 @@ public final class BlockBox {
         public var isDiagram: Bool = false
     }
 
+    /// A table's own rectangle and the header cells a click can sort by.
+    ///
+    /// The rectangles are in block coordinates, so the view can hit-test a
+    /// click and draw the header again over a table that has scrolled half off
+    /// the top without knowing anything about tables.
+    public struct TableRegion {
+        public var rect: CGRect
+        /// Column index and rectangle, left to right.
+        public var headers: [(column: Int, rect: CGRect)]
+        /// The header row's own strip, which is what gets pinned while the rest
+        /// of the table scrolls under it.
+        public var headerRect: CGRect
+        /// Where the filter row is, when the table offers one.
+        public var filterRect: CGRect?
+        /// False for a table with a merged cell, whose rows cannot be moved.
+        public var canRearrange: Bool
+    }
+
     /// The header of a collapsible section: what a click on it toggles.
     public struct DisclosureRegion {
         public var rect: CGRect
@@ -62,6 +80,7 @@ public final class BlockBox {
     let plainText: String
     let codeRegion: CodeRegion?
     let disclosureRegion: DisclosureRegion?
+    let tableRegion: TableRegion?
 
     init(
         leaf: Int32,
@@ -73,7 +92,8 @@ public final class BlockBox {
         linkTargets: [InlineLink],
         plainText: String,
         codeRegion: CodeRegion? = nil,
-        disclosureRegion: DisclosureRegion? = nil
+        disclosureRegion: DisclosureRegion? = nil,
+        tableRegion: TableRegion? = nil
     ) {
         self.leaf = leaf
         self.width = width
@@ -85,6 +105,7 @@ public final class BlockBox {
         self.plainText = plainText
         self.codeRegion = codeRegion
         self.disclosureRegion = disclosureRegion
+        self.tableRegion = tableRegion
     }
 
     /// A block that takes no room and draws nothing — what a block inside a

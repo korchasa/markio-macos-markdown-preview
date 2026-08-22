@@ -26,7 +26,8 @@ final class PDFExportTests: XCTestCase {
     }
 
     func testAShortDocumentIsOnePage() {
-        let pages = PageLayout.paginate(layout: layout("# Title\n\nOne paragraph."), geometry: geometry)
+        let pages = PageLayout.paginate(
+            layout: layout("# Title\n\nOne paragraph."), geometry: geometry)
         XCTAssertEqual(pages.count, 1)
         XCTAssertEqual(pages[0].slices.count, 2)
         XCTAssertEqual(pages[0].slices[0].from, 0)
@@ -42,7 +43,8 @@ final class PDFExportTests: XCTestCase {
         // keeps half a row of letters from ending up on the next page.
         guard let box = document.box(at: 0) else { return XCTFail("no box") }
         let bottoms = Set(
-            box.segments.flatMap { $0.lines.map { line in (line.origin.y + line.descent).rounded() }
+            box.segments.flatMap {
+                $0.lines.map { line in (line.origin.y + line.descent).rounded() }
             })
         for page in pages.dropLast() {
             guard let last = page.slices.last else { continue }

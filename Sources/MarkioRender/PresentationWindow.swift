@@ -50,6 +50,7 @@ public final class PresentationWindow: NSWindow {
         let theme = Theme(isDark: dark, metrics: Theme.Metrics().scaled(by: 1.6))
         let layout = DocumentLayout(
             document: document, theme: theme, columnWidth: 820, baseURL: baseURL)
+        layout.showsTableFilters = false
         self.slideView = SlideView(layout: layout)
         super.init(
             contentRect: frame,

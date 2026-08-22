@@ -21,6 +21,14 @@ struct BlockLayoutEngine {
     /// Which way a section's triangle points is the only thing the engine knows
     /// about collapsing; hiding the blocks themselves belongs to the layout.
     var expandedSections: Set<Int32> = []
+    /// How the reader has sorted or filtered each table, by leaf index. State
+    /// on a window, never on the file — see `TableArrangement`.
+    var tableArrangements: [Int32: TableArrangement] = [:]
+    /// The table whose filter row is taking keystrokes, if any.
+    var filterEditingTable: Int32?
+    /// Whether tables offer a filter row at all. A printed page and a slide are
+    /// not places anyone can type, so they ask for the table alone.
+    var showsTableFilters = true
     private let syntax: SyntaxHighlighter.Palette
 
     init(document: Document, theme: Theme, width: CGFloat, baseURL: URL?) {
@@ -185,6 +193,7 @@ struct BlockLayoutEngine {
         var plainText = ""
         var codeRegion: BlockBox.CodeRegion?
         var disclosureRegion: BlockBox.DisclosureRegion?
+        var tableRegion: BlockBox.TableRegion?
 
         var theme: Theme { engine.theme }
         var document: Document { engine.document }
@@ -208,7 +217,8 @@ struct BlockLayoutEngine {
                 linkTargets: linkTargets,
                 plainText: plainText,
                 codeRegion: codeRegion,
-                disclosureRegion: disclosureRegion
+                disclosureRegion: disclosureRegion,
+                tableRegion: tableRegion
             )
         }
 
@@ -633,8 +643,21 @@ struct BlockLayoutEngine {
             layoutGrid(HTMLTable(gfm: document.table(at: leaf), document: document))
         }
 
-        mutating func layoutGrid(_ table: HTMLTable) {
+        mutating func layoutGrid(_ original: HTMLTable) {
+            // Sorting and filtering happen here, on the way into the layout: the
+            // document keeps the order its author wrote, and only the picture of
+            // it changes.
+            let arrangement = engine.tableArrangements[leaf] ?? TableArrangement()
+            let table = original.arranged(by: arrangement)
             let padding = theme.metrics.tableCellPadding
+            let isEditingFilter = engine.filterEditingTable == leaf
+            // A filter row is offered where filtering is worth the row it costs:
+            // a table long enough to hide something in, or one the reader has
+            // already started filtering. Short tables keep the look they had.
+            let showsFilter =
+                engine.showsTableFilters && table.canRearrange && table.headerRow >= 0
+                && (original.rowCount >= 5 || !arrangement.filter.isEmpty || isEditingFilter)
+            let filterHeight = showsFilter ? theme.lineHeight + padding : 0
             let columns = max(1, table.columnCount)
             let rows = max(1, table.rowCount)
             let widths = columnWidths(table, total: available, padding: padding)
@@ -686,6 +709,13 @@ struct BlockLayoutEngine {
             var tops = [CGFloat](repeating: y, count: rows + 1)
             for row in 0..<rows { tops[row + 1] = tops[row] + rowHeights[row] }
             let tableTop = y
+            // The filter row sits between the header and the body, so every row
+            // below it moves down by exactly its height and the cells that were
+            // measured above need no re-measuring.
+            let filterTop = tops[min(rows, table.headerRow + 1)]
+            if filterHeight > 0 {
+                for row in (table.headerRow + 1)...rows { tops[row] += filterHeight }
+            }
 
             for (index, cell) in table.cells.enumerated() {
                 let last = min(rows - 1, cell.row + cell.rowspan - 1)
@@ -744,13 +774,134 @@ struct BlockLayoutEngine {
                     .stroke(rect: frame, color: theme.palette.tableBorder, width: 1)
                 )
             }
+            if filterHeight > 0 {
+                addFilterRow(
+                    rect: CGRect(x: indent, y: filterTop, width: available, height: filterHeight),
+                    text: arrangement.filter,
+                    isEditing: isEditingFilter,
+                    padding: padding
+                )
+            }
+            if let column = arrangement.column,
+                let cell = table.cells.first(where: {
+                    $0.row == table.headerRow && $0.column == column
+                })
+            {
+                // Against the header cell alone: `tops` below the header has
+                // already moved down by the filter row, and the mark belongs to
+                // the header.
+                addSortMark(
+                    ascending: arrangement.ascending,
+                    in: CGRect(
+                        x: edges[min(columns, cell.column)],
+                        y: tops[min(rows, table.headerRow)],
+                        width: cellWidth(cell, edges: edges, columns: columns),
+                        height: filterTop - tops[min(rows, table.headerRow)]
+                    ),
+                    padding: padding
+                )
+            }
             y = tops[rows]
+            let frame = CGRect(x: indent, y: tableTop, width: available, height: y - tableTop)
+            decorations.append(
+                .stroke(rect: frame, color: theme.palette.tableBorder, width: 1)
+            )
+            recordTableRegion(
+                table, frame: frame, edges: edges, tops: tops, rows: rows, columns: columns,
+                headerBottom: filterTop,
+                filterRect: filterHeight > 0
+                    ? CGRect(x: indent, y: filterTop, width: available, height: filterHeight)
+                    : nil
+            )
+        }
+
+        /// The row a reader types into to keep only the rows that match.
+        ///
+        /// Its text is a decoration rather than content: the document did not
+        /// say it, so find must not find it and a copy must not carry it. That
+        /// is what `textOffset: -1` means on the segment.
+        private mutating func addFilterRow(
+            rect: CGRect, text: String, isEditing: Bool, padding: CGFloat
+        ) {
+            decorations.append(
+                .fill(rect: rect, color: theme.palette.codeBackground, cornerRadius: 0))
             decorations.append(
                 .stroke(
-                    rect: CGRect(x: indent, y: tableTop, width: available, height: y - tableTop),
-                    color: theme.palette.tableBorder,
-                    width: 1
+                    rect: rect,
+                    color: isEditing ? theme.palette.link : theme.palette.tableBorder,
+                    width: isEditing ? 2 : 1
+                ))
+            let shown = text.isEmpty ? "Filter…" : text + (isEditing ? "|" : "")
+            let attributed = NSAttributedString(
+                string: shown,
+                attributes: [
+                    AttributedBuilder.fontKey: theme.body,
+                    AttributedBuilder.colorKey: text.isEmpty
+                        ? theme.palette.secondaryText : theme.palette.text,
+                ])
+            guard
+                let line = Typesetter.singleLine(
+                    attributed,
+                    x: rect.minX + padding,
+                    width: max(8, rect.width - padding * 2),
+                    baseline: rect.minY + (rect.height + theme.metrics.bodySize) / 2 - 2,
+                    alignment: .left
                 )
+            else { return }
+            segments.append(
+                BlockBox.Segment(attributed: attributed, lines: [line], textOffset: -1))
+        }
+
+        /// The little triangle that says which way a sorted column is pointing.
+        private mutating func addSortMark(ascending: Bool, in cell: CGRect, padding: CGFloat) {
+            let size: CGFloat = 7
+            let x = cell.maxX - padding - size
+            let y = cell.midY - size / 4
+            let path = CGMutablePath()
+            if ascending {
+                path.move(to: CGPoint(x: x, y: y + size / 2))
+                path.addLine(to: CGPoint(x: x + size, y: y + size / 2))
+                path.addLine(to: CGPoint(x: x + size / 2, y: y - size / 2))
+            } else {
+                path.move(to: CGPoint(x: x, y: y - size / 2))
+                path.addLine(to: CGPoint(x: x + size, y: y - size / 2))
+                path.addLine(to: CGPoint(x: x + size / 2, y: y + size / 2))
+            }
+            path.closeSubpath()
+            decorations.append(
+                .path(path, color: theme.palette.secondaryText, lineWidth: 0, filled: true))
+        }
+
+        /// Where the header cells sit, so a click can sort by one and the strip
+        /// can be pinned while the rows scroll under it.
+        private mutating func recordTableRegion(
+            _ table: HTMLTable, frame: CGRect, edges: [CGFloat], tops: [CGFloat], rows: Int,
+            columns: Int, headerBottom: CGFloat, filterRect: CGRect?
+        ) {
+            let header = table.headerRow
+            guard header >= 0, header < rows else { return }
+            var headers: [(column: Int, rect: CGRect)] = []
+            for cell in table.cells where cell.row == header {
+                let column = min(columns, cell.column)
+                headers.append(
+                    (
+                        cell.column,
+                        CGRect(
+                            x: edges[column],
+                            y: tops[header],
+                            width: cellWidth(cell, edges: edges, columns: columns),
+                            height: headerBottom - tops[header]
+                        )
+                    ))
+            }
+            tableRegion = BlockBox.TableRegion(
+                rect: frame,
+                headers: headers.sorted { $0.column < $1.column },
+                headerRect: CGRect(
+                    x: frame.minX, y: tops[header], width: frame.width,
+                    height: headerBottom - tops[header]),
+                filterRect: filterRect,
+                canRearrange: table.canRearrange
             )
         }
 

@@ -28,12 +28,14 @@ public enum PDFExport {
     public static func pageLayout(
         document: Document, baseURL: URL?, geometry: PageLayout.Geometry
     ) -> DocumentLayout {
-        DocumentLayout(
+        let layout = DocumentLayout(
             document: document,
             theme: Theme(isDark: false),
             columnWidth: geometry.contentWidth,
             baseURL: baseURL
         )
+        layout.showsTableFilters = false
+        return layout
     }
 
     /// Write `document` to `url` as a PDF.

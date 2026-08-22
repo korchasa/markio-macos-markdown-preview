@@ -209,7 +209,125 @@ public final class DocumentView: NSView {
             draw(box: box, ordinal: ordinal, selection: selection, in: context)
             context.restoreGState()
         }
+        drawStickyTableHeaders(in: context, dirtyRect: dirtyRect)
         drawCodeControls(in: context)
+    }
+
+    // MARK: - Tables
+
+    /// Keep a table's header on screen while its rows scroll under it.
+    ///
+    /// The header is drawn by drawing the whole table again, clipped to the
+    /// strip the header occupies and shifted so the header lands at the top of
+    /// the viewport. Nothing about tables has to be understood here: whatever
+    /// the header row looks like, this is exactly it. The strip disappears with
+    /// the table, because the loop only considers tables that are still on
+    /// screen.
+    private func drawStickyTableHeaders(in context: CGContext, dirtyRect: CGRect) {
+        let visible = visibleRect
+        guard visible.height > 0 else { return }
+        for ordinal in ordinals(in: visible) {
+            guard let box = layout.box(at: ordinal), let region = box.tableRegion else { continue }
+            let top = layout.offset(of: ordinal) + verticalPadding
+            guard
+                let strip = DocumentView.stickyHeaderStrip(
+                    region: region, blockTop: top, visible: visible, width: bounds.width)
+            else { continue }
+            guard strip.intersects(dirtyRect) else { continue }
+            context.saveGState()
+            context.clip(to: strip)
+            context.setFillColor(layout.theme.palette.background)
+            context.fill(strip)
+            context.translateBy(x: contentX, y: strip.minY - region.headerRect.minY)
+            draw(box: box, ordinal: ordinal, selection: nil, in: context)
+            context.restoreGState()
+        }
+    }
+
+    /// Where a table's pinned header goes, or nil when it does not need one.
+    ///
+    /// Nil in both the ordinary cases: the header is still on screen where the
+    /// document put it, or the table has scrolled past and taken its header with
+    /// it. Pure geometry, so what "disappears with its table" means is one
+    /// answer rather than a behaviour spread across a draw call.
+    static func stickyHeaderStrip(
+        region: BlockBox.TableRegion, blockTop: CGFloat, visible: CGRect, width: CGFloat
+    ) -> CGRect? {
+        let header = region.headerRect.offsetBy(dx: 0, dy: blockTop)
+        let table = region.rect.offsetBy(dx: 0, dy: blockTop)
+        guard header.minY < visible.minY else { return nil }
+        // Once the bottom of the table is within a header's height of the top of
+        // the viewport, there are no rows left to label.
+        guard table.maxY > visible.minY + header.height else { return nil }
+        return CGRect(x: 0, y: visible.minY, width: width, height: header.height)
+    }
+
+    /// A click on a table's header sorts by that column; a click on its filter
+    /// row starts typing into it. Returns false when the click was neither, so
+    /// the caller can treat it as an ordinary one.
+    private func clickTable(at point: CGPoint) -> Bool {
+        let ordinal = layout.index(atOffset: max(0, point.y - verticalPadding))
+        guard let box = layout.box(at: ordinal), let region = box.tableRegion else {
+            endFilterEditing()
+            return false
+        }
+        let top = layout.offset(of: ordinal) + verticalPadding
+        if let filter = region.filterRect?.offsetBy(dx: contentX, dy: top), filter.contains(point) {
+            layout.filterEditing = ordinal
+            needsDisplay = true
+            return true
+        }
+        endFilterEditing()
+        guard region.canRearrange else { return false }
+        for header in region.headers
+        where header.rect.offsetBy(dx: contentX, dy: top).contains(point) {
+            layout.clickTableHeader(at: ordinal, column: header.column)
+            selectionAnchor = nil
+            selectionHead = nil
+            needsDisplay = true
+            return true
+        }
+        return false
+    }
+
+    private func endFilterEditing() {
+        guard layout.filterEditing != nil else { return }
+        layout.filterEditing = nil
+        needsDisplay = true
+    }
+
+    /// Typing while a filter row is active goes into that row, and nowhere
+    /// else. Escape gives the keyboard back to the document and clears the
+    /// filter, because a filter nobody can see is a table with rows missing.
+    public override func keyDown(with event: NSEvent) {
+        guard let ordinal = layout.filterEditing else {
+            super.keyDown(with: event)
+            return
+        }
+        var arrangement = layout.arrangement(at: ordinal)
+        switch event.keyCode {
+        case 53:  // Escape
+            arrangement.filter = ""
+            layout.setArrangement(arrangement, at: ordinal)
+            endFilterEditing()
+            return
+        case 36, 76:  // Return, Enter
+            endFilterEditing()
+            return
+        case 51:  // Delete
+            guard !arrangement.filter.isEmpty else { return }
+            arrangement.filter.removeLast()
+        default:
+            guard let typed = event.characters, !typed.isEmpty,
+                typed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+            else {
+                super.keyDown(with: event)
+                return
+            }
+            arrangement.filter += typed
+        }
+        layout.setArrangement(arrangement, at: ordinal)
+        needsDisplay = true
     }
 
     // MARK: - Code block controls
@@ -789,6 +907,7 @@ public final class DocumentView: NSView {
             return
         }
         if event.clickCount == 1, toggleSection(at: point) { return }
+        if event.clickCount == 1, clickTable(at: point) { return }
         selectionAnchor = position(at: point)
         selectionHead = selectionAnchor
         needsDisplay = true

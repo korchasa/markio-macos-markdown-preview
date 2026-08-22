@@ -56,7 +56,9 @@ public enum CodePath {
             }
             var end = index
             while end < bytes.count, !isBoundary(bytes[end]) { end += 1 }
-            if let candidate = candidate(in: bytes, from: index, to: end) { found.append(candidate) }
+            if let candidate = candidate(in: bytes, from: index, to: end) {
+                found.append(candidate)
+            }
             index = end
         }
         return found
@@ -87,7 +89,8 @@ public enum CodePath {
         let text = bytes.text(in: ByteRange(start, last))
         guard let split = splitLine(text) else { return nil }
         guard isPathShaped(split.path) else { return nil }
-        return Candidate(range: ByteRange(start, last), path: split.path,
+        return Candidate(
+            range: ByteRange(start, last), path: split.path,
             line: split.line)
     }
 

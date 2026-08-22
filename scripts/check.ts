@@ -13,6 +13,20 @@ const SWIFT_SOURCES = ["Sources", "Tests"];
 const MARKERS = /TODO|FIXME|HACK|XXX|swiftlint:disable|swift-format-ignore|debugPrint\(/;
 
 /**
+ * The two files whose subject is the markers themselves.
+ *
+ * The bottom bar counts a document's open questions, and an open question is a
+ * `TODO` or a `FIXME` in the text it is reading — so the words appear there as
+ * data and as the documentation of what the number means, never as work left
+ * undone. Named one by one rather than matched by a pattern, so a marker
+ * anywhere else still fails the gate.
+ */
+const MARKERS_ALLOWED = [
+  "Sources/MarkioRender/DocumentSummary.swift",
+  "Tests/MarkioRenderTests/DocumentSummaryTests.swift",
+];
+
+/**
  * Nothing in this project may render through a web engine — that is the whole
  * point of Markio. The gate fails if a source file so much as imports WebKit.
  */
@@ -44,7 +58,8 @@ async function check(): Promise<void> {
   await run("swift", { args: ["build", "-c", "release"] });
 
   section(`[5/${TOTAL}] Comment scan (TODO/FIXME/HACK/XXX, suppressions, debugPrint)`);
-  const hits = await scanFiles(SWIFT_SOURCES, [".swift"], MARKERS);
+  const hits = (await scanFiles(SWIFT_SOURCES, [".swift"], MARKERS))
+    .filter((hit) => !MARKERS_ALLOWED.some((path) => hit.startsWith(`${path}:`)));
   if (hits.length > 0) {
     hits.forEach((hit) => console.log(hit));
     fail("found forbidden markers");
