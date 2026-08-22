@@ -382,3 +382,34 @@ public struct InlineStyleMask: OptionSet, Sendable {
     public static let italic = InlineStyleMask(rawValue: 1 << 1)
     public static let monospaced = InlineStyleMask(rawValue: 1 << 2)
 }
+
+extension Theme {
+    /// The colour the map draws a stretch of document in.
+    ///
+    /// Derived from the palette rather than invented, so the two appearances
+    /// cannot drift apart the first time either of them is touched: prose and
+    /// lists are the text colours faded back, code and quotes are the colours
+    /// those blocks already use, and the three kinds a reader hunts for —
+    /// diagram, table, picture — borrow the wheel a diagram tells its own parts
+    /// apart with.
+    public func mapColor(for kind: DocumentMap.Kind) -> CGColor {
+        func fade(_ color: CGColor, _ alpha: CGFloat) -> CGColor {
+            color.copy(alpha: alpha) ?? color
+        }
+        func wheel(_ index: Int) -> CGColor {
+            guard !diagramWheel.isEmpty else { return palette.link }
+            return diagramWheel[index % diagramWheel.count]
+        }
+        switch kind {
+        case .prose: return fade(palette.secondaryText, 0.18)
+        case .list: return fade(palette.secondaryText, 0.3)
+        case .heading: return fade(palette.text, 0.7)
+        case .code: return fade(palette.codeText, 0.38)
+        case .quote: return fade(palette.quoteBar, 0.7)
+        case .diagram: return fade(wheel(0), 0.85)
+        case .table: return fade(wheel(2), 0.85)
+        case .picture: return fade(wheel(1), 0.85)
+        case .rule: return fade(palette.rule, 0.9)
+        }
+    }
+}

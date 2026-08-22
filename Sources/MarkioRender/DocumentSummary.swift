@@ -57,6 +57,13 @@ public final class DocumentSummary {
     public struct Result: Sendable, Equatable {
         public var counts = Counts()
         public var sections: [SectionProgress] = []
+        /// What each leaf is, for the map down the right edge.
+        ///
+        /// The map wants exactly the walk this already makes, and two
+        /// independent passes over half a million blocks is the version of this
+        /// that gets noticed when a 32 MB document opens. So this walk owns the
+        /// classification and the map subscribes to it.
+        public var classes: [DocumentMap.Kind] = []
     }
 
     private var generation = 0
@@ -78,17 +85,20 @@ public final class DocumentSummary {
         guard !leaves.isEmpty else {
             var empty = Counts()
             empty.progress = 1
-            onUpdate(Result(counts: empty, sections: []))
+            onUpdate(Result(counts: empty, sections: [], classes: []))
             return
         }
         DispatchQueue.global(qos: .utility).async { [weak self] in
             var counts = Counts()
             var sections: [SectionProgress] = []
+            var classes: [DocumentMap.Kind] = []
+            classes.reserveCapacity(leaves.count)
             var ordinal = 0
             while ordinal < leaves.count {
                 let leaf = leaves[ordinal]
                 let block = document.blocks[Int(leaf)]
                 if block.kind == .heading { sections.append(SectionProgress()) }
+                classes.append(DocumentMap.classify(document, leaf: leaf))
                 // A checkbox is read from the text, not from a flag: the
                 // scanner leaves `[ ]` as ordinary characters, and only a
                 // paragraph that heads a list item can be one at all — which is
@@ -123,7 +133,7 @@ public final class DocumentSummary {
                 if shouldFlush {
                     var snapshot = counts
                     snapshot.progress = Double(ordinal) / Double(leaves.count)
-                    let result = Result(counts: snapshot, sections: sections)
+                    let result = Result(counts: snapshot, sections: sections, classes: classes)
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated {
                             guard let self, self.generation == token else { return }

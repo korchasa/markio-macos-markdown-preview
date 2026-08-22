@@ -235,6 +235,13 @@ enum MainMenu {
             keyEquivalent: "s"
         )
         outline.keyEquivalentModifierMask = [.command, .option]
+        // ⌘M is Minimize, so the map takes ⌥⌘M beside the outline's ⌥⌘S.
+        let map = menu.addItem(
+            withTitle: "Document Map",
+            action: #selector(DocumentWindowController.toggleDocumentMap(_:)),
+            keyEquivalent: "m"
+        )
+        map.keyEquivalentModifierMask = [.command, .option]
         // Beside the Table of Contents, which is where the old build kept it
         // and where a returning reader looks: both are ways of laying the
         // document out, not things done to the file.

@@ -10,6 +10,7 @@ enum Preferences {
     private static let outlineKey = "outlineVisible"
     private static let positionsKey = "scrollPositions"
     private static let editorKey = "codeEditor"
+    private static let mapKey = "documentMapVisible"
 
     /// The sizes zooming steps through, as multiples of the reading size.
     ///
@@ -77,6 +78,17 @@ enum Preferences {
     static var outlineVisible: Bool {
         get { UserDefaults.standard.bool(forKey: outlineKey) }
         set { UserDefaults.standard.set(newValue, forKey: outlineKey) }
+    }
+
+    /// Whether the map down the right edge is shown. On unless it was turned
+    /// off: it is what a long document is read with, and a reader who has never
+    /// heard of it should still get it.
+    static var mapVisible: Bool {
+        get {
+            guard UserDefaults.standard.object(forKey: mapKey) != nil else { return true }
+            return UserDefaults.standard.bool(forKey: mapKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: mapKey) }
     }
 
     // MARK: - Scroll positions
