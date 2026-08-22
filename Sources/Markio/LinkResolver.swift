@@ -45,7 +45,8 @@ enum LinkResolver {
         if let schemeEnd = trimmed.firstIndex(of: ":"),
             trimmed[trimmed.startIndex..<schemeEnd].allSatisfy({
                 $0.isLetter || $0.isNumber || $0 == "+" || $0 == "-" || $0 == "."
-            }), schemeEnd > trimmed.startIndex
+            }), schemeEnd > trimmed.startIndex,
+            !isLineNumber(trimmed[trimmed.index(after: schemeEnd)...])
         {
             return externalTarget(trimmed)
         }
@@ -72,6 +73,17 @@ enum LinkResolver {
             !isDirectory.boolValue
         else { return nil }
         return .file(url, line: line)
+    }
+
+    /// Digits and nothing else after the colon, which is a line number.
+    ///
+    /// A dot is a legal character in a URL scheme, so `main.swift:214` parses
+    /// as one — and a bare file name with a line number, which is what an agent
+    /// writes about a file in the folder it is describing, was refused as a
+    /// scheme this app does not serve. A path with a folder in front of it
+    /// never hit this, which is why it went unnoticed.
+    private static func isLineNumber(_ text: Substring) -> Bool {
+        !text.isEmpty && text.allSatisfy(\.isNumber)
     }
 
     /// `Sources/a.swift:214` → the path and 214. A trailing colon with no
