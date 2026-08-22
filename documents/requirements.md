@@ -299,14 +299,18 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-36** Copy puts the selection on the pasteboard twice: with its styles,
   for an application that can keep them, and as plain text, character for
   character what it has always been.
-- **VIEW-37** A map (⌥⌘M) down the right edge shows the shape of the whole
-  document — headings, code, tables, diagrams, pictures, quotes and lists in
-  colours derived from the palette — with the find matches, the blocks a
-  comparison changed, and a rectangle showing where the reader is drawn as
-  layers on the same strip. Clicking a find mark selects that match, clicking
-  elsewhere goes there, dragging scrolls, and hovering names the section. It
-  costs one byte per block and is hidden on a document shorter than the window.
-  Its visibility persists.
+- **VIEW-37** A map (⌥⌘M) down the right edge draws the document itself, small:
+  one row per source line, a mark per word at the column it starts on, tinted by
+  what the block is — heading, code, table, diagram, picture, quote, list or
+  prose — in colours derived from the palette. A line too long for the map is
+  cut off at its edge rather than wrapped. A document longer than the map is
+  shown through a window of lines centred on the reader and clamped at both
+  ends. The find matches, the blocks a comparison changed, and a rectangle
+  showing where the reader is are layers over the same rows. Clicking a find
+  mark selects that match, clicking elsewhere goes to that block, dragging
+  scrolls, and hovering names the section. Only the lines the map can show are
+  ever read, so it costs the same on a 32 MB document as on a note. It is hidden
+  on a document shorter than the window, and its visibility persists.
 - **VIEW-38** The menu bar carries what a macOS reader expects of it: Close All
   (⌥⌘W), the standard Edit items present and disabled on a document that cannot
   be edited, and Compare… on ⇧⌘C. Window tabbing is refused outright, because

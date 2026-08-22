@@ -1110,26 +1110,46 @@ height.
 
 ### The map down the right edge
 
-`DocumentMap` is arithmetic over the flat block array and the heights the layout
-already keeps, with no AppKit in it. `classify` answers what one leaf is from
-`kind`, `level` and `info` alone — a Mermaid fence by its info string, a picture
-by a leaf whose first bytes past the container scaffolding are `![` — and the
-result is one byte per leaf. `bins` turns those bytes into one entry per row of
-the strip, each naming what fills it and flagging what else landed there, with
-prose counted at half because prose is the background a reader scans past.
+The map is a minimap in the editors' sense: it draws the text, not a legend for
+it. A reader recognises a place in a document by its shape — a wall of prose, a
+short list, an indented block of code — and none of that survives a bar of
+colours saying "code here, prose there".
 
-Two decisions are load-bearing. The axis is document height rather than byte
-offset, so a click on the map lands where the scrollbar beside it says it will.
-And the classification rides on the walk `DocumentSummary` already makes, rather
+`DocumentMap` is arithmetic over the flat block array, the line index and the
+raw bytes, with no AppKit in it. `classify` answers what one leaf is from `kind`,
+`level` and `info` alone — a Mermaid fence by its info string, a picture by a
+leaf whose first bytes past the container scaffolding are `![` — and the result
+is one byte per leaf, which is what colours a row. `rows(document:classes:
+fromLine:maxRows:columns:)` reads the bytes of the lines the strip can show and
+returns one `Row` per line, holding the runs of non-space as (column, length):
+tabs count as four columns, a continuation byte of a UTF-8 character counts as
+none, and a line wider than the map is cut off at its edge.
+
+Three decisions are load-bearing.
+
+*Only the window is read.* A document longer than the strip is shown through a
+window of lines, so a map of 32 MB costs what a map of a note costs. The window
+is centred on the lines the viewport is showing and clamped at both ends, which
+is also what keeps the reading rectangle inside it: window and rectangle are
+computed from the same lines, and heights below the viewport are still
+estimates.
+
+*One row to a line.* Wrapping a long line onto several rows made the rectangle
+drift away from the line it marks — with prose paragraphs of 500 characters the
+drift ran off the bottom of the strip. Clipping makes the row index arithmetic:
+`line - startLine`.
+
+*The classification rides on the walk `DocumentSummary` already makes*, rather
 than starting a second pass over half a million blocks: whichever of the two
 landed first owns the walk, and the summary landed first.
 
-`DocumentMapStrip` draws the structure, then the comparison marks, then the find
+`DocumentMapStrip` draws the text, then the comparison marks, then the find
 marks, then the reading rectangle. It grew out of the find overview, which was
-the third of those layers all along. The controller rebins at most once a turn
-of the run loop and only when the document's height has moved by more than a row
-of the strip is worth — every block scrolled into view replaces an estimate, and
-rebinning on each one would be a full pass over the class array per block.
+the third of those layers all along; find matches and comparison marks travel as
+source lines now, so they land on the map's own axis. The rows are rebuilt at
+most once a turn of the run loop, and only when the window, the strip's height or
+its width actually moved. The reading rectangle is the exception and moves with
+the scroll itself, because a marker that lags a turn behind is visible.
 
 ### Copying with styles
 

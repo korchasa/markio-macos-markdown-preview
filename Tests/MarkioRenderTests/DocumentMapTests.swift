@@ -62,75 +62,100 @@ final class DocumentMapTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(seen.count, 6)
     }
 
-    // MARK: - Bins
+    // MARK: - Rows
 
-    func testEachRowIsNamedByWhatFillsIt() {
-        // Two blocks, the first filling the top half of the strip.
-        let bins = DocumentMap.bins(
-            classes: [.code, .prose], rows: 4, total: 100,
-            height: { $0 == 0 ? 50 : 50 })
-        XCTAssertEqual(bins.map(\.dominant), [.code, .code, .prose, .prose])
+    private func rows(
+        _ text: String, fromLine: Int = 0, maxRows: Int = 40, columns: Int = 40
+    ) -> [DocumentMap.Row] {
+        let document = Document(text: text)
+        let classes = document.leaves.map { DocumentMap.classify(document, leaf: $0) }
+        return DocumentMap.rows(
+            document: document, classes: classes, fromLine: fromLine,
+            maxRows: maxRows, columns: columns)
     }
 
-    /// The property the map lives or dies by on a long document: one diagram
-    /// inside a wall of prose still leaves a mark.
-    func testSomethingSmallInsideALongStretchIsStillRecorded() {
-        var classes = [DocumentMap.Kind](repeating: .prose, count: 100)
-        classes[50] = .diagram
-        let bins = DocumentMap.bins(
-            classes: classes, rows: 10, total: 1000, height: { _ in 10 })
-        XCTAssertTrue(bins.contains { $0.has(.diagram) })
-        // And the row it landed in is prose by height, so the dash matters.
-        XCTAssertEqual(bins[5].dominant, .diagram)
-    }
-
-    func testABlockWithNoHeightTakesNoRoomOnTheStrip() {
-        // What a block inside a closed section comes to.
-        let bins = DocumentMap.bins(
-            classes: [.table, .prose], rows: 4, total: 100,
-            height: { $0 == 0 ? 0 : 100 })
-        XCTAssertFalse(bins.contains { $0.has(.table) })
-        XCTAssertEqual(Set(bins.map(\.dominant)), [.prose])
-    }
-
-    func testRowsBelowTheEndOfTheDocumentStayEmpty() {
-        let bins = DocumentMap.bins(
-            classes: [.prose], rows: 4, total: 100, height: { _ in 50 })
-        XCTAssertFalse(bins[0].isEmpty)
-        XCTAssertTrue(bins[3].isEmpty)
-    }
-
-    func testAnEmptyDocumentBinsToNothingRatherThanCrashing() {
+    /// The whole point of the map: it shows the words, where they are on the
+    /// line and how long they run.
+    func testALineBecomesOneRunPerWord() {
+        let map = rows("one two  three")
+        XCTAssertEqual(map.count, 1)
         XCTAssertEqual(
-            DocumentMap.bins(classes: [], rows: 3, total: 0, height: { _ in 0 }).count, 3)
-        XCTAssertTrue(
-            DocumentMap.bins(classes: [.prose], rows: 0, total: 10, height: { _ in 10 })
-                .isEmpty)
+            map[0].runs,
+            [
+                DocumentMap.Run(column: 0, length: 3),
+                DocumentMap.Run(column: 4, length: 3),
+                DocumentMap.Run(column: 9, length: 5),
+            ])
     }
 
-    /// The rows of a real strip are finer than a line of type — a few hundred
-    /// points of strip against a document of thousands — so a heading gets rows
-    /// of its own rather than being averaged into the prose around it.
-    func testAHeadingGetsItsOwnRows() {
-        let bins = DocumentMap.bins(
-            classes: [.prose, .heading, .prose], rows: 20, total: 100,
-            height: { [45, 10, 45][$0] })
-        XCTAssertEqual(bins[9].dominant, .heading)
-        XCTAssertEqual(bins[0].dominant, .prose)
-        XCTAssertEqual(bins[19].dominant, .prose)
+    func testIndentationIsKeptBecauseItIsHalfTheShape() {
+        let map = rows("- one\n    - nested")
+        XCTAssertEqual(map[0].runs.first?.column, 0)
+        XCTAssertEqual(map[1].runs.first?.column, 4)
+        // A tab is four columns, as it is nearly everywhere a document is read.
+        XCTAssertEqual(rows("\tdeep")[0].runs.first?.column, 4)
     }
 
-    /// And where a row holds both in similar measure, the thing that is not
-    /// prose names it: prose is the background a reader is scanning past.
-    func testProseYieldsTheRowToWhateverElseIsInIt() {
-        let bins = DocumentMap.bins(
-            classes: [.prose, .table], rows: 1, total: 100,
-            height: { [60, 40][$0] })
-        XCTAssertEqual(bins[0].dominant, .table)
-        // Twice as much prose does win it back, which is what "half" means.
-        let mostlyProse = DocumentMap.bins(
-            classes: [.prose, .table], rows: 1, total: 100,
-            height: { [80, 20][$0] })
-        XCTAssertEqual(mostlyProse[0].dominant, .prose)
+    func testABlankLineIsABlankRow() {
+        let map = rows("one\n\ntwo")
+        XCTAssertEqual(map.count, 3)
+        XCTAssertTrue(map[1].isBlank)
+        XCTAssertFalse(map[0].isBlank)
+    }
+
+    /// A line wider than the map is cut off at its edge. One row to a line is
+    /// what lets the reading rectangle land on the line it is marking.
+    func testALongLineIsCutOffRatherThanWrapped() {
+        let map = rows(String(repeating: "x", count: 25) + " tail", columns: 10)
+        XCTAssertEqual(map.count, 1)
+        XCTAssertEqual(map[0].runs, [DocumentMap.Run(column: 0, length: 10)])
+        // Every line of the document is a row of the map, in order.
+        let three = rows("a\nbb\nccc")
+        XCTAssertEqual(three.map(\.line), [0, 1, 2])
+    }
+
+    func testARowKnowsWhatBlockItBelongsTo() {
+        let map = rows("# Title\n\n```swift\nlet x = 1\n```")
+        XCTAssertEqual(map[0].kind, .heading)
+        XCTAssertEqual(map[0].ordinal, 0)
+        // The fences belong to no block — a code block covers its contents —
+        // but they are plainly code, and the map colours them as such.
+        XCTAssertEqual(map[2].kind, .code)
+        XCTAssertEqual(map[3].kind, .code)
+        XCTAssertEqual(map[4].kind, .code)
+        XCTAssertEqual(map[3].ordinal, 1)
+        // The blank line between the title and the code belongs to no block.
+        XCTAssertEqual(map[1].ordinal, -1)
+    }
+
+    /// What makes the map affordable on a huge document: it reads the window it
+    /// draws and not a byte more.
+    func testOnlyTheWindowIsRead() {
+        let text = (0..<500).map { "line \($0)" }.joined(separator: "\n")
+        let map = rows(text, fromLine: 100, maxRows: 20)
+        XCTAssertEqual(map.count, 20)
+        XCTAssertEqual(map.first?.line, 100)
+        XCTAssertEqual(map.last?.line, 119)
+    }
+
+    func testAnAccentedWordIsAsWideAsItLooks() {
+        // Two bytes to a letter in UTF-8, one column on the map.
+        XCTAssertEqual(rows("привет")[0].runs, [DocumentMap.Run(column: 0, length: 6)])
+    }
+
+    func testAnEmptyDocumentMapsToNothingRatherThanCrashing() {
+        XCTAssertTrue(rows("").isEmpty)
+        XCTAssertTrue(rows("text", maxRows: 0).isEmpty)
+        XCTAssertTrue(rows("text", fromLine: 99).isEmpty)
+    }
+
+    /// A click on the map lands on a block, and this is the arithmetic that
+    /// takes it there.
+    func testALineFindsTheBlockThatOwnsIt() {
+        let document = Document(text: "# Title\n\nProse.\n\n- one\n- two")
+        XCTAssertEqual(DocumentMap.leafIndex(document, covering: 0), 0)
+        XCTAssertEqual(DocumentMap.leafIndex(document, covering: 2), 1)
+        XCTAssertEqual(DocumentMap.firstLine(document, ordinal: 1), 2)
+        XCTAssertEqual(DocumentMap.rowCount(document), document.lines.count)
     }
 }

@@ -1,37 +1,58 @@
 import AppKit
 import MarkioRender
 
-/// The strip down the right edge showing the shape of the whole document.
+/// The map down the right edge: the document itself, small.
 ///
-/// Four layers on one strip rather than three ribbons competing for the same
-/// edge: the structure underneath, then the blocks a comparison changed, then
-/// the find matches, then the rectangle showing where the reader is. It grew
-/// out of the find overview, which drew only the third of those.
+/// It is the editors' minimap, and it is one for the same reason they have one
+/// — a reader recognises a place in a document by its shape long before they can
+/// read a word of it. A wall of prose, a short list, an indented block of code,
+/// a heading with two lines under it: all of that survives at one point per
+/// column, and none of it survives a colour-coded bar that says only "code here,
+/// prose there".
 ///
-/// While comparing, the map belongs to the main pane — the one the reader is
-/// reading — exactly as find and the outline do. Two strips would be a
-/// different feature and a worse window.
+/// So the map draws words rather than kinds: for every source line, a small
+/// rectangle per run of non-space bytes, at the column the run starts on. Colour
+/// still comes from what the block is, but it now tints real text instead of
+/// standing in for it.
+///
+/// Nothing is typeset to do this, which is what makes it affordable on a huge
+/// document: only the lines the strip can show are ever read, and when the
+/// document is longer than that the map shows a window onto it and slides the
+/// window with the reader — again as an editor's minimap does.
+///
+/// Four layers, in this order: the text, the blocks a comparison changed, the
+/// find matches, and the rectangle showing where the reader is.
 @MainActor
 final class DocumentMapStrip: NSView {
     /// Called with the index of the match nearest a click on one of its marks.
     var onSelect: ((Int) -> Void)?
-    /// Called with a fraction of the document to scroll to.
-    var onScroll: ((CGFloat) -> Void)?
-    /// Names the section at a fraction of the document, for the hover tip.
-    var onName: ((CGFloat) -> String?)?
+    /// Called with the leaf the reader clicked on.
+    var onGoTo: ((Int) -> Void)?
+    /// Names the section at a leaf, for the hover tip.
+    var onName: ((Int) -> String?)?
 
     /// How wide the strip is, and the inset the text needs beside it.
-    static let width: CGFloat = 14
+    static let width: CGFloat = 120
+    /// One source line. Two points is what an editor's minimap gives a line and
+    /// it is about the smallest at which a paragraph still reads as a block.
+    private static let rowHeight: CGFloat = 2
+    private static let inkHeight: CGFloat = 1.2
+    private static let columnWidth: CGFloat = 1
+    private static let inset: CGFloat = 4
 
-    private var bins: [DocumentMap.Bin] = []
-    private var marks: [CGFloat] = []
+    private var rows: [DocumentMap.Row] = []
+    private var startLine = 0
+    private var builtCapacity = -1
+    private var builtColumns = -1
+    /// Find matches and comparison marks are lines of the source, so they land
+    /// on the same axis the rows do and slide with them.
+    private var marks: [Int] = []
     private var current = -1
-    private var changes: [(fraction: CGFloat, isAdded: Bool)] = []
-    private var reading: ClosedRange<CGFloat> = 0...0
+    private var changes: [(line: Int, isAdded: Bool)] = []
+    private var reading: ClosedRange<Int> = 0...0
     private var theme: Theme
     private var dragging = false
-    private var lastNamed: CGFloat = -1
-    private var binnedRows = -1
+    private var lastNamed = -1
 
     init(theme: Theme) {
         self.theme = theme
@@ -47,182 +68,205 @@ final class DocumentMapStrip: NSView {
         needsDisplay = true
     }
 
-    /// The structural background, one entry per row of the strip.
-    func setBins(_ bins: [DocumentMap.Bin], rows: Int) {
-        self.bins = bins
-        binnedRows = rows
+    /// How many lines fit, and how wide a line may be before it wraps.
+    var rowCapacity: Int { max(1, Int(bounds.height / DocumentMapStrip.rowHeight)) }
+    var columnCount: Int {
+        max(8, Int((bounds.width - DocumentMapStrip.inset * 2) / DocumentMapStrip.columnWidth))
+    }
+
+    /// Whether the rows on the strip are for a different window than the one it
+    /// should now be showing — the reader scrolled, or the window resized.
+    func needsRows(from line: Int, capacity: Int, columns: Int) -> Bool {
+        line != startLine || capacity != builtCapacity || columns != builtColumns
+    }
+
+    func setRows(_ rows: [DocumentMap.Row], startLine: Int, capacity: Int, columns: Int) {
+        self.rows = rows
+        self.startLine = startLine
+        builtCapacity = capacity
+        builtColumns = columns
         needsDisplay = true
     }
 
-    /// Whether the strip is holding bins for a different height than it now
-    /// has — a window resize, or the first bins after it was shown.
-    func needsBins(rows: Int) -> Bool { rows != binnedRows }
-
-    /// How many rows the strip wants, in device pixels rather than points, so a
-    /// Retina display gets the resolution it can draw.
-    var rowCount: Int {
-        max(1, Int((bounds.height * (window?.backingScaleFactor ?? 2)).rounded(.down)))
-    }
-
-    func setMarks(_ marks: [CGFloat], current: Int) {
-        self.marks = marks
+    func setMarks(lines: [Int], current: Int) {
+        marks = lines
         self.current = current
         needsDisplay = true
     }
 
-    func setChanges(_ changes: [(fraction: CGFloat, isAdded: Bool)]) {
+    func setChanges(_ changes: [(line: Int, isAdded: Bool)]) {
         self.changes = changes
         needsDisplay = true
     }
 
-    func setReading(_ range: ClosedRange<CGFloat>) {
-        guard range != reading else { return }
-        reading = range
+    func setReading(_ lines: ClosedRange<Int>) {
+        guard lines != reading else { return }
+        reading = lines
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        drawStructure(in: context)
+        drawText(in: context)
         drawChanges(in: context)
         drawMarks(in: context)
         drawReading(in: context)
+        context.setFillColor(NSColor.separatorColor.withAlphaComponent(0.6).cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 1, height: bounds.height))
     }
 
-    /// The document itself: one filled row per bin, in the colour of whatever
-    /// fills it. A row that also holds something small — one diagram in a wall
-    /// of prose — gets a short dash of that colour beside the fill, so a single
-    /// picture in a thousand screens of text is still findable.
-    private func drawStructure(in context: CGContext) {
-        guard !bins.isEmpty, bounds.height > 0 else { return }
-        let inset: CGFloat = 2
-        let width = bounds.width - inset * 2
-        let rowHeight = bounds.height / CGFloat(bins.count)
-        for (row, bin) in bins.enumerated() where !bin.isEmpty {
-            let rect = CGRect(
-                x: inset, y: CGFloat(row) * rowHeight, width: width,
-                height: max(rowHeight, 0.5))
-            context.setFillColor(theme.mapColor(for: bin.dominant))
-            context.fill(rect)
-            for kind in DocumentMap.Kind.allCases
-            where kind != bin.dominant && bin.has(kind) && DocumentMapStrip.isNotable(kind) {
-                // On the left half, so the dash reads as something extra in
-                // that row rather than as a row of its own.
-                context.setFillColor(theme.mapColor(for: kind))
-                context.fill(
-                    CGRect(x: inset, y: rect.minY, width: width * 0.4, height: rect.height))
-                break
+    /// The words of the document, gathered by colour so a screenful of lines is
+    /// a handful of fills rather than one per word.
+    private func drawText(in context: CGContext) {
+        guard !rows.isEmpty else { return }
+        var byKind: [DocumentMap.Kind: [CGRect]] = [:]
+        for (index, row) in rows.enumerated() where !row.isBlank {
+            let y = CGFloat(index) * DocumentMapStrip.rowHeight
+            guard y < bounds.height else { break }
+            for run in row.runs {
+                let rect = CGRect(
+                    x: DocumentMapStrip.inset + CGFloat(run.column) * DocumentMapStrip.columnWidth,
+                    y: y,
+                    width: CGFloat(run.length) * DocumentMapStrip.columnWidth,
+                    height: DocumentMapStrip.inkHeight)
+                byKind[row.kind, default: []].append(rect)
             }
         }
-    }
-
-    /// What is worth a dash of its own when it is not what dominates a row: the
-    /// things a reader scans a long report for.
-    private static func isNotable(_ kind: DocumentMap.Kind) -> Bool {
-        switch kind {
-        case .diagram, .table, .picture: return true
-        case .heading, .prose, .list, .code, .quote, .rule: return false
+        for (kind, rects) in byKind {
+            context.setFillColor(theme.mapColor(for: kind))
+            context.fill(rects)
         }
     }
 
     private func drawChanges(in context: CGContext) {
         guard !changes.isEmpty else { return }
-        let height: CGFloat = 2
-        let usable = max(1, bounds.height - height)
         for change in changes {
+            guard let y = y(of: change.line) else { continue }
             context.setFillColor(
                 change.isAdded
                     ? theme.palette.diffAddedText : theme.palette.diffRemovedText)
-            context.fill(
-                CGRect(
-                    x: 0, y: min(usable, max(0, change.fraction * usable)),
-                    width: bounds.width * 0.35, height: height))
+            context.fill(CGRect(x: 1, y: y, width: 3, height: DocumentMapStrip.rowHeight))
         }
     }
 
+    /// A match is a band across the line it is on, which is where it would be if
+    /// the reader could read the map.
     private func drawMarks(in context: CGContext) {
         guard !marks.isEmpty else { return }
-        let inset: CGFloat = 3
-        let markWidth = bounds.width - inset * 2
-        let markHeight: CGFloat = 2.5
-        let usable = max(1, bounds.height - markHeight)
-        let ordinary = NSColor.secondaryLabelColor.withAlphaComponent(0.55).cgColor
+        let ordinary = NSColor.systemYellow.withAlphaComponent(0.55).cgColor
         let accent = NSColor.controlAccentColor.cgColor
-
-        // Marks are in reading order, so they arrive sorted; anything landing on
-        // a row already painted adds nothing but time, and a large document can
-        // report six figures of matches.
         var lastY: CGFloat = -10
-        for (index, fraction) in marks.enumerated() {
-            let y = min(usable, max(0, fraction * usable))
+        for (index, line) in marks.enumerated() {
+            guard let y = y(of: line) else { continue }
             let isCurrent = index == current
             if !isCurrent, abs(y - lastY) < 1 { continue }
             lastY = y
             context.setFillColor(isCurrent ? accent : ordinary)
-            context.fill(CGRect(x: inset, y: y, width: markWidth, height: markHeight))
+            context.fill(
+                CGRect(
+                    x: DocumentMapStrip.inset, y: y, width: bounds.width - DocumentMapStrip.inset,
+                    height: max(2, DocumentMapStrip.rowHeight)))
         }
     }
 
-    /// Where the reader is: an outline rather than a fill, because everything
-    /// under it is the point of the strip.
+    /// Where the reader is: a wash rather than a fill, because everything under
+    /// it is the point of the strip.
     private func drawReading(in context: CGContext) {
-        guard reading.upperBound > reading.lowerBound else { return }
-        let top = min(bounds.height, max(0, reading.lowerBound * bounds.height))
-        let bottom = min(bounds.height, max(top + 2, reading.upperBound * bounds.height))
+        guard !rows.isEmpty else { return }
+        let top = y(clamping: reading.lowerBound)
+        let bottom = max(top + 4, y(clamping: reading.upperBound + 1))
         let rect = CGRect(x: 0.5, y: top + 0.5, width: bounds.width - 1, height: bottom - top - 1)
         context.setFillColor(NSColor.labelColor.withAlphaComponent(0.08).cgColor)
         context.fill(rect)
-        context.setStrokeColor(NSColor.labelColor.withAlphaComponent(0.45).cgColor)
+        context.setStrokeColor(NSColor.labelColor.withAlphaComponent(0.35).cgColor)
         context.setLineWidth(1)
         context.stroke(rect)
     }
 
-    // MARK: - Pointer
+    // MARK: - The line axis
 
-    private func fraction(at point: CGPoint) -> CGFloat {
-        guard bounds.height > 0 else { return 0 }
-        return min(1, max(0, point.y / bounds.height))
+    /// Where a source line sits on the strip, or nil when it is outside the
+    /// window the map is currently showing.
+    private func y(of line: Int) -> CGFloat? {
+        guard let index = rowIndex(of: line) else { return nil }
+        let y = CGFloat(index) * DocumentMapStrip.rowHeight
+        return y < bounds.height ? y : nil
     }
 
-    /// A click on a find mark selects that match, and a click anywhere else
-    /// goes to that part of the document.
+    /// The same, for the reading rectangle, which must draw an edge even when
+    /// the viewport runs off the end of the window.
+    private func y(clamping line: Int) -> CGFloat {
+        guard let first = rows.first?.line, let last = rows.last?.line else { return 0 }
+        if line <= first { return 0 }
+        if line > last { return bounds.height }
+        return y(of: line) ?? bounds.height
+    }
+
+    /// One row to a line, so this is arithmetic rather than a search — and the
+    /// reason the map clips a long line instead of wrapping it.
+    private func rowIndex(of line: Int) -> Int? {
+        let index = line - startLine
+        return index >= 0 && index < rows.count ? index : nil
+    }
+
+    private func row(at point: CGPoint) -> DocumentMap.Row? {
+        let index = Int(point.y / DocumentMapStrip.rowHeight)
+        guard index >= 0, index < rows.count else { return nil }
+        return rows[index]
+    }
+
+    /// The leaf a click lands on. A blank line belongs to no block, so the click
+    /// takes the next one that does rather than doing nothing.
+    private func ordinal(at point: CGPoint) -> Int? {
+        var index = Int(point.y / DocumentMapStrip.rowHeight)
+        guard index >= 0, index < rows.count else { return nil }
+        while index < rows.count, rows[index].ordinal < 0 { index += 1 }
+        return index < rows.count ? rows[index].ordinal : rows.last?.ordinal
+    }
+
+    // MARK: - Pointer
+
+    /// A click on a find mark selects that match, and a click anywhere else goes
+    /// to that part of the document.
     ///
     /// The order matters: find behaved this way before the map existed, and a
     /// reader stepping through matches must not lose that to a strip that now
     /// also scrolls.
     override func mouseDown(with event: NSEvent) {
-        let position = fraction(at: convert(event.locationInWindow, from: nil))
-        if let index = nearestMark(to: position) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let index = nearestMark(to: point) {
             onSelect?(index)
             return
         }
         dragging = true
-        onScroll?(position)
+        if let ordinal = ordinal(at: point) { onGoTo?(ordinal) }
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard dragging else { return }
-        onScroll?(fraction(at: convert(event.locationInWindow, from: nil)))
+        if let ordinal = ordinal(at: convert(event.locationInWindow, from: nil)) {
+            onGoTo?(ordinal)
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
         dragging = false
     }
 
-    private func nearestMark(to fraction: CGFloat) -> Int? {
-        guard !marks.isEmpty, bounds.height > 0 else { return nil }
-        // Within four points of the mark, in the strip's own units.
-        let tolerance = 4 / bounds.height
+    private func nearestMark(to point: CGPoint) -> Int? {
+        guard !marks.isEmpty else { return nil }
         var best: Int?
         var bestDistance = CGFloat.greatestFiniteMagnitude
-        for (index, mark) in marks.enumerated() {
-            let distance = abs(mark - fraction)
+        for (index, line) in marks.enumerated() {
+            guard let y = y(of: line) else { continue }
+            let distance = abs(y - point.y)
             if distance < bestDistance {
                 bestDistance = distance
                 best = index
             }
         }
-        return bestDistance <= tolerance ? best : nil
+        // Within four points of the mark, which at this scale is two lines.
+        return bestDistance <= 4 ? best : nil
     }
 
     override func updateTrackingAreas() {
@@ -236,14 +280,14 @@ final class DocumentMapStrip: NSView {
             ))
     }
 
-    /// Naming the section under the pointer is what makes the strip readable
-    /// rather than decorative: the colours say what a stretch is made of, and
-    /// the tip says which part of the document it is.
+    /// Naming the section under the pointer is what makes the map navigable
+    /// rather than decorative: the shapes say what a stretch looks like, and the
+    /// tip says which part of the document it is.
     override func mouseMoved(with event: NSEvent) {
-        let position = fraction(at: convert(event.locationInWindow, from: nil))
-        guard abs(position - lastNamed) > 0.002 else { return }
-        lastNamed = position
-        toolTip = onName?(position)
+        guard let row = row(at: convert(event.locationInWindow, from: nil)) else { return }
+        guard row.line != lastNamed else { return }
+        lastNamed = row.line
+        toolTip = row.ordinal >= 0 ? onName?(row.ordinal) : nil
     }
 
     override func mouseExited(with event: NSEvent) {

@@ -384,7 +384,12 @@ public struct InlineStyleMask: OptionSet, Sendable {
 }
 
 extension Theme {
-    /// The colour the map draws a stretch of document in.
+    /// The colour the map draws a line of the document in.
+    ///
+    /// The map draws the words themselves at a point per column, so these are
+    /// ink colours rather than fills: readable against the window's background
+    /// at that size, and still saying at a glance which lines are prose and
+    /// which are something else.
     ///
     /// Derived from the palette rather than invented, so the two appearances
     /// cannot drift apart the first time either of them is touched: prose and
@@ -401,11 +406,11 @@ extension Theme {
             return diagramWheel[index % diagramWheel.count]
         }
         switch kind {
-        case .prose: return fade(palette.secondaryText, 0.18)
-        case .list: return fade(palette.secondaryText, 0.3)
-        case .heading: return fade(palette.text, 0.7)
-        case .code: return fade(palette.codeText, 0.38)
-        case .quote: return fade(palette.quoteBar, 0.7)
+        case .prose: return fade(palette.secondaryText, 0.55)
+        case .list: return fade(palette.secondaryText, 0.7)
+        case .heading: return fade(palette.text, 0.95)
+        case .code: return fade(palette.codeText, 0.75)
+        case .quote: return fade(palette.quoteBar, 0.8)
         case .diagram: return fade(wheel(0), 0.85)
         case .table: return fade(wheel(2), 0.85)
         case .picture: return fade(wheel(1), 0.85)

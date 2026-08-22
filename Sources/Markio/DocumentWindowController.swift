@@ -39,9 +39,6 @@ final class DocumentWindowController: NSWindowController {
     /// What each block of the document is, for the map. Arrives in batches from
     /// the same background walk that counts the summary.
     private var mapClasses: [DocumentMap.Kind] = []
-    /// The document height the strip was last binned at, so a measurement that
-    /// moves the total by a hair does not rebin half a million blocks.
-    private var binnedHeight: CGFloat = -1
     private var rebinScheduled = false
     private var saveWorkItem: DispatchWorkItem?
     /// The document on screen: the file itself, or the merge of it with a
@@ -273,8 +270,8 @@ final class DocumentWindowController: NSWindowController {
         findBar.onPrevious = { [weak self] in self?.step(by: -1) }
         findBar.onClose = { [weak self] in self?.closeFind() }
         mapStrip.onSelect = { [weak self] index in self?.jumpToMatch(index) }
-        mapStrip.onScroll = { [weak self] fraction in self?.scrollMap(to: fraction) }
-        mapStrip.onName = { [weak self] fraction in self?.sectionName(at: fraction) }
+        mapStrip.onGoTo = { [weak self] ordinal in self?.documentView.reveal(ordinal: ordinal) }
+        mapStrip.onName = { [weak self] ordinal in self?.sectionName(at: ordinal) }
 
         NotificationCenter.default.addObserver(
             self,
@@ -446,7 +443,6 @@ final class DocumentWindowController: NSWindowController {
         mapStrip.setTheme(theme)
         // Type of a different size makes a document of a different height, so
         // every bin of the map is now about the wrong part of it.
-        binnedHeight = -1
         scheduleRebin()
         // The width follows the type: a column is so many characters wide, and
         // characters just changed size. `applyColumnWidth` holds the place too,
@@ -706,7 +702,10 @@ final class DocumentWindowController: NSWindowController {
 
     @objc private func scrollDidChange() {
         syncScroll(from: scrollView, to: baselineScroll)
+        // The marker moves with the scroll, now, rather than a turn of the run
+        // loop later; the window of lines behind it can wait for the turn.
         updateReadingMarker()
+        scheduleRebin()
         guard let url = markdownDocument.fileURL, restoredScroll else { return }
         let y = scrollView.contentView.bounds.minY
         saveWorkItem?.cancel()
@@ -737,10 +736,9 @@ final class DocumentWindowController: NSWindowController {
     /// with an ellipsis rather than showing a number that is about to change.
     private func recount() {
         summaryLabel.stringValue = ""
-        // A different document has a different shape, and the old bins would
+        // A different document has a different shape, and the old rows would
         // otherwise sit on the strip until the new classes arrived.
         mapClasses = []
-        binnedHeight = -1
         summaryEngine.count(displayed) { [weak self] result in
             guard let self else { return }
             self.summaryLabel.stringValue = DocumentWindowController.summary(result.counts)
@@ -813,47 +811,73 @@ final class DocumentWindowController: NSWindowController {
         mapStrip.isHidden = !((Preferences.mapVisible && tall) || !findMatches.isEmpty)
     }
 
-    /// Rebin at most once a turn of the run loop, and only when the document's
-    /// height has moved by more than a row of the strip is worth.
+    /// Redraw the map at most once a turn of the run loop.
     ///
-    /// Without both halves this is a full pass over the class array for every
-    /// block that scrolls into view and replaces its estimate.
+    /// Without that, every block that scrolls into view and replaces its
+    /// estimated height would rebuild the map.
     private func scheduleRebin() {
         guard !rebinScheduled else { return }
         rebinScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.rebinScheduled = false
-            self.rebinMap()
+            self.remapDocument()
         }
     }
 
-    private func rebinMap() {
+    /// Build the window of lines the map is showing.
+    ///
+    /// A document taller than the strip cannot be drawn line by line all at
+    /// once, so the map shows a window onto it and slides the window with the
+    /// reader, the way an editor's minimap does with a long file. Only those
+    /// lines are read, which is what keeps this affordable at 32 MB.
+    private func remapDocument() {
         refreshMapVisibility()
         updateReadingMarker()
         updateComparisonMarks()
+        updateFindOverview(force: false)
         guard !mapStrip.isHidden, !mapClasses.isEmpty else { return }
-        let total = layout.totalHeight
-        let rows = mapStrip.rowCount
-        let tolerance = total / CGFloat(max(1, rows))
-        guard abs(total - binnedHeight) > tolerance || mapStrip.needsBins(rows: rows) else {
-            return
-        }
-        binnedHeight = total
-        mapStrip.setBins(
-            DocumentMap.bins(
-                classes: mapClasses, rows: rows, total: total,
-                height: { [weak self] ordinal in self?.layout.height(of: ordinal) ?? 0 }),
-            rows: rows)
+        let capacity = mapStrip.rowCapacity
+        let columns = mapStrip.columnCount
+        let start = mapWindowStart(capacity: capacity)
+        guard mapStrip.needsRows(from: start, capacity: capacity, columns: columns) else { return }
+        mapStrip.setRows(
+            DocumentMap.rows(
+                document: displayed, classes: mapClasses, fromLine: start,
+                maxRows: capacity, columns: columns),
+            startLine: start, capacity: capacity, columns: columns)
+    }
+
+    /// The first line of the window the map shows.
+    ///
+    /// Centred on what the reader is reading, and clamped at both ends so the
+    /// first page of the document sits at the top of the map and the last at the
+    /// bottom. Anchoring it on the same lines the reading rectangle uses is what
+    /// keeps the rectangle inside its own window: the two would otherwise be
+    /// computed from different things — heights and lines — and heights below
+    /// the viewport are still estimates.
+    private func mapWindowStart(capacity: Int) -> Int {
+        let total = displayed.lines.count
+        guard total > capacity else { return 0 }
+        let lines = visibleLines()
+        let span = lines.upperBound - lines.lowerBound + 1
+        let start = lines.lowerBound - max(0, capacity - span) / 2
+        return min(max(0, start), total - capacity)
+    }
+
+    /// The lines of the source the viewport is showing.
+    private func visibleLines() -> ClosedRange<Int> {
+        let visible = scrollView.contentView.bounds
+        let first = layout.index(atOffset: visible.minY)
+        let last = layout.index(atOffset: max(visible.minY, visible.maxY))
+        let top = DocumentMap.firstLine(displayed, ordinal: first)
+        let bottom = DocumentMap.firstLine(displayed, ordinal: last)
+        return top...max(top, bottom)
     }
 
     private func updateReadingMarker() {
         guard !mapStrip.isHidden else { return }
-        let height = max(1, documentView.documentHeight)
-        let visible = scrollView.contentView.bounds
-        let top = min(1, max(0, visible.minY / height))
-        let bottom = min(1, max(top, visible.maxY / height))
-        mapStrip.setReading(top...bottom)
+        mapStrip.setReading(visibleLines())
     }
 
     /// While comparing, the blocks the two versions differ over.
@@ -862,32 +886,23 @@ final class DocumentWindowController: NSWindowController {
             mapStrip.setChanges([])
             return
         }
-        let total = max(1, layout.totalHeight)
-        var changes: [(fraction: CGFloat, isAdded: Bool)] = []
-        var lastFraction: CGFloat = -1
+        var changes: [(line: Int, isAdded: Bool)] = []
+        var lastLine = -1
         for ordinal in 0..<layout.blockCount {
             guard let mark = layout.mark(at: ordinal) else { continue }
-            let fraction = layout.offset(of: ordinal) / total
-            // One mark per row of the strip: a changed section is thousands of
-            // blocks and one stripe.
-            guard fraction - lastFraction > 0.002 else { continue }
-            lastFraction = fraction
-            changes.append((fraction, mark == .added))
+            let line = DocumentMap.firstLine(displayed, ordinal: ordinal)
+            // One mark per line: a changed section is thousands of blocks and
+            // a handful of stripes.
+            guard line > lastLine else { continue }
+            lastLine = line
+            changes.append((line, mark == .added))
         }
         mapStrip.setChanges(changes)
     }
 
-    private func scrollMap(to fraction: CGFloat) {
-        let height = max(1, documentView.documentHeight)
-        let visible = scrollView.contentView.bounds.height
-        let target = fraction * height - visible / 2
-        documentView.scroll(NSPoint(x: 0, y: max(0, min(height - visible, target))))
-    }
-
-    /// The heading that owns the part of the document under the pointer.
-    private func sectionName(at fraction: CGFloat) -> String? {
+    /// The heading that owns a block.
+    private func sectionName(at ordinal: Int) -> String? {
         guard !headings.isEmpty else { return nil }
-        let ordinal = layout.index(atOffset: fraction * layout.totalHeight)
         var current: Int?
         for (index, heading) in outlineOrdinals.enumerated() {
             if heading <= ordinal { current = index } else { break }
@@ -978,7 +993,7 @@ final class DocumentWindowController: NSWindowController {
         findMatches = []
         currentMatch = -1
         documentView.setFindMatches([], current: -1)
-        mapStrip.setMarks([], current: -1)
+        mapStrip.setMarks(lines: [], current: -1)
         scheduleRebin()
         window?.makeFirstResponder(documentView)
     }
@@ -988,7 +1003,7 @@ final class DocumentWindowController: NSWindowController {
             findMatches = []
             currentMatch = -1
             documentView.setFindMatches([], current: -1)
-            mapStrip.setMarks([], current: -1)
+            mapStrip.setMarks(lines: [], current: -1)
             scheduleRebin()
             findBar.setCounter(current: 0, total: 0)
             return
@@ -1010,21 +1025,18 @@ final class DocumentWindowController: NSWindowController {
         }
     }
 
-    /// Where each match sits in the document, as a fraction of its height.
-    ///
-    /// Heights above the viewport are still estimates, so these positions are
-    /// approximate until those blocks have been seen — good enough for a strip
-    /// whose job is to show clustering, and it is recomputed on every step.
-    private func updateFindOverview() {
+    /// Which lines the matches are on, so they land on the map's own axis and
+    /// slide with the window it is showing.
+    private func updateFindOverview(force: Bool = true) {
         guard !findMatches.isEmpty else {
-            mapStrip.setMarks([], current: -1)
-            scheduleRebin()
+            mapStrip.setMarks(lines: [], current: -1)
+            if force { scheduleRebin() }
             return
         }
-        let total = max(1, layout.totalHeight)
-        let marks = findMatches.map { layout.offset(of: $0.ordinal) / total }
-        mapStrip.setMarks(marks, current: currentMatch)
-        scheduleRebin()
+        mapStrip.setMarks(
+            lines: findMatches.map { DocumentMap.firstLine(displayed, ordinal: $0.ordinal) },
+            current: currentMatch)
+        if force { scheduleRebin() }
     }
 
     private func jumpToMatch(_ index: Int) {
@@ -1033,10 +1045,7 @@ final class DocumentWindowController: NSWindowController {
         documentView.setFindMatches(findMatches, current: currentMatch)
         documentView.reveal(ordinal: findMatches[currentMatch].ordinal)
         findBar.setCounter(current: currentMatch + 1, total: findMatches.count)
-        mapStrip.setMarks(
-            findMatches.map { layout.offset(of: $0.ordinal) / max(1, layout.totalHeight) },
-            current: currentMatch
-        )
+        updateFindOverview(force: false)
     }
 
     private func rerunSearchIfActive() {

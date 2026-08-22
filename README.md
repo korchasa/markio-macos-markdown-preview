@@ -58,11 +58,12 @@ Markio reads. It never writes a file it opens.
 - **⌘F** find, **⌘G** / **⌘⇧G** next and previous match
 - **⌥⌘S** the table of contents — the heading tree, click to jump, with each
   section's ticked-of-total beside it
-- **⌥⌘M** the map down the right edge: the shape of the whole document —
-  headings, code, tables, diagrams and pictures in their own colours, the find
-  matches and the changed blocks on the same strip, and a rectangle showing
-  where you are. Click to go there, drag to scroll, hover to see which section
-  it is
+- **⌥⌘M** the map down the right edge: the document itself, drawn small — every
+  line as the words on it, at the column they start on, tinted by what the block
+  is, with the find matches, the blocks a comparison changed, and a rectangle
+  showing where you are. On a document longer than the map, it shows a window
+  onto the text and slides it with you. Click to go there, drag to scroll, hover
+  to see which section it is
 - **⌥⌘F** focus: fold the document down to the section you are reading, keeping
   every heading, so the file reads as its own table of contents with one part
   open
@@ -133,8 +134,11 @@ only appear under it, `--capture-click=<x>,<y>` for what only a click shows,
 `--capture-type=<text>` to type into whatever that click focused, or
 `--capture-scroll=<points>` for what only appears once a document has been
 scrolled. `--compare=<path>` (with `--side-by-side`) captures a comparison
-without a hand on the mouse, `--present [--slide=<n>]` opens the deck, and
-`--export-pdf=<path>` writes the PDF and quits. The bench harness renders offscreen, and takes a baseline
+without a hand on the mouse, `--present [--slide=<n>]` opens the deck,
+`--export-pdf=<path>` writes the PDF and quits, and `--dump-menu` prints the menu
+bar as AppKit has it — every item with its shortcut, whether it is enabled, and
+which object would receive it. Add `-ApplePersistenceIgnoreState YES` when the
+shot must show one document and not whatever macOS restored alongside it. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 
 ```bash

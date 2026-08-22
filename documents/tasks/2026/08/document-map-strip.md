@@ -54,6 +54,51 @@ Left undone on purpose: the hover tip names the section but does not preview it,
 and the strip is not drawn in the Quick Look extension, which has no scroll view
 to pin it beside.
 
+## Status — 2026-08-22, later: reworked into a minimap
+
+The owner looked at the shipped strip and said what it was missing: it must be
+substantially wider and show the real content rather than the types of blocks,
+with the editors' minimap as the reference. That is the version now in the app,
+and it replaces the coloured bins entirely.
+
+What changed:
+
+- **The strip draws the document, not a legend for it.** One row per source
+  line, a mark per run of non-space bytes at the column it starts on, read
+  straight from `document.bytes` through `LineIndex`. Indentation, line length
+  and the rhythm of a paragraph all survive; the block's kind is now the colour
+  of that text rather than a bar standing in for it.
+- **14 points became 120,** with the reading column inset to match.
+- **A long document is shown through a window of lines** centred on the reader
+  and clamped at both ends, so only the lines the strip can show are ever read.
+  A 130,000-line document maps as cheaply as a note — measured at 2.6 s wall for
+  a launch, a scroll to line 41,574 and a shot.
+- **Find marks and comparison marks travel as source lines,** so every layer
+  sits on the same axis as the rows and slides with them.
+
+Two things learned in the doing, both of which cost a wrong version first:
+
+- **A line is clipped at the map's edge, never wrapped.** With wrapping, rows
+  and lines stop matching, and the arithmetic that places the reading rectangle
+  drifts — on paragraphs of 500 characters it drifted off the bottom of the
+  strip and the rectangle simply vanished. One row to a line makes the index
+  `line - startLine`.
+- **The window and the rectangle must be computed from the same thing.** The
+  first version took the window from the scroll fraction of the document's
+  height and the rectangle from the lines of the viewport; heights below the
+  viewport are estimates, so the two disagreed and the rectangle fell outside
+  its own window.
+
+One thing outside the app was fixed on the way: `--capture` fired from a block
+on the main queue, and a main-queue block cannot be interrupted by another one,
+so anything the app defers with `DispatchQueue.main.async` never ran before the
+shot. Captures of anything deferred — the map's window after a scroll — showed a
+state no reader ever sees. It fires from a timer now.
+
+Worth knowing outside this repository: the store screenshots are shots of the
+whole window, so they now show a 120-point minimap and need regenerating before
+the next submission.
+
 ## What it stands on
 
 Almost all of it exists; this is assembly, not new architecture.

@@ -31,20 +31,30 @@ public enum DocumentMap {
         case rule
     }
 
-    /// One row of the strip: what dominates it, and what else landed in it.
+    /// One row of the map: a slice of a source line, as the runs of ink on it.
     ///
-    /// The second half is what keeps a single diagram inside a wall of prose
-    /// from disappearing: on a document a thousand screens tall one row of the
-    /// strip is many blocks, and the dominant class alone would hide every
-    /// small thing in it.
-    public struct Bin: Sendable, Equatable {
-        public var dominant: Kind = .prose
-        /// Bit per `Kind.rawValue`.
-        public var present: UInt16 = 0
-        /// True for a row no block reached — the document ends above it.
-        public var isEmpty: Bool { present == 0 }
+    /// The map draws what the document actually says — the shape of its words,
+    /// their indentation, the length of its lines — rather than a colour per
+    /// kind of block. A row is what one line of the file looks like from far
+    /// away, and a line too long for the map is cut off at its edge rather than
+    /// wrapped: one row per line keeps the map's arithmetic exact, so the
+    /// rectangle showing where the reader is cannot drift away from the lines
+    /// it is meant to be marking.
+    public struct Row: Sendable, Equatable {
+        /// What kind of block the line belongs to, which is what colours it.
+        public var kind: Kind = .prose
+        /// The leaf that owns the line, so a click on the row can go to it.
+        public var ordinal: Int = -1
+        public var line: Int = 0
+        /// Words, as a column and a length in columns.
+        public var runs: [Run] = []
 
-        public func has(_ kind: Kind) -> Bool { present & (1 << kind.rawValue) != 0 }
+        public var isBlank: Bool { runs.isEmpty }
+    }
+
+    public struct Run: Sendable, Equatable {
+        public var column: Int
+        public var length: Int
     }
 
     /// What one leaf is, from the block layer alone: no text, no typesetting.
@@ -128,50 +138,133 @@ public enum DocumentMap {
         return .prose
     }
 
-    /// Bin the classes into the rows of a strip.
+    /// The rows of the map, starting at a line of the source.
     ///
-    /// The axis is document height rather than byte offset, so a click on the
-    /// map lands where the scrollbar beside it says it will: a stretch of dense
-    /// code is few bytes and many points, and a map that disagreed with the
-    /// thumb would be worse than no map. The cost is that heights above the
-    /// viewport are estimates, so the strip settles as blocks are measured.
+    /// Reading the bytes is the whole cost: no typesetting, no attributed
+    /// strings, nothing that scales with the size of the document. Only the
+    /// lines that fit on the strip are ever looked at, which is why a map of a
+    /// 32 MB document costs the same as a map of a short note — it shows a
+    /// window onto the document and slides it, exactly as an editor's minimap
+    /// does when a file is longer than its map.
     ///
-    /// A block of zero height — one inside a closed section — contributes
-    /// nothing, which is the right answer without a rule for it: the map shows
-    /// the document as it is on screen.
-    public static func bins(
-        classes: [Kind], rows: Int, total: CGFloat, height: (Int) -> CGFloat
-    ) -> [Bin] {
-        guard rows > 0 else { return [] }
-        var bins = [Bin](repeating: Bin(), count: rows)
-        guard total > 0, !classes.isEmpty else { return bins }
-        var weights = [CGFloat](repeating: 0, count: rows)
-        let scale = CGFloat(rows) / total
+    /// Words rather than characters: at one point per column a letter is not a
+    /// letter any more, and what a reader recognises from across a room is the
+    /// rhythm of the words and the indentation, not the glyphs.
+    public static func rows(
+        document: Document, classes: [Kind], fromLine: Int, maxRows: Int, columns: Int
+    ) -> [Row] {
+        guard maxRows > 0, columns > 0, document.lines.count > 0 else { return [] }
+        var rows: [Row] = []
+        rows.reserveCapacity(maxRows)
+        var leaf = leafIndex(document, covering: fromLine)
+        var line = max(0, fromLine)
 
-        var y: CGFloat = 0
-        for ordinal in classes.indices {
-            let blockHeight = height(ordinal)
-            defer { y += blockHeight }
-            guard blockHeight > 0 else { continue }
-            let kind = classes[ordinal]
-            let first = min(rows - 1, max(0, Int(y * scale)))
-            let last = min(rows - 1, max(first, Int((y + blockHeight) * scale)))
-            for row in first...last {
-                let top = max(y, CGFloat(row) / scale)
-                let bottom = min(y + blockHeight, CGFloat(row + 1) / scale)
-                let overlap = max(0, bottom - top)
-                bins[row].present |= 1 << kind.rawValue
-                // A row is named by whatever fills most of it, with prose
-                // counted at half: prose is what a document is made of between
-                // the things a reader is hunting for, so when a row holds both,
-                // the other one is the informative answer.
-                let weight = kind == .prose ? overlap / 2 : overlap
-                if weight > weights[row] {
-                    weights[row] = weight
-                    bins[row].dominant = kind
+        while line < document.lines.count, rows.count < maxRows {
+            while leaf < document.leaves.count, lastLine(document, ordinal: leaf) < line {
+                leaf += 1
+            }
+            let owns =
+                leaf < document.leaves.count
+                && document.block(document.leaves[leaf]).firstLine <= Int32(line)
+            var row = Row()
+            row.line = line
+            row.ordinal = owns ? leaf : -1
+            row.kind = kind(document, classes: classes, line: line, leaf: leaf, owns: owns)
+            row.runs = runs(document, line: line).compactMap { run in
+                guard run.column < columns else { return nil }
+                return Run(column: run.column, length: min(run.length, columns - run.column))
+            }
+            rows.append(row)
+            line += 1
+        }
+        return rows
+    }
+
+    /// What colours a line.
+    ///
+    /// A block's lines are not quite the lines a reader sees: a fenced code
+    /// block covers its contents and not its fences, so the two fence lines
+    /// belong to no block at all. They are plainly part of the code, so an
+    /// orphan line touching a block takes that block's colour — the one after
+    /// it if it opens one, the one before it if it closes one.
+    private static func kind(
+        _ document: Document, classes: [Kind], line: Int, leaf: Int, owns: Bool
+    ) -> Kind {
+        if owns { return leaf < classes.count ? classes[leaf] : .prose }
+        if leaf < document.leaves.count, leaf < classes.count,
+            Int(document.block(document.leaves[leaf]).firstLine) - line <= 1
+        {
+            return classes[leaf]
+        }
+        if leaf > 0, leaf - 1 < classes.count { return classes[leaf - 1] }
+        return .prose
+    }
+
+    /// How many rows a whole document would take, for the slider's arithmetic.
+    ///
+    /// Lines rather than wrapped rows: counting the wrapped ones would mean
+    /// reading every byte of the document, which is the one thing this must not
+    /// do. A document of long paragraphs therefore slides a little faster than
+    /// its map suggests, which nobody can see.
+    public static func rowCount(_ document: Document) -> Int { document.lines.count }
+
+    /// The words on a line, in columns, with a tab counted as four.
+    private static func runs(_ document: Document, line: Int) -> [Run] {
+        let bytes = document.bytes
+        let start = document.lines.start(of: line)
+        var end = Int(document.lines.starts[line + 1])
+        if end > start, bytes[end - 1] == UInt8(ascii: "\n") { end -= 1 }
+        if end > start, bytes[end - 1] == UInt8(ascii: "\r") { end -= 1 }
+        guard end > start else { return [] }
+
+        var runs: [Run] = []
+        var column = 0
+        var runStart = -1
+        for index in start..<end {
+            let byte = bytes[index]
+            let isSpace = byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t")
+            if isSpace {
+                if runStart >= 0 {
+                    runs.append(Run(column: runStart, length: column - runStart))
+                    runStart = -1
                 }
+                column += byte == UInt8(ascii: "\t") ? 4 : 1
+            } else {
+                if runStart < 0 { runStart = column }
+                // A byte that continues a UTF-8 character is not a column of
+                // its own, or every accented word would look twice as wide.
+                if byte & 0xC0 != 0x80 { column += 1 }
             }
         }
-        return bins
+        if runStart >= 0 { runs.append(Run(column: runStart, length: column - runStart)) }
+        return runs
+    }
+
+    /// The leaf that owns a line, or the first one after it.
+    public static func leafIndex(_ document: Document, covering line: Int) -> Int {
+        var low = 0
+        var high = document.leaves.count - 1
+        var found = document.leaves.count
+        while low <= high {
+            let middle = (low + high) / 2
+            if lastLine(document, ordinal: middle) >= line {
+                found = middle
+                high = middle - 1
+            } else {
+                low = middle + 1
+            }
+        }
+        return found
+    }
+
+    /// The first line of a leaf, which is where a click on its row goes.
+    public static func firstLine(_ document: Document, ordinal: Int) -> Int {
+        guard ordinal >= 0, ordinal < document.leaves.count else { return 0 }
+        return Int(document.block(document.leaves[ordinal]).firstLine)
+    }
+
+    private static func lastLine(_ document: Document, ordinal: Int) -> Int {
+        let block = document.block(document.leaves[ordinal])
+        return Int(block.firstLine) + max(0, Int(block.lineCount) - 1)
     }
 }
