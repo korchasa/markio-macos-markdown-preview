@@ -8,30 +8,6 @@ import AppKit
 /// controller answers without any window bookkeeping.
 @MainActor
 enum MainMenu {
-    /// The Open Recent this file builds, kept only for as long as macOS does
-    /// not build one itself.
-    private static weak var ourRecents: NSMenuItem?
-
-    private static let recentsGuard = RecentsGuard()
-
-    /// Leaves the File menu with one Open Recent on every version of macOS.
-    ///
-    /// A document app on a recent system is given an Open Recent by AppKit,
-    /// and this app builds its own, which is what a Mac without that gift
-    /// needs. When both arrive the reader sees the item twice and one of them
-    /// is empty, because whichever came second did not get the identifier that
-    /// fills it. So the menu is looked at each time it opens, and if the system
-    /// has provided one, ours goes.
-    final class RecentsGuard: NSObject, NSMenuDelegate {
-        func menuNeedsUpdate(_ menu: NSMenu) {
-            guard let ours = ourRecents, menu.items.contains(ours) else { return }
-            let theirs = menu.items.contains { $0 !== ours && $0.title == ours.title }
-            guard theirs else { return }
-            menu.removeItem(ours)
-            ourRecents = nil
-        }
-    }
-
     static func build() -> NSMenu {
         let main = NSMenu()
         main.addItem(appMenu())
@@ -104,14 +80,11 @@ enum MainMenu {
             action: #selector(NSDocumentController.openDocument(_:)),
             keyEquivalent: "o"
         )
-        let recents = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
-        let recentsMenu = NSMenu(title: "Open Recent")
-        // AppKit fills this in as long as it carries the magic identifier.
-        recentsMenu.identifier = NSUserInterfaceItemIdentifier("NSRecentDocumentsMenu")
-        recents.submenu = recentsMenu
-        menu.addItem(recents)
-        ourRecents = recents
-        menu.delegate = recentsGuard
+        // Open Recent is not built here. AppKit gives a document app one of its
+        // own and fills it; building a second put two in the File menu, and the
+        // one that came second stayed empty. Removing ours when the system's
+        // appeared only worked when a person opened the menu, which is to say
+        // it worked after the reader had already seen the duplicate.
         menu.addItem(.separator())
         let compare = menu.addItem(
             withTitle: "Compare…",

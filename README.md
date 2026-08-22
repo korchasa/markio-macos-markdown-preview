@@ -135,9 +135,12 @@ only appear under it, `--capture-click=<x>,<y>` for what only a click shows,
 `--capture-scroll=<points>` for what only appears once a document has been
 scrolled. `--compare=<path>` (with `--side-by-side`) captures a comparison
 without a hand on the mouse, `--present [--slide=<n>]` opens the deck,
-`--export-pdf=<path>` writes the PDF and quits, and `--dump-menu` prints the menu
-bar as AppKit has it — every item with its shortcut, whether it is enabled, and
-which object would receive it. Add `-ApplePersistenceIgnoreState YES` when the
+`--export-pdf=<path>` writes the PDF and quits, and `--dump-menu[=<path>]` writes
+the menu bar as AppKit has it — every item with its shortcut, whether it is
+enabled, and which object would receive it. It waits 2.5 seconds first and says
+in its first line whether the app was active and which window was key: an
+inactive app disables every document command, so a dump that says
+`active=false` cannot answer whether an item is enabled. Add `-ApplePersistenceIgnoreState YES` when the
 shot must show one document and not whatever macOS restored alongside it. The bench harness renders offscreen, and takes a baseline
 when the thing to look at is a comparison:
 

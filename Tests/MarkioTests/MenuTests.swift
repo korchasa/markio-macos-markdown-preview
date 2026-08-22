@@ -51,36 +51,14 @@ final class MenuTests: XCTestCase {
         XCTAssertFalse(try fileMenu().items.contains { $0.title == "Side by Side" })
     }
 
-    func testTheFileMenuOffersTheRecentDocuments() throws {
-        let file = try fileMenu()
-        let recents = file.items.filter { $0.title == "Open Recent" }
-        XCTAssertEqual(recents.count, 1)
-        // The identifier is the whole mechanism: AppKit fills a submenu that
-        // carries it and leaves any other alone.
-        XCTAssertEqual(
-            recents.first?.submenu?.identifier,
-            NSUserInterfaceItemIdentifier("NSRecentDocumentsMenu"))
-    }
-
-    func testOurOpenRecentGivesWayToTheOneMacOSAdds() throws {
-        // A document app on a recent system is given an Open Recent of its own,
-        // and the reader saw the item twice — one of the two empty, because
-        // only one of them can carry the identifier that fills it.
-        let file = try fileMenu()
-        let theirs = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
-        theirs.submenu = NSMenu(title: "Open Recent")
-        file.addItem(theirs)
-
-        file.delegate?.menuNeedsUpdate?(file)
-
-        let recents = file.items.filter { $0.title == "Open Recent" }
-        XCTAssertEqual(recents.count, 1)
-        XCTAssertTrue(recents.first === theirs)
-    }
-
-    func testTheOneWeBuildStaysWhenNobodyElseAddsOne() throws {
-        let file = try fileMenu()
-        file.delegate?.menuNeedsUpdate?(file)
-        XCTAssertEqual(file.items.filter { $0.title == "Open Recent" }.count, 1)
+    /// Open Recent is AppKit's to build.
+    ///
+    /// A document app is given one, filled by `NSDocumentController`. Building
+    /// a second put two in the File menu and left the later one empty, and the
+    /// guard that removed ours only ran once a person had opened the menu — by
+    /// which time the reader had already seen the duplicate.
+    func testTheFileMenuLeavesOpenRecentToAppKit() throws {
+        XCTAssertTrue(try fileMenu().items.filter { $0.title == "Open Recent" }.isEmpty)
+        XCTAssertNil(try fileMenu().delegate)
     }
 }

@@ -46,10 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let target = pdfTarget() { exportPDF(to: target) }
         if let directory = snapshotDirectory() { runSnapshot(into: directory) }
         if let target = captureTarget() { capture(to: target) }
-        if CommandLine.arguments.contains("--dump-menu") { dumpMenu() }
+        if let argument = CommandLine.arguments.first(where: { $0.hasPrefix("--dump-menu") }) {
+            let path = argument.dropFirst("--dump-menu".count).dropFirst()
+            dumpMenu(to: path.isEmpty ? nil : URL(fileURLWithPath: String(path)))
+        }
     }
 
-    /// `--dump-menu`: print the menu bar as AppKit has it, and quit.
+    /// `--dump-menu[=<path>]`: write the menu bar as AppKit has it, and quit.
     ///
     /// Whether a command is *enabled* is a question about the responder chain,
     /// not about the code that built the menu: an item routed to a controller
@@ -57,39 +60,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// runs the same validation the menu bar runs when it is opened, so this
     /// prints the answer a person would get by looking, and prints it twice to
     /// show that opening a menu does not add to it.
-    private func dumpMenu() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            for pass in 1...2 {
-                print("--- pass \(pass) ---")
-                guard let bar = NSApp.mainMenu else { break }
-                for top in bar.items {
-                    guard let menu = top.submenu else { continue }
-                    menu.update()
-                    print("\(top.title)")
-                    for item in menu.items {
-                        if item.isSeparatorItem {
-                            print("  ----")
-                            continue
+    private func dumpMenu(to file: URL?) {
+        // Long enough for something outside to bring the app to the front: an
+        // app launched from a terminal stays behind it, and macOS will not let
+        // it steal focus for itself.
+        Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                var out = ""
+                // Whether a command is enabled is a question about the active
+                // app and its key window, so the answer is only worth anything
+                // once this app is both. An app launched from a terminal is
+                // neither, and every document command reads as broken then.
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.orderedWindows.first(where: \.isVisible)?.makeKeyAndOrderFront(nil)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+                out += "active=\(NSApp.isActive) key=\(NSApp.keyWindow?.title ?? "none")"
+                out += " recents=\(NSDocumentController.shared.recentDocumentURLs.count)\n"
+                for pass in 1...2 {
+                    out += "--- pass \(pass) ---\n"
+                    guard let bar = NSApp.mainMenu else { break }
+                    for top in bar.items {
+                        guard let menu = top.submenu else { continue }
+                        menu.update()
+                        out += "\(top.title)\n"
+                        for item in menu.items {
+                            out += AppDelegate.describe(item)
                         }
-                        let key =
-                            item.keyEquivalent.isEmpty
-                            ? "" : " [\(AppDelegate.shortcut(for: item))]"
-                        // Who would actually receive the command, so a disabled
-                        // item says whether the chain reaches nobody or whether
-                        // somebody deliberately said no.
-                        var target = ""
-                        if let action = item.action {
-                            let receiver = NSApp.target(
-                                forAction: action, to: item.target, from: item)
-                            target =
-                                " → \(receiver.map { String(describing: type(of: $0)) } ?? "nobody")"
-                        }
-                        print("  \(item.isEnabled ? "on " : "off")\(item.title)\(key)\(target)")
                     }
                 }
+                if let file {
+                    try? out.write(to: file, atomically: true, encoding: .utf8)
+                } else {
+                    print(out, terminator: "")
+                }
+                NSApp.terminate(nil)
             }
-            NSApp.terminate(nil)
         }
+    }
+
+    /// One line per item: whether it is on, its shortcut, who would receive it,
+    /// and — for a submenu — the identifier AppKit fills it by.
+    private static func describe(_ item: NSMenuItem) -> String {
+        if item.isSeparatorItem { return "  ----\n" }
+        let key = item.keyEquivalent.isEmpty ? "" : " [\(shortcut(for: item))]"
+        var target = ""
+        if let action = item.action {
+            // A disabled item says whether the chain reaches nobody or whether
+            // somebody deliberately said no.
+            let receiver = NSApp.target(forAction: action, to: item.target, from: item)
+            target = " → \(receiver.map { String(describing: type(of: $0)) } ?? "nobody")"
+        }
+        var submenu = ""
+        if let menu = item.submenu {
+            menu.update()
+            let titles = menu.items.map { $0.isSeparatorItem ? "--" : $0.title }
+            let owner = menu.delegate.map { String(describing: type(of: $0)) } ?? "-"
+            submenu =
+                " {\(menu.identifier?.rawValue ?? "-") via \(owner): "
+                + "\(titles.joined(separator: ", "))}"
+        }
+        return "  \(item.isEnabled ? "on " : "off ")\(item.title)\(key)\(target)\(submenu)\n"
     }
 
     private static func shortcut(for item: NSMenuItem) -> String {
