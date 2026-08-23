@@ -37,10 +37,11 @@ public struct BlockFlags: OptionSet, Sendable {
     public static let tight = BlockFlags(rawValue: 1 << 0)
     /// Ordered list (`1.`) rather than a bullet.
     public static let ordered = BlockFlags(rawValue: 1 << 1)
-    /// List item carrying a GFM task checkbox.
-    public static let task = BlockFlags(rawValue: 1 << 2)
-    /// Task checkbox is ticked.
-    public static let taskChecked = BlockFlags(rawValue: 1 << 3)
+    // Bits 2 and 3 are free. They were `task` and `taskChecked`, declared for
+    // a checkbox the scanner never sets: at block level `[ ]` is ordinary
+    // text, and only the renderer knows the leaf heads a list item — see
+    // `Document.taskMarker`. Flags that promise a fact nobody records are
+    // worse than no flags, because the next reader counts on them.
     /// Code block written with ``` or ~~~ rather than by indentation.
     public static let fenced = BlockFlags(rawValue: 1 << 4)
     /// Heading written by underlining rather than with leading `#`.
