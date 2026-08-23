@@ -912,6 +912,30 @@ final class MermaidTests: XCTestCase {
         return diagram
     }
 
+    /// A body written on one line is one member, and that is Mermaid's own
+    /// answer rather than a guess.
+    ///
+    /// Its lexer reads everything between the braces up to a newline as a
+    /// single `MEMBER` token, so `class Document { +String text +render() }`
+    /// draws one class with one row in it — not two rows, and not the source.
+    /// Markio used to show the source here, which was the last difference the
+    /// parity sweep found.
+    func testAClassBodyOnOneLineIsOneMember() throws {
+        let diagram = try XCTUnwrap(
+            boxes(
+                """
+                classDiagram
+                    class Document { +String text +render() }
+                    class Empty { }
+                """
+            )
+        )
+        XCTAssertEqual(diagram.boxes.map(\.name), ["Document", "Empty"])
+        // It ends in brackets, so it reads as a call and goes below the line.
+        XCTAssertEqual(diagram.boxes[0].compartments, [[], ["+String text +render()"]])
+        XCTAssertEqual(diagram.boxes[1].compartments.flatMap { $0 }, [])
+    }
+
     func testAClassDiagramReadsItsMembersAndItsRelations() throws {
         let diagram = try XCTUnwrap(
             boxes(

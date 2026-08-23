@@ -614,6 +614,12 @@ An entity's attribute is
 written type first and name second, the order it is declared in: `string email`
 and not `email string`, which would say the attribute is called `string`.
 
+A class body opened and closed on one line is one row, whatever it holds:
+`class Document { +String text +render() }` draws a single member and not two.
+That is Mermaid's own arithmetic rather than a simplification of it — its lexer
+reads everything between the braces up to a newline as one token — and it is
+why the line is read at all instead of falling back to the source.
+
 An entity is known by an id and shows whatever words are hung off it — `CAR`,
 `"This ❤ Unicode"`, `p[Person]`, `a["Customer Account"]` — so the reader keeps
 its own id table rather than looking boxes up by what they show; two ids that

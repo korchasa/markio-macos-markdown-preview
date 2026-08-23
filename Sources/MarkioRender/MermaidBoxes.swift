@@ -257,6 +257,17 @@ enum ClassDiagram {
     ) -> Bool {
         var text = rest
         var opens = false
+        // A body opened and closed on the same line is one member, whatever it
+        // holds. That is Mermaid's own arithmetic and not a simplification: its
+        // lexer reads everything between the braces up to a newline as a single
+        // token, so `class Document { +String text +render() }` draws one row
+        // rather than two.
+        var inlineBody: String?
+        if text.hasSuffix("}"), let brace = text.firstIndex(of: "{") {
+            inlineBody = String(text[text.index(after: brace)..<text.index(before: text.endIndex)])
+                .trimmingCharacters(in: .whitespaces)
+            text = String(text[text.startIndex..<brace]).trimmingCharacters(in: .whitespaces)
+        }
         if text.hasSuffix("{") {
             opens = true
             text = String(text.dropLast()).trimmingCharacters(in: .whitespaces)
@@ -282,6 +293,9 @@ enum ClassDiagram {
         if let label { diagram.boxes[index].name = label }
         if let stereotype { diagram.boxes[index].stereotype = stereotype }
         if opens { opening = index }
+        if let inlineBody, !inlineBody.isEmpty {
+            append(inlineBody, to: &diagram.boxes[index])
+        }
         // A class written in a second namespace stays where it was first put:
         // one class is drawn once, inside one frame.
         if let namespace, diagram.boxes[index].namespace == nil {
