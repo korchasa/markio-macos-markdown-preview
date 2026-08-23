@@ -19,9 +19,10 @@ quietly drop an item again.
 
 Still open, and open on purpose:
 
-- **"To check on a running build"** is a list of things code cannot answer. They
-  need the app open in front of a person, and an accessibility pass for the menu
-  items.
+- **An accessibility pass over the menus** with a screen reader, which needs a
+  person listening. Everything else on the "to check on a running build" list
+  was answered by running the app — the last of it, the external link, on
+  2026-08-23.
 - **The corpus comparison** — one shared set of documents through both
   renderers, differences read by eye — has not been made. It is the remaining
   work on markdown coverage, and it needs the old tree, which is read-only.

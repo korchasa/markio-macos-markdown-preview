@@ -320,8 +320,9 @@ display.
 
 ## 6. Copy with formatting (low)
 
-**Done, step one — `51eee01`.** Tables and diagrams as rich objects are
-still the second step, and still optional.
+**Done — `51eee01` (step one) and step two on 2026-08-23.** A table pastes as
+an `NSTextTable` and a diagram as a picture; the status at the top of this file
+says how.
 
 Copy a selection and paste it into Mail, Slack or Notes with its styles intact.
 The pieces are there: each `BlockBox.Segment` holds an `NSAttributedString`, so
