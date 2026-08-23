@@ -84,6 +84,66 @@ One observation, not a defect: an anchor jump reveals its target rather than
 putting it at the top of the window, so a click near the end of a document
 leaves the heading at the bottom edge.
 
+## Status — 2026-08-23: the corpus comparison, and what it found
+
+The last two open items are closed. Both were answered by running things
+rather than by reading them.
+
+**Quick Look, on a running build.** Previewed four files through `qlmanage` on
+the installed build and read the extension's own log (`subsystem
+dev.markio.two`): every one was rendered by this extension rather than by the
+system's plain-text preview — 297 bytes/6 blocks, 125/2, 101/3, 35/2. A shot of
+the panel for a file holding all of it at once shows the frontmatter box, a GFM
+table with alignment, ticked and unticked boxes, inline and display mathematics
+and a Mermaid flowchart. Links are inert by construction: the extension installs
+a `DocumentView` with no callbacks at all, and the renderer never opens anything
+itself.
+
+One item on that list turned out to be a decision rather than a gap. The old
+checklist expects a non-UTF-8 file to fall back to the system preview; this app
+shows it, because PARSE-7 says malformed UTF-8 is displayed rather than rejected
+— a viewer shows whatever it was handed. Recorded here so the difference is not
+rediscovered as a defect.
+
+**The corpus comparison, with one renderer instead of two.** The old tree
+carries `test-fixtures/render-suite.md`: 498 lines written to exercise every
+construct a viewer is expected to render, each section labelled with what it is
+testing. That is the shared corpus this sweep wanted. The old renderer could not
+be made to answer: built from a scratch copy — never in the archived tree — it
+opens the document, sets the window title, and draws a blank page, and its own
+log stays empty. Debugging a retired build was not worth it, so the suite's own
+descriptions were the oracle, and this app's rendering of all 18 exported pages
+was read against them.
+
+Correct, section by section: headings both ways and the seven-hash paragraph,
+soft and hard breaks in both spellings, emphasis with the intraword rule, nested
+quotes with a fence inside, lists tight, loose, deeply nested, ordered from a
+custom start, task lists nested inside them, fenced and indented code,
+highlighting across a dozen languages with a diff block banded red and green,
+unknown languages falling back to plain, rules, links in every marked-up form,
+images degrading to a placeholder, GFM tables including the ragged and the very
+wide, footnotes, HTML tables with merged cells, `<details>`, escapes and
+entities, Mermaid flowcharts, sequence, state and pie, a malformed diagram
+keeping its source, Unicode with RTL and emoji, inline and display mathematics.
+
+Two differences, and only one of them was a defect:
+
+- **Bare links were not links.** `https://github.com/…`, `www.example.com` and
+  an address in the prose stayed plain text, while the README and PARSE-2 have
+  claimed GFM autolinks all along. Implemented, tested and measured — see the
+  inline-parsing section of the SDS.
+- **A single-line `classDiagram` body keeps its source.** `class Document {
+  +String text +render() }` is not read; the same class written over several
+  lines is. Left alone deliberately: there is no oracle here — the old renderer
+  will not run, and whether Mermaid itself accepts the one-line form was not
+  established. Showing the source is this app's documented answer to anything it
+  cannot read.
+
+**And a third defect, found on the running build rather than in the suite.** The
+window title showed `notes.md` where the app means to show the whole path. The
+title was being set by hand, and `NSDocument` syncs it again from the display
+name afterwards. Fixed by overriding `windowTitle(forDocumentDisplayName:)`.
+
 ## Where the old behaviour is written down
 
 Four sources, each catching a class the others miss. Together they are the
@@ -188,10 +248,10 @@ crash, and a large document that must not hang.
 
 All have counterparts here (`HTMLTableTests`, `InlineParserTests`,
 `MathTests`, `AnsiTextTests`, `MermaidTests`, `PlainTextParityTests`), so the
-inventory is covered. What is not covered is agreement on the *result*: the two
-implementations were never run over one corpus and compared. That comparison is
-the remaining work in this area — one shared corpus, both renderers, differences
-read by eye, since there is no oracle.
+inventory is covered. Agreement on the *result* was the remaining work, and it was
+done on 2026-08-23 against the old tree's own `render-suite.md` — see the status
+at the top of this file. It found one defect (bare links were not links) and one
+difference left alone on purpose.
 
 ## Repeating this sweep
 

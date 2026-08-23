@@ -13,8 +13,11 @@ this file was written, in the order it appears under "Not done" at the end:
   CoreText. That is most of the render target by line count.
 - **The compare view has a side-by-side layout.** Two panes, two scrollers kept
   in step, switched by which constraint holds the main pane's leading edge.
-- **Window restoration is still unconfirmed** on this machine, for the same
-  reason: it has no saved application state for any app.
+- **Window restoration is confirmed** (2026-08-23). The app was quit properly
+  and relaunched with one document on the command line; it came back with the
+  fourteen windows of the previous session as well. `NSQuitAlwaysKeepsWindows`
+  is on for this machine, and a launch that must show one document only needs
+  `-ApplePersistenceIgnoreState YES` to suppress the rest.
 - **Signing, packaging and release happen outside this repository**, and that
   is arranged. Nothing about it lives here.
 
