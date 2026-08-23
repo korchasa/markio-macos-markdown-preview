@@ -17,7 +17,8 @@ Markio reads. It never writes a file it opens.
   bullet and ordered lists (tight and loose, nested), fenced and indented code,
   thematic breaks
 - GitHub extensions: tables with per-column alignment, task lists,
-  strikethrough, autolinks
+  strikethrough, autolinks — including the bare ones nobody marked up, so a
+  `https://…`, a `www.…` and an email address in the prose are all links
 - Tables written with HTML tags, merged cells included — the one thing
   Markdown's own table syntax cannot express
 - YAML front matter, shown as a highlighted metadata block

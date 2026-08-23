@@ -35,7 +35,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   tight and loose), fenced and indented code, thematic breaks, HTML blocks,
   link reference definitions.
 - **PARSE-2** GitHub extensions: tables with per-column alignment, task list
-  items, strikethrough, autolinks.
+  items, strikethrough, autolinks. An autolink is also one nobody marked up: a
+  bare `https://…`, `www.…` or email address becomes a link, and it ends where
+  the sentence's own punctuation begins.
 - **PARSE-3** YAML front matter at the head of the file is a block of its own,
   not prose.
 - **PARSE-4** Inline: emphasis and strong (CommonMark delimiter rules,

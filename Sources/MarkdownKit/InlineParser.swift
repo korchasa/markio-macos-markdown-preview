@@ -91,6 +91,11 @@ public enum InlineParser {
         var tokens: [Token] = []
         var links: [InlineLink] = []
         var pendingTextStart = -1
+        /// How many `[` are open. A link inside a link is not a link, so bare
+        /// URLs are left alone in there — and, more to the point, a bare scan
+        /// that ran past a `]` would swallow the destination that follows it
+        /// and leave neither link standing.
+        var openBrackets = 0
 
         init(
             bytes: UnsafeBufferPointer<UInt8>,
@@ -162,6 +167,7 @@ public enum InlineParser {
                         var token = Token(kind: .bracketOpen, range: ByteRange(pos, pos + 2))
                         token.isImage = true
                         emit(token, at: pos)
+                        openBrackets += 1
                         pos += 2
                         continue
                     }
@@ -170,10 +176,12 @@ public enum InlineParser {
                 case ASCII.leftBracket:
                     flushText(upTo: pos)
                     emit(Token(kind: .bracketOpen, range: ByteRange(pos, pos + 1)), at: pos)
+                    openBrackets += 1
                     pos += 1
                 case ASCII.rightBracket:
                     flushText(upTo: pos)
                     emit(Token(kind: .bracketClose, range: ByteRange(pos, pos + 1)), at: pos)
+                    openBrackets = max(0, openBrackets - 1)
                     pos += 1
                 case ASCII.asterisk, ASCII.underscore, ASCII.tilde:
                     pos = scanDelimiterRun(at: pos, end: end)
@@ -181,6 +189,35 @@ public enum InlineParser {
                     flushText(upTo: trimmedTextEnd(before: pos))
                     let hard = trailingSpaces(before: pos) >= 2
                     emit(Token(kind: hard ? .hardBreak : .softBreak), at: pos)
+                    pos += 1
+                // GFM's bare links, with the second byte tested before the
+                // call. Every `h` and `w` in ordinary prose passes through
+                // here — `the`, `which`, `show` — and a call for each of them
+                // was most of what this feature cost.
+                case ASCII.lowerH, ASCII.upperH:
+                    if pos + 1 < end, lowercased(bytes[pos + 1]) == ASCII.lowerT,
+                        let consumed = scanBareLink(at: pos, end: end)
+                    {
+                        pos = consumed
+                        continue
+                    }
+                    startText(at: pos)
+                    pos += 1
+                case ASCII.lowerW, ASCII.upperW:
+                    if pos + 1 < end, lowercased(bytes[pos + 1]) == ASCII.lowerW,
+                        let consumed = scanBareLink(at: pos, end: end)
+                    {
+                        pos = consumed
+                        continue
+                    }
+                    startText(at: pos)
+                    pos += 1
+                case ASCII.at:
+                    if let consumed = scanBareLink(at: pos, end: end) {
+                        pos = consumed
+                        continue
+                    }
+                    startText(at: pos)
                     pos += 1
                 default:
                     startText(at: pos)
@@ -346,6 +383,53 @@ public enum InlineParser {
             emit(Token(kind: .text, range: inner), at: start + 1)
             emit(Token(kind: .linkClose), at: index)
             return index + 1
+        }
+
+        /// A URL or an address written bare, as GitHub links them.
+        ///
+        /// An email is found from its `@`, by which time its local part has
+        /// been read as text — so the scan may reach back, but never further
+        /// than the text run being built, or it would rewrite something already
+        /// tokenized.
+        mutating func scanBareLink(at start: Int, end: Int) -> Int? {
+            guard openBrackets == 0 else { return nil }
+            // `](https://…)` is a destination, not prose: the brackets closed a
+            // moment ago and what follows belongs to the link they are part of.
+            // Checked here, before anything is scanned, because a document full
+            // of ordinary links would otherwise scan and build every
+            // destination twice — that alone cost a third of the parser's
+            // throughput on a 32 MB file.
+            if start >= 2, bytes[start - 1] == ASCII.leftParen,
+                bytes[start - 2] == ASCII.rightBracket
+            {
+                return nil
+            }
+            let match: ExtendedAutolink.Match?
+            if bytes[start] == ASCII.at {
+                guard pendingTextStart >= 0 else { return nil }
+                match = ExtendedAutolink.email(
+                    bytes, at: start, end: end, notBefore: pendingTextStart)
+            } else {
+                match = ExtendedAutolink.url(bytes, at: start, end: end)
+            }
+            guard let match else { return nil }
+            // The same for an address, whose local part put its start behind
+            // the cursor: `](me@example.com)` is a destination too.
+            if match.start >= 2, bytes[match.start - 1] == ASCII.leftParen,
+                bytes[match.start - 2] == ASCII.rightBracket
+            {
+                return nil
+            }
+            flushText(upTo: match.start)
+            links.append(
+                InlineLink(destination: match.destination, title: "", isImage: false))
+            var open = Token(kind: .linkOpen)
+            open.link = Int32(links.count - 1)
+            emit(open, at: match.start)
+            emit(
+                Token(kind: .text, range: ByteRange(match.start, match.end)), at: match.start)
+            emit(Token(kind: .linkClose), at: match.end)
+            return match.end
         }
 
         mutating func scanEntity(at start: Int, end: Int) -> Int? {

@@ -108,6 +108,26 @@ over those offsets. Dropping by token kind instead misses the tokenizations that
 do not correspond one-to-one with the syntax, and the destination gets printed
 twice.
 
+`ExtendedAutolink` is GFM's bare links: `https://…`, `www.…` and an address, all
+written without markup. Finding them is easy and stopping them is not, so three
+rules carry the file. A link ends before the punctuation that ends the sentence
+(`see www.example.com.`), before a bracket that closes an aside rather than a
+path (`(see https://example.com/a)`, against `…/a_(b)`), and before an entity
+someone appended. An address is the one thing scanned backwards — its local part
+has already been read as text when the `@` arrives — and the scan may not reach
+back past the text run being built.
+
+Two places refuse a bare link outright: inside `[…]`, because a link inside a
+link is neither, and immediately after `](`, because that is a destination. Both
+are cheap tests done before any scanning, and that is deliberate — the whole
+feature is a comparison on every `h`, `w` and `@` in the document, so what it
+costs is decided by how early the common case gets out. Measured on the 32 MB
+generated document: whole-document inline parsing went from 143 ms to 152 ms,
+about 6%, while the viewport parse a reader actually waits for stayed at
+0.2 ms. Getting there took three passes — the first version allocated a needle
+per candidate, the second scanned every link destination twice, and both were a
+third of the parser's throughput.
+
 ## MarkioRender
 
 ### Heights: a Fenwick tree
