@@ -92,6 +92,34 @@ final class SnapshotTests: XCTestCase {
         }
     }
 
+    /// Not one pixel of a store picture may be transparent.
+    ///
+    /// The corners above are the cheap version of this and they passed while
+    /// the set shipped with a hole in it: the outline sidebar is drawn as a
+    /// material by the window server, which an offscreen context has none of,
+    /// so its background never arrived and only its text did. On white it read
+    /// as a sidebar; on black it read as a black rectangle.
+    func testNothingInAStorePictureIsTransparent() throws {
+        let document = MarkdownDocument()
+        try document.read(
+            from: Data("# One\n\n## Two\n\nEnough headings for an outline.\n".utf8),
+            ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        controller.setOutline(visible: true)
+        let window = try XCTUnwrap(controller.window)
+        let rep = try Snapshot.image(of: window, size: Snapshot.storeSize)
+        XCTAssertEqual(rep.samplesPerPixel, 4, "the scan below reads the fourth byte")
+        let data = try XCTUnwrap(rep.bitmapData)
+        var clear = 0
+        for row in 0..<rep.pixelsHigh {
+            let start = row * rep.bytesPerRow
+            for column in 0..<rep.pixelsWide where data[start + column * 4 + 3] != 255 {
+                clear += 1
+            }
+        }
+        XCTAssertEqual(clear, 0, "\(clear) pixels were never painted")
+    }
+
     /// A shot plan is read from beside the document it describes. A missing or
     /// malformed plan stops the run: a store screenshot silently skipped is
     /// worse than one that never got made.

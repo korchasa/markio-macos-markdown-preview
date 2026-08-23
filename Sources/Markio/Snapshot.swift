@@ -147,6 +147,19 @@ enum Snapshot {
         // twice its size and fills a quarter of it — a picture of exactly the
         // right dimensions with the app in one corner and nothing around it.
         context.cgContext.scaleBy(x: scale, y: scale)
+        // Whatever the view does not paint stays transparent, and a store
+        // picture with a hole in it is not a picture. The outline sidebar is
+        // the one that leaves one: it is drawn as a material by the window
+        // server, which an offscreen context has none of, so its background
+        // never arrives and only its text does. Painted on white the shot looks
+        // right and on black it is a black rectangle — which is what the store
+        // set was, quietly, for a month. The window's own background is what
+        // would be behind it on screen, in the appearance this shot is being
+        // taken in.
+        window.effectiveAppearance.performAsCurrentDrawingAppearance {
+            NSColor.windowBackgroundColor.setFill()
+            view.bounds.fill()
+        }
         view.displayIgnoringOpacity(view.bounds, in: context)
         NSGraphicsContext.restoreGraphicsState()
         return rep
