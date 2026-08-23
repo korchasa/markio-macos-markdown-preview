@@ -264,4 +264,43 @@ final class DocumentWindowTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertEqual(content.frame.height, before, accuracy: 1)
     }
+
+    /// A click on a link out of the document, from the click itself to the URL
+    /// that would have been handed to the browser.
+    ///
+    /// This was the one item of the parity sweep left to a person, on the
+    /// grounds that checking it opens a browser. It does not have to: the
+    /// controller now says where it would send the reader, and the test reads
+    /// that instead of watching a window appear.
+    func testAClickOnAnExternalLinkGoesToItsAddress() throws {
+        let document = MarkdownDocument()
+        try document.read(
+            from: Data("Read [the notes](https://example.com/notes) first.\n".utf8),
+            ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        var opened: [URL] = []
+        controller.openExternal = { opened.append($0) }
+
+        let window = try XCTUnwrap(controller.window)
+        window.layoutIfNeeded()
+        let scroller = try XCTUnwrap(documentScroller(in: try XCTUnwrap(window.contentView)))
+        let view = try XCTUnwrap(scroller.documentView as? DocumentView)
+        view.viewWillDraw()
+
+        // The link's own rectangle, in the view's coordinates: a click anywhere
+        // else proves nothing about links.
+        let box = try XCTUnwrap(view.layout.box(at: 0))
+        let region = try XCTUnwrap(box.links.first)
+        let point = CGPoint(
+            x: region.rect.midX + view.contentX,
+            y: view.layout.offset(of: 0) + view.verticalPadding + region.rect.midY)
+        let click = try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown, location: view.convert(point, to: nil), modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                clickCount: 1, pressure: 1))
+        view.mouseDown(with: click)
+
+        XCTAssertEqual(opened.map(\.absoluteString), ["https://example.com/notes"])
+    }
 }

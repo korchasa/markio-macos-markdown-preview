@@ -77,8 +77,9 @@ what a read-only viewer should show. The repeated Start Dictation and Emoji &
 Symbols entries are macOS's own variants for different keyboards, all but one
 hidden; the dump marks them.
 
-One thing was left alone on purpose: an **external link**, because verifying it
-means opening a browser.
+One thing was left alone at the time: an **external link**, because verifying it
+seemed to mean opening a browser. It is covered now — see the closing note on
+this file.
 
 One observation, not a defect: an anchor jump reveals its target rather than
 putting it at the top of the window, so a click near the end of a document
@@ -132,12 +133,13 @@ Two differences, and only one of them was a defect:
   an address in the prose stayed plain text, while the README and PARSE-2 have
   claimed GFM autolinks all along. Implemented, tested and measured — see the
   inline-parsing section of the SDS.
-- **A single-line `classDiagram` body keeps its source.** `class Document {
-  +String text +render() }` is not read; the same class written over several
-  lines is. Left alone deliberately: there is no oracle here — the old renderer
-  will not run, and whether Mermaid itself accepts the one-line form was not
-  established. Showing the source is this app's documented answer to anything it
-  cannot read.
+- **A single-line `classDiagram` body kept its source.** `class Document {
+  +String text +render() }` was not read; the same class written over several
+  lines was. Settled on 2026-08-23 and fixed. The oracle was Mermaid's own
+  grammar rather than a running renderer: inside a class body its lexer
+  discards newlines and returns everything up to one as a single `MEMBER`
+  token, so the one-line form is valid and means **one** row — not two, and not
+  a fallback to the source. Markio now reads it and draws exactly that.
 
 **And a third defect, found on the running build rather than in the suite.** The
 window title showed `notes.md` where the app means to show the whole path. The
@@ -231,7 +233,12 @@ accessibility pass like the one the old `menu.md` describes.
 - **Done, less the browser.** Anchors, `.md` neighbours, anchors into another
   document, source files and every refusal are covered by `LinkResolverTests`,
   and an anchor click was driven offscreen against the running app. The
-  external link is left to a person, because checking it opens a browser.
+  external link was left to a person on the grounds that checking it opens a
+  browser. It does not have to: the window controller now says where it would
+  send the reader, so a test clicks the link's own rectangle and reads the
+  address — `DocumentWindowTests.testAClickOnAnExternalLinkGoesToItsAddress`.
+  Clicking two hundred points to the right of it opens nothing, which is what
+  makes the passing test worth anything.
 - Quick Look: rendered preview rather than plain text, tables and task lists,
   Mermaid as a diagram, KaTeX typeset, frontmatter box, links inert, non-UTF-8
   falling back to the system preview.
@@ -250,8 +257,9 @@ All have counterparts here (`HTMLTableTests`, `InlineParserTests`,
 `MathTests`, `AnsiTextTests`, `MermaidTests`, `PlainTextParityTests`), so the
 inventory is covered. Agreement on the *result* was the remaining work, and it was
 done on 2026-08-23 against the old tree's own `render-suite.md` — see the status
-at the top of this file. It found one defect (bare links were not links) and one
-difference left alone on purpose.
+at the top of this file. It found two defects: bare links were not links, and a
+one-line class body fell back to its source. Both are fixed, and nothing in this
+file is open any more.
 
 ## Repeating this sweep
 

@@ -1152,6 +1152,11 @@ final class DocumentWindowController: NSWindowController {
 
     // MARK: - Links and paths
 
+    /// Where a link out of the document goes. The system's own handler, except
+    /// in a test, which asks where the click would have taken the reader
+    /// instead of opening a browser to find out.
+    var openExternal: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
     private func open(link: InlineLink) {
         guard
             let url = LinkResolver.resolve(
@@ -1161,7 +1166,7 @@ final class DocumentWindowController: NSWindowController {
         else { return }
         switch url {
         case .external(let external):
-            NSWorkspace.shared.open(external)
+            openExternal(external)
         case .file(let file, let line):
             CodeEditor.open(file, line: line)
         case .anchor(let slug):
