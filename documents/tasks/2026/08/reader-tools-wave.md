@@ -33,16 +33,46 @@ running app. The gate below was cleared first, since two of the six needed it.
 - 5. A document summary in the bottom bar: **done** (`2c69419`). Ticked boxes,
   reading time at a stated rate, open questions, and the same counts per
   section in the outline.
-- 6. Copy with formatting: **done, step one** (`51eee01`). Styled text,
-  headings, code spans, lists and links paste with their styles; plain text is
-  unchanged, character for character. Step two — tables as `NSTextTable` and
-  diagrams as images — was deliberately left, as this file proposed.
+- 6. Copy with formatting: **done, both steps** (`51eee01`, and step two
+  below). Styled text, headings, code spans, lists and links paste with their
+  styles; plain text is unchanged, character for character.
 
 One correction to what is written below. Section 5 says `BlockFlags` carries
-`.task` and `.taskChecked` "set during the scan": the two flags are declared
+`.task` and `.taskChecked` "set during the scan": the two flags were declared
 and never set, so the count reads the checkbox out of the text of a paragraph
 that heads a list item, which is the cheap test that keeps it from reading
-every block.
+every block. The two flags are now gone — bits 2 and 3 are free — because a
+flag that promises a fact nobody records is worse than no flag at all.
+
+## Status — 2026-08-23: step two, the last thing in this file
+
+A table now pastes as a table and a diagram as a picture, which was the one
+piece of the six that had been left half done on purpose.
+
+- **A table is an `NSTextTable`**, one `NSTextTableBlock` per cell. The cells
+  stay editable text on the other side rather than a picture of a grid, a
+  merged cell keeps its span, and a column told to centre itself is centred.
+- **What the segments could not say.** They hold every cell's text and nothing
+  about where the cell sits, so `BlockBox` gained a `TableGrid` — recorded from
+  the *arranged* table, sorted and filtered as the reader sees it, because
+  pasting the order in the file would paste something nobody looked at. The
+  filter row stays out of it: it carries `textOffset: -1` because the document
+  never said it.
+- **A diagram is the picture it is drawn as**, in a file wrapper, which is what
+  survives being written out. RTF cannot carry a picture at all, so a selection
+  holding one writes RTFD too — first, since the order the flavours are written
+  is the order an application chooses between them.
+- **Only a whole block.** Three cells of five have no honest grid and half a
+  diagram is not a picture, so a partial selection keeps the text it had.
+- **Proved on the pasteboard, not only in the builder.** `DocumentView.copy`
+  now writes to a pasteboard it holds rather than to `NSPasteboard.general`
+  directly, so a test can drive the real path — select all, copy, read the
+  flavours back — without touching the clipboard of whoever runs the suite. The
+  RTFD it leaves there reads back with the table and the picture in it, and the
+  plain flavour is character for character what `selectedText` gives.
+- **Looked at.** The pasteboard's own RTFD, rendered by AppKit into a page:
+  both tables have their borders and their merged header, the centred column is
+  centred, and the flowchart is a picture.
 
 ## The gate: the sandbox reaches the document and nothing beside it
 

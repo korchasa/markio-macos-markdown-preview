@@ -1201,6 +1201,22 @@ ignores and the RTF writer does not. The plain flavour is written exactly as
 before, separators between table cells included, because a rich paste is an
 addition and nothing that pastes today may paste differently.
 
+A whole block selected gets more than its runs. A table is rebuilt as an
+`NSTextTable` — one `NSTextTableBlock` per cell, carrying the square it sits in,
+the squares it spans and the alignment its column asked for — so the cells stay
+editable text on the other side instead of a picture of a grid. That needs one
+fact the segments never held, which cell each of them is, so `BlockBox` carries
+a `TableGrid` recorded from the *arranged* table: sorted and filtered as the
+reader sees it, because pasting the order in the file would paste something
+nobody looked at. A diagram becomes the picture it is drawn as, carried in a
+file wrapper because that is what survives being written out.
+
+Only a whole block. Three cells of five have no honest grid and half a diagram
+is not a picture, so a partial selection keeps the text it had. Pictures also
+force a third flavour: RTF cannot carry one, so a selection holding a diagram
+writes RTFD as well, first, since the order the flavours are written is the
+order an application chooses between them.
+
 ### Comparing versions
 
 `CompareEngine` diffs the two versions line by line — hashes, not slices, with

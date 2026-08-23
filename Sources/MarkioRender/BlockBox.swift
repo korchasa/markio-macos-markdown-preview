@@ -63,6 +63,31 @@ public final class BlockBox {
         public var canRearrange: Bool
     }
 
+    /// Which cell of a table each of the block's segments is.
+    ///
+    /// The segments already carry every cell's text; what they do not carry is
+    /// where the cell sits, and a paste that rebuilds a table as a table needs
+    /// exactly that and nothing more. Kept apart from `TableRegion` because
+    /// that one describes the picture — the rectangles a click lands in — and
+    /// is not recorded at all for a table with no header row.
+    public struct TableGrid {
+        public struct Cell {
+            public var row: Int
+            public var column: Int
+            public var rowspan: Int
+            public var columnspan: Int
+            public var isHeader: Bool
+            /// What the author asked the column to line up on — lost otherwise,
+            /// because the drawing applies it when it lays the cell out rather
+            /// than storing it in the cell's text.
+            public var alignment: Table.Alignment
+        }
+        public var rows: Int
+        public var columns: Int
+        /// One entry per cell, in the order the block's own segments come in.
+        public var cells: [Cell]
+    }
+
     /// The header of a collapsible section: what a click on it toggles.
     public struct DisclosureRegion {
         public var rect: CGRect
@@ -81,6 +106,7 @@ public final class BlockBox {
     let codeRegion: CodeRegion?
     let disclosureRegion: DisclosureRegion?
     let tableRegion: TableRegion?
+    let tableGrid: TableGrid?
 
     init(
         leaf: Int32,
@@ -93,7 +119,8 @@ public final class BlockBox {
         plainText: String,
         codeRegion: CodeRegion? = nil,
         disclosureRegion: DisclosureRegion? = nil,
-        tableRegion: TableRegion? = nil
+        tableRegion: TableRegion? = nil,
+        tableGrid: TableGrid? = nil
     ) {
         self.leaf = leaf
         self.width = width
@@ -106,6 +133,7 @@ public final class BlockBox {
         self.codeRegion = codeRegion
         self.disclosureRegion = disclosureRegion
         self.tableRegion = tableRegion
+        self.tableGrid = tableGrid
     }
 
     /// A block that takes no room and draws nothing — what a block inside a

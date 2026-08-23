@@ -484,8 +484,8 @@ public final class DocumentView: NSView {
         let bitmap = NSBitmapImageRep(cgImage: image)
         bitmap.size = CGSize(width: CGFloat(image.width) / 2, height: CGFloat(image.height) / 2)
         guard let data = bitmap.representation(using: .png, properties: [:]) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setData(data, forType: .png)
+        pasteboard.clearContents()
+        pasteboard.setData(data, forType: .png)
         markCopied(ordinal: ordinal)
     }
 
@@ -573,8 +573,8 @@ public final class DocumentView: NSView {
 
     private func copyCode(ordinal: Int) {
         guard let box = layout.box(at: ordinal) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(box.plainText, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(box.plainText, forType: .string)
         markCopied(ordinal: ordinal)
     }
 
@@ -761,6 +761,11 @@ public final class DocumentView: NSView {
         needsDisplay = true
     }
 
+    /// Where Copy writes. The system clipboard, except in a test, which uses
+    /// one of its own rather than reaching into the clipboard of whoever is
+    /// running the suite.
+    public var pasteboard: NSPasteboard = .general
+
     /// The selection with its styles, ready for an application that can keep
     /// them. Empty when nothing is selected.
     public var selectedRichText: NSAttributedString {
@@ -771,7 +776,7 @@ public final class DocumentView: NSView {
             let length = (box.plainText as NSString).length
             let from = ordinal == selection.start.ordinal ? selection.start.offset : 0
             let to = ordinal == selection.end.ordinal ? selection.end.offset : length
-            let piece = RichText.attributed(box: box, from: from, to: to)
+            let piece = RichText.block(box: box, from: from, to: to, theme: layout.theme)
             if result.length > 0 { result.append(NSAttributedString(string: "\n\n")) }
             result.append(piece)
         }
@@ -786,11 +791,17 @@ public final class DocumentView: NSView {
     @objc public func copy(_ sender: Any?) {
         let text = selectedText
         guard !text.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        if let rtf = RichText.rtf(selectedRichText) {
-            NSPasteboard.general.setData(rtf, forType: .rtf)
+        let rich = selectedRichText
+        pasteboard.clearContents()
+        // Richest first: the order these are written is the order an
+        // application chooses from, and only RTFD carries a diagram's picture.
+        if let rtfd = RichText.rtfd(rich) {
+            pasteboard.setData(rtfd, forType: .rtfd)
         }
-        NSPasteboard.general.setString(text, forType: .string)
+        if let rtf = RichText.rtf(rich) {
+            pasteboard.setData(rtf, forType: .rtf)
+        }
+        pasteboard.setString(text, forType: .string)
     }
 
     // MARK: - Find

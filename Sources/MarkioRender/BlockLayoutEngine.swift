@@ -194,6 +194,7 @@ struct BlockLayoutEngine {
         var codeRegion: BlockBox.CodeRegion?
         var disclosureRegion: BlockBox.DisclosureRegion?
         var tableRegion: BlockBox.TableRegion?
+        var tableGrid: BlockBox.TableGrid?
 
         var theme: Theme { engine.theme }
         var document: Document { engine.document }
@@ -218,7 +219,8 @@ struct BlockLayoutEngine {
                 plainText: plainText,
                 codeRegion: codeRegion,
                 disclosureRegion: disclosureRegion,
-                tableRegion: tableRegion
+                tableRegion: tableRegion,
+                tableGrid: tableGrid
             )
         }
 
@@ -716,6 +718,25 @@ struct BlockLayoutEngine {
             if filterHeight > 0 {
                 for row in (table.headerRow + 1)...rows { tops[row] += filterHeight }
             }
+
+            // Recorded here, from the arranged table, so a copy carries the
+            // grid the reader is looking at rather than the one in the file:
+            // sorting moved the rows, and a paste that put them back would be
+            // pasting something nobody saw.
+            tableGrid = BlockBox.TableGrid(
+                rows: rows,
+                columns: columns,
+                cells: table.cells.map {
+                    BlockBox.TableGrid.Cell(
+                        row: $0.row,
+                        column: $0.column,
+                        rowspan: $0.rowspan,
+                        columnspan: $0.columnspan,
+                        isHeader: $0.isHeader,
+                        alignment: $0.alignment
+                    )
+                }
+            )
 
             for (index, cell) in table.cells.enumerated() {
                 let last = min(rows - 1, cell.row + cell.rowspan - 1)

@@ -144,7 +144,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   the section under the reader highlighted; clicking a heading jumps to it. Its
   visibility persists.
 - **VIEW-4** Find (⌘F) with next and previous, matches highlighted in place.
-- **VIEW-5** Text selection across blocks, select-all, and copy.
+- **VIEW-5** Text selection across blocks, select-all, and copy. A copy
+  carries its styles as well as its characters: a table pastes as a table,
+  a diagram as a picture, and the plain text stays what it always was.
 - **VIEW-6** Links are clickable. A link to a local file opens it in the app;
   anything else goes to the system handler.
 - **VIEW-7** Code blocks are syntax-highlighted for the common languages, in
