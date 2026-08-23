@@ -682,9 +682,19 @@ final class DocumentWindowController: NSWindowController {
         documentView.needsDisplay = true
     }
 
+    /// The title AppKit asks for whenever it syncs a document window's title.
+    ///
+    /// Overriding this is the only way to keep the path there. Setting
+    /// `window.title` by hand looks like it works and does not: `NSDocument`
+    /// syncs the title again — on open, on a save, on becoming main — and puts
+    /// the display name back, so the window read `notes.md` and two files of
+    /// that name in different folders were indistinguishable.
+    override func windowTitle(forDocumentDisplayName displayName: String) -> String {
+        markdownDocument.fileURL?.path ?? displayName
+    }
+
     private func updateTitle() {
         window?.title = markdownDocument.fileURL?.path ?? "Markio"
-        window?.representedURL = nil
         // The subtitle is the only sign that the marks on screen are a diff and
         // not part of the file, and it says when the diff found nothing.
         guard let baselineURL else {

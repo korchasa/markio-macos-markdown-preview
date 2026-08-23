@@ -122,6 +122,37 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertGreaterThan(textFrame.width, 100, "the reading area is still the bulk of it")
     }
 
+    /// The window says which file it is showing, in full.
+    ///
+    /// Two documents called `notes.md` in different folders are one window
+    /// title apart, and the app sets the title to the path for exactly that
+    /// reason. Setting `window.title` by hand was not enough: `NSDocument`
+    /// syncs the title from the display name afterwards, and the running app
+    /// showed the bare file name.
+    func testTheWindowTitleIsTheWholePath() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markio-title-\(UUID().uuidString)")
+            .appendingPathComponent("notes.md")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("# Notes\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let document = MarkdownDocument()
+        try document.read(from: Data(contentsOf: url), ofType: "net.daringfireball.markdown")
+        document.fileURL = url
+        let controller = DocumentWindowController(document: document)
+        document.addWindowController(controller)
+        controller.showWindow(nil)
+        let window = try XCTUnwrap(controller.window)
+        XCTAssertEqual(window.title, url.path)
+
+        // And it survives the sync AppKit runs on its own — which is the half
+        // that was missing.
+        controller.synchronizeWindowTitleWithDocumentName()
+        XCTAssertEqual(window.title, url.path)
+    }
+
     /// The widest reading column a reader can ask for still stops at the map.
     ///
     /// The column was fitted to the clip view, which runs on underneath the
