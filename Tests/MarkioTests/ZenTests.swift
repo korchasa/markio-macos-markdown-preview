@@ -79,6 +79,33 @@ final class ZenTests: XCTestCase {
         XCTAssertFalse(controller.visibleChromeForTesting.contains("outline"))
     }
 
+    /// The commands that would put a panel back beside the document are greyed
+    /// while zen lasts.
+    ///
+    /// Left enabled they did nothing visible and still wrote their preference,
+    /// so the outline the reader had not opened was open the moment they left
+    /// the mode.
+    func testZenGreysTheCommandsThatWouldBringChromeBack() throws {
+        Preferences.outlineVisible = false
+        let controller = try self.controller()
+        let outline = NSMenuItem(
+            title: "Table of Contents",
+            action: #selector(DocumentWindowController.toggleOutline(_:)),
+            keyEquivalent: "")
+        let map = NSMenuItem(
+            title: "Document Map",
+            action: #selector(DocumentWindowController.toggleDocumentMap(_:)),
+            keyEquivalent: "")
+
+        XCTAssertTrue(controller.validateMenuItem(outline))
+        XCTAssertTrue(controller.validateMenuItem(map))
+
+        controller.setZen(true, fullScreen: false)
+        XCTAssertFalse(controller.validateMenuItem(outline))
+        XCTAssertFalse(controller.validateMenuItem(map))
+        XCTAssertFalse(Preferences.outlineVisible)
+    }
+
     /// Escape leaves the mode, as it does in VS Code.
     func testEscapeLeavesZen() throws {
         let controller = try self.controller()

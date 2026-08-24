@@ -1376,6 +1376,16 @@ extension DocumentWindowController: NSMenuItemValidation {
             item.state = isZen ? .on : .off
             return true
         }
+        // Zen is the whole window given to the document, so the two commands
+        // that would put something back beside it are off while it lasts. They
+        // are greyed rather than left working-but-invisible: each writes a
+        // preference, so a reader who pressed one saw nothing happen and then
+        // found the outline open the moment they left the mode.
+        if item.action == #selector(toggleOutline(_:))
+            || item.action == #selector(toggleDocumentMap(_:))
+        {
+            return !isZen
+        }
         if item.action == #selector(present(_:)) {
             // A document with no thematic breaks and no headings is not a deck,
             // and offering to present it would promise something this cannot

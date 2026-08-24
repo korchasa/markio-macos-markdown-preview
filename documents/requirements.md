@@ -274,7 +274,9 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   anything nearer the keyboard — a filter row, the find bar, an enlarged
   diagram — has had its own Escape. Leaving puts back exactly what the window
   was showing, and the mode never writes the reader's preferences, so a quit in
-  zen costs them nothing.
+  zen costs them nothing. The two commands that would put a panel back beside
+  the document — the table of contents and the map — are greyed for as long as
+  the mode lasts, rather than left working invisibly.
 - **VIEW-31** Presentation (⌥⌘P) shows the document a screenful at a time, full
   screen, split where the author split it: on their thematic breaks, or failing
   those on the shallowest heading level that divides the document more than
