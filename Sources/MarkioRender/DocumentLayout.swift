@@ -224,6 +224,14 @@ public final class DocumentLayout {
         invalidate(ordinal)
     }
 
+    /// The first table in the document, by ordinal.
+    ///
+    /// A store picture has to arrange a table with nobody clicking it, and
+    /// which table it means is the one a reader would reach first.
+    public var firstTableOrdinal: Int? {
+        document.leaves.firstIndex { document.blocks[Int($0)].kind == .table }
+    }
+
     /// Sort by a column, reverse it, then go back to the author's order.
     public func clickTableHeader(at ordinal: Int, column: Int) {
         setArrangement(arrangement(at: ordinal).clicking(column: column), at: ordinal)

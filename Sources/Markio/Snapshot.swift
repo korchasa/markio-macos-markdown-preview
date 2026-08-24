@@ -74,9 +74,16 @@ enum Snapshot {
         /// Search the document for this, and shoot it with the matches lit and
         /// their marks down the map.
         var find: String?
+        /// Sort the document's first table by this column, counting from one.
+        var sortColumn: Int?
+        /// Sort that column the other way.
+        var sortDescending: Bool = false
+        /// Keep only the rows holding this, as though typed in the filter row.
+        var tableFilter: String?
 
         private enum CodingKeys: String, CodingKey {
             case file, appearance, outline, anchor, compare, sideBySide, find
+            case sortColumn, sortDescending, tableFilter
         }
 
         init(from decoder: Decoder) throws {
@@ -88,6 +95,9 @@ enum Snapshot {
             compare = try values.decodeIfPresent(String.self, forKey: .compare)
             sideBySide = try values.decodeIfPresent(Bool.self, forKey: .sideBySide) ?? false
             find = try values.decodeIfPresent(String.self, forKey: .find)
+            sortColumn = try values.decodeIfPresent(Int.self, forKey: .sortColumn)
+            sortDescending = try values.decodeIfPresent(Bool.self, forKey: .sortDescending) ?? false
+            tableFilter = try values.decodeIfPresent(String.self, forKey: .tableFilter)
         }
     }
 
@@ -234,6 +244,12 @@ enum Snapshot {
         // Always said, never assumed: an empty query closes the find bar, so
         // the shot after a search does not inherit its highlights.
         controller.find(shot.find ?? "")
+        // Columns are counted from one in the plan, because that is how the
+        // table reads on the page.
+        controller.arrangeFirstTable(
+            column: shot.sortColumn.map { $0 - 1 },
+            descending: shot.sortDescending,
+            filter: shot.tableFilter ?? "")
 
         if let name = shot.compare {
             let baseline = document.deletingLastPathComponent().appendingPathComponent(name)

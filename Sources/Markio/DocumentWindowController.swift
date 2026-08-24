@@ -1084,6 +1084,17 @@ final class DocumentWindowController: NSWindowController {
         findBar.focus()
     }
 
+    /// Sort and filter the document's first table with nobody clicking it —
+    /// what a store picture of the feature needs. A nil column and an empty
+    /// filter put the table back the way its author wrote it.
+    func arrangeFirstTable(column: Int?, descending: Bool, filter: String) {
+        guard let ordinal = layout.firstTableOrdinal else { return }
+        layout.setArrangement(
+            TableArrangement(column: column, ascending: !descending, filter: filter),
+            at: ordinal)
+        documentView.needsDisplay = true
+    }
+
     /// Search for something without a reader typing it. An empty query puts
     /// the window back the way it was, so a picture taken after this one does
     /// not inherit the highlights.
