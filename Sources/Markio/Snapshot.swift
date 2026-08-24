@@ -24,6 +24,7 @@ enum Snapshot {
         case unreadablePlan(URL, String)
         case noWindow
         case noBaseline(String)
+        case notADeck(String)
         case cannotDraw(NSSize)
         case wrongSize(String, expected: (Int, Int), got: (Int, Int))
         case cannotEncode(String)
@@ -38,6 +39,10 @@ enum Snapshot {
                 return "no document window to shoot"
             case .noBaseline(let name):
                 return "the plan asks to compare against \(name), which is not there"
+            case .notADeck(let file):
+                return
+                    "\(file) asks for a slide, and this document makes no deck — "
+                    + "it has neither thematic breaks nor headings that divide it"
             case .cannotDraw(let size):
                 return "cannot make a \(Int(size.width))×\(Int(size.height)) bitmap"
             case .wrongSize(let file, let expected, let got):
@@ -82,10 +87,13 @@ enum Snapshot {
         var tableFilter: String?
         /// Take the picture in zen mode: the document with nothing around it.
         var zen: Bool = false
+        /// Shoot the deck instead of the window, at this slide, counting from
+        /// one — the numbering on the slide's own counter.
+        var slide: Int?
 
         private enum CodingKeys: String, CodingKey {
             case file, appearance, outline, anchor, compare, sideBySide, find
-            case sortColumn, sortDescending, tableFilter, zen
+            case sortColumn, sortDescending, tableFilter, zen, slide
         }
 
         init(from decoder: Decoder) throws {
@@ -101,6 +109,7 @@ enum Snapshot {
             sortDescending = try values.decodeIfPresent(Bool.self, forKey: .sortDescending) ?? false
             tableFilter = try values.decodeIfPresent(String.self, forKey: .tableFilter)
             zen = try values.decodeIfPresent(Bool.self, forKey: .zen) ?? false
+            slide = try values.decodeIfPresent(Int.self, forKey: .slide)
         }
     }
 
@@ -224,8 +233,8 @@ enum Snapshot {
         controller.reapplyReadingWidth()
 
         for shot in plan.shots {
-            try apply(shot, to: controller, window: window, beside: document)
-            let rep = try image(of: window, size: storeSize)
+            let target = try apply(shot, to: controller, window: window, beside: document)
+            let rep = try image(of: target, size: storeSize)
             try write(rep, named: shot.file, into: directory)
         }
     }
@@ -234,12 +243,15 @@ enum Snapshot {
     /// plain document, so the states of earlier shots never leak into later
     /// ones — the reason the comparison is stopped and the sidebar set rather
     /// than toggled.
+    /// Returns the window to photograph — the document's own, or the deck when
+    /// the shot asks for a slide.
+    @discardableResult
     private static func apply(
         _ shot: Shot,
         to controller: DocumentWindowController,
         window: NSWindow,
         beside document: URL
-    ) throws {
+    ) throws -> NSWindow {
         NSApp.appearance = NSAppearance(named: shot.appearance.systemName)
 
         controller.stopComparing(nil)
@@ -309,6 +321,16 @@ enum Snapshot {
         if shot.find != nil {
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
+
+        // A deck is a window of its own, and here it is built rather than
+        // opened: the reader's command activates the app, takes the screen and
+        // hides the Dock, which a run taking pictures must not do.
+        guard let slide = shot.slide else { return window }
+        guard let deck = controller.offscreenDeck(size: storeSize, startingAt: slide - 1) else {
+            throw Failure.notADeck(shot.file)
+        }
+        deck.layoutIfNeeded()
+        return deck
     }
 
     private static func write(_ rep: NSBitmapImageRep, named file: String, into directory: URL)

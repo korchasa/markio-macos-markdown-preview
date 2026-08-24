@@ -39,6 +39,22 @@ public final class PresentationWindow: NSWindow {
         return window
     }
 
+    /// A deck built and never shown, at a size given rather than the screen's.
+    ///
+    /// `present` activates the app, takes the screen and hides the Dock — right
+    /// for a reader in the room, wrong for a run taking pictures with nobody
+    /// watching, which would otherwise throw a full-screen slide over whatever
+    /// they were doing.
+    public static func offscreen(
+        document: Document, baseURL: URL?, size: NSSize, startingAt slide: Int = 0
+    ) -> PresentationWindow? {
+        let slides = Slides.split(document)
+        guard !slides.isEmpty else { return nil }
+        return PresentationWindow(
+            document: document, baseURL: baseURL, slides: slides,
+            frame: CGRect(origin: .zero, size: size), startingAt: slide)
+    }
+
     private init(
         document: Document, baseURL: URL?, slides: [Range<Int>], frame: CGRect, startingAt: Int
     ) {

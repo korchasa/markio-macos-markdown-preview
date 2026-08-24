@@ -40,6 +40,30 @@ final class SnapshotTests: XCTestCase {
         return try XCTUnwrap(controller.window)
     }
 
+    /// A shot of the presenter needs a deck built without showing it.
+    ///
+    /// The reader's own command activates the app, takes the screen and hides
+    /// the Dock. A run taking pictures must do none of that, and a document
+    /// that makes no deck has to answer nil rather than an empty window.
+    func testADeckCanBeBuiltForAPictureWithoutTakingTheScreen() throws {
+        let deck = MarkdownDocument()
+        try deck.read(
+            from: Data("# One\n\nText.\n\n## Two\n\nMore.\n\n## Three\n\nMore.\n".utf8),
+            ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: deck)
+        let window = try XCTUnwrap(
+            controller.offscreenDeck(size: Snapshot.storeSize, startingAt: 1))
+        XCTAssertFalse(window.isVisible)
+        XCTAssertEqual(window.frame.size, Snapshot.storeSize)
+
+        let plain = MarkdownDocument()
+        try plain.read(
+            from: Data("Just a paragraph, no headings at all.\n".utf8),
+            ofType: "net.daringfireball.markdown")
+        let flat = DocumentWindowController(document: plain)
+        XCTAssertNil(flat.offscreenDeck(size: Snapshot.storeSize, startingAt: 0))
+    }
+
     /// The one size the App Store accepts for a Mac screenshot.
     func testASnapshotIsExactlyTheStoreSize() throws {
         let rep = try Snapshot.image(of: try window(), size: Snapshot.storeSize)

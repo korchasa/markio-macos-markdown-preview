@@ -1304,6 +1304,16 @@ final class DocumentWindowController: NSWindowController {
         present(slide: 0)
     }
 
+    /// A deck of this document built offscreen, for a picture of the mode.
+    ///
+    /// Nil when the document is not a deck — the same answer the menu item
+    /// gives, so a shot plan cannot promise a slide the document does not make.
+    func offscreenDeck(size: NSSize, startingAt slide: Int) -> NSWindow? {
+        PresentationWindow.offscreen(
+            document: displayed, baseURL: markdownDocument.fileURL, size: size,
+            startingAt: slide)
+    }
+
     func present(slide: Int) {
         presentation?.leave()
         presentation = PresentationWindow.present(
