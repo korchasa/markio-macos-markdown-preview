@@ -101,6 +101,40 @@ final class TableLayoutTests: XCTestCase {
         }
     }
 
+    /// The sort mark stands where the heading is not.
+    ///
+    /// It used to sit against the right edge of the cell whatever the column
+    /// was aligned to, so on a right-aligned column it landed on the last
+    /// letter of the heading — `Time` came out as `Timē` in a store picture.
+    func testTheSortMarkKeepsOffARightAlignedHeading() {
+        let text = """
+            # Report
+
+            | Task | Minutes |
+            | --- | ---: |
+            | Backfill | 40 |
+            | Verify | 9 |
+            | Ship | 120 |
+            | Review | 15 |
+            | Announce | 3 |
+            """
+        let layout = makeLayout(text)
+        layout.setArrangement(TableArrangement(column: 1, ascending: false), at: 1)
+        let box = layout.box(at: 1)!
+        let cell = box.tableRegion!.headers.first { $0.column == 1 }!.rect
+        var marks: [CGRect] = []
+        for decoration in box.decorations {
+            guard case .path(let path, _, _, let filled) = decoration, filled else { continue }
+            let bounds = path.boundingBox
+            guard cell.insetBy(dx: -1, dy: -1).contains(bounds) else { continue }
+            marks.append(bounds)
+        }
+        XCTAssertEqual(marks.count, 1, "one sort mark inside the sorted heading's cell")
+        // Against the left edge, which is the half a right-aligned heading
+        // leaves empty.
+        XCTAssertLessThan(marks[0].maxX, cell.midX)
+    }
+
     // MARK: - The header that stays put
 
     private func region(_ layout: DocumentLayout) -> BlockBox.TableRegion {

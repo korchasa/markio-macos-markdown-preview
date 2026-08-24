@@ -813,6 +813,7 @@ struct BlockLayoutEngine {
                 // the header.
                 addSortMark(
                     ascending: arrangement.ascending,
+                    alignment: cell.alignment,
                     in: CGRect(
                         x: edges[min(columns, cell.column)],
                         y: tops[min(rows, table.headerRow)],
@@ -874,9 +875,17 @@ struct BlockLayoutEngine {
         }
 
         /// The little triangle that says which way a sorted column is pointing.
-        private mutating func addSortMark(ascending: Bool, in cell: CGRect, padding: CGFloat) {
+        ///
+        /// It stands at the end of the cell the heading leaves free: on the
+        /// right of a heading that starts at the left, and on the left of one
+        /// that is set against the right edge. Always on the right, the mark
+        /// landed on the last letter of a right-aligned heading — `Time` came
+        /// out as `Timē` in a store picture.
+        private mutating func addSortMark(
+            ascending: Bool, alignment: Table.Alignment, in cell: CGRect, padding: CGFloat
+        ) {
             let size: CGFloat = 7
-            let x = cell.maxX - padding - size
+            let x = alignment == .right ? cell.minX + padding : cell.maxX - padding - size
             let y = cell.midY - size / 4
             let path = CGMutablePath()
             if ascending {
