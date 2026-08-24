@@ -16,6 +16,14 @@ final class FindBar: NSVisualEffectView {
 
     var query: String { field.stringValue }
 
+    /// Put a query in the field without a reader typing it — what the store
+    /// screenshots need, and the only way the search state can be part of a
+    /// picture that is taken with nobody at the keyboard.
+    func setQuery(_ text: String) {
+        field.stringValue = text
+        onQueryChange?(text)
+    }
+
     init() {
         super.init(frame: .zero)
         material = .popover

@@ -1084,6 +1084,18 @@ final class DocumentWindowController: NSWindowController {
         findBar.focus()
     }
 
+    /// Search for something without a reader typing it. An empty query puts
+    /// the window back the way it was, so a picture taken after this one does
+    /// not inherit the highlights.
+    func find(_ query: String) {
+        guard !query.isEmpty else {
+            closeFind()
+            return
+        }
+        findBar.isHidden = false
+        findBar.setQuery(query)
+    }
+
     private func closeFind() {
         findBar.isHidden = true
         findEngine.cancel()

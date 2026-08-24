@@ -71,9 +71,12 @@ enum Snapshot {
         var compare: String?
         /// Give the baseline a column of its own rather than interleaving it.
         var sideBySide: Bool = false
+        /// Search the document for this, and shoot it with the matches lit and
+        /// their marks down the map.
+        var find: String?
 
         private enum CodingKeys: String, CodingKey {
-            case file, appearance, outline, anchor, compare, sideBySide
+            case file, appearance, outline, anchor, compare, sideBySide, find
         }
 
         init(from decoder: Decoder) throws {
@@ -84,6 +87,7 @@ enum Snapshot {
             anchor = try values.decodeIfPresent(String.self, forKey: .anchor)
             compare = try values.decodeIfPresent(String.self, forKey: .compare)
             sideBySide = try values.decodeIfPresent(Bool.self, forKey: .sideBySide) ?? false
+            find = try values.decodeIfPresent(String.self, forKey: .find)
         }
     }
 
@@ -227,6 +231,9 @@ enum Snapshot {
 
         controller.stopComparing(nil)
         controller.setOutline(visible: shot.outline)
+        // Always said, never assumed: an empty query closes the find bar, so
+        // the shot after a search does not inherit its highlights.
+        controller.find(shot.find ?? "")
 
         if let name = shot.compare {
             let baseline = document.deletingLastPathComponent().appendingPathComponent(name)
@@ -244,11 +251,19 @@ enum Snapshot {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
 
+        // The search runs off the main thread and reveals its first match when
+        // the results land, so it has to finish before the shot is placed.
+        if shot.find != nil {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+
         // Every shot says where it starts, so none of them inherits a position
         // from the one before.
         if let anchor = shot.anchor {
             controller.jumpToAnchor(anchor)
-        } else {
+        } else if shot.find == nil {
+            // A search has already put the window on its first match, and that
+            // is the place the picture is about.
             controller.scrollToTop()
         }
 
@@ -256,6 +271,13 @@ enum Snapshot {
         // One turn of the run loop, so the scroll has landed — including in the
         // baseline column, which follows the main one through a notification.
         RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        // The map redraws itself at most once a turn, and the marks for a
+        // search are the last thing to arrive on it. Without this the picture
+        // catches the map still blank, which is the half of the shot that
+        // shows where the other matches are.
+        if shot.find != nil {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
     }
 
     private static func write(_ rep: NSBitmapImageRep, named file: String, into directory: URL)
