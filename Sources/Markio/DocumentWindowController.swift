@@ -24,6 +24,10 @@ final class DocumentWindowController: NSWindowController {
     private let findBar = FindBar()
     private let mapStrip: DocumentMapStrip
     /// Guards the one path that resizes the page and refits the column in it.
+    /// The bottom bar and the constraint holding its height, so zen mode can
+    /// take it out of the window rather than merely emptying it.
+    private var bottomBar: NSView!
+    private var bottomBarHeight: NSLayoutConstraint!
     private var isSyncingWidth = false
     private let findEngine = FindEngine()
     private let widthSlider = NSSlider()
@@ -60,6 +64,13 @@ final class DocumentWindowController: NSWindowController {
     private var syncingScroll = false
     /// How much larger than the reading size this window draws.
     private var zoom: CGFloat
+    /// Reading with nothing else in the window: no outline, no map, no bottom
+    /// bar, no title bar, and the display to itself. VS Code's zen mode is the
+    /// one this follows, Escape to leave included.
+    private(set) var isZen = false
+    /// Whether zen is what put the window full screen. A reader who was already
+    /// full screen must not be dropped out of it on the way back.
+    private var zenTookFullScreen = false
     /// The deck, while one is on screen.
     private var presentation: PresentationWindow?
 
@@ -165,7 +176,7 @@ final class DocumentWindowController: NSWindowController {
             box.setContentCompressionResistancePriority(.init(1), for: .vertical)
         }
 
-        let bottomBar = buildBottomBar()
+        bottomBar = buildBottomBar()
 
         for view in [
             outline, separator, baselineScroll, paneDivider, scrollView, mapStrip, findBar,
@@ -207,8 +218,9 @@ final class DocumentWindowController: NSWindowController {
             bottomBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             bottomBar.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 30),
         ])
+        bottomBarHeight = bottomBar.heightAnchor.constraint(equalToConstant: 30)
+        bottomBarHeight.isActive = true
 
         // One reading column or two, switched by swapping which constraint holds
         // the main pane's leading edge. Both sets are built once; toggling is
@@ -269,7 +281,6 @@ final class DocumentWindowController: NSWindowController {
         }
 
         outline.onSelect = { [weak self] index in self?.jumpToHeading(index) }
-        documentView.onSelectHeading = { [weak self] ordinal in self?.focus(on: ordinal) }
 
         findBar.onQueryChange = { [weak self] query in self?.runSearch(query) }
         findBar.onNext = { [weak self] in self?.step(by: 1) }
@@ -900,7 +911,7 @@ final class DocumentWindowController: NSWindowController {
     /// with the map turned off, which is what it did before the map existed.
     private func refreshMapVisibility() {
         let tall = documentView.documentHeight > scrollView.contentView.bounds.height + 8
-        mapStrip.isHidden = !((Preferences.mapVisible && tall) || !findMatches.isEmpty)
+        mapStrip.isHidden = isZen || !((Preferences.mapVisible && tall) || !findMatches.isEmpty)
         syncDocumentWidth()
     }
 
@@ -1006,42 +1017,85 @@ final class DocumentWindowController: NSWindowController {
 
     private func jumpToHeading(_ index: Int) {
         guard index >= 0, index < outlineOrdinals.count else { return }
-        // A folded document moves section by section: picking a heading in the
-        // outline opens that one, rather than scrolling to a heading with
-        // nothing under it.
-        if layout.focusedHeading != nil {
-            focus(on: outlineOrdinals[index])
-            return
-        }
         documentView.reveal(ordinal: outlineOrdinals[index])
     }
 
-    // MARK: - Focus
+    // MARK: - Zen
 
-    /// Fold the document down to the section the reader is in, or unfold it.
-    ///
-    /// The section comes from the top of the window rather than from the
-    /// outline's idea of the current one: the reader means the passage in front
-    /// of them, and those two disagree while a long section scrolls past.
-    @objc func toggleFocus(_ sender: Any?) {
-        guard layout.blockCount > 0 else { return }
-        guard layout.focusedHeading == nil else {
-            focus(on: nil)
-            return
-        }
-        let top = max(0, scrollView.contentView.bounds.minY - documentView.verticalPadding)
-        focus(on: layout.index(atOffset: top))
+    /// Everything but the document goes away, and the document takes the
+    /// display.
+    @objc func toggleZen(_ sender: Any?) {
+        setZen(!isZen, fullScreen: true)
     }
 
-    var isFocused: Bool { layout.focusedHeading != nil }
+    /// `fullScreen` is false when a picture is being taken or a test is driving
+    /// this. What the mode *is* is the chrome being gone; going full screen is
+    /// a real transition that needs a screen and several turns of the run loop,
+    /// and neither an offscreen shot nor a test has either.
+    func setZen(_ on: Bool, fullScreen: Bool) {
+        guard on != isZen else { return }
+        isZen = on
+        // The find bar sits over the text rather than beside it, so it is the
+        // one piece of chrome that would survive the constraints below.
+        if on { closeFind() }
+        bottomBar.isHidden = on
+        bottomBarHeight.constant = on ? 0 : 30
+        applyOutlineVisibility()
+        refreshMapVisibility()
+        applyTitleBar()
+        window?.contentView?.layoutSubtreeIfNeeded()
+        if fullScreen { syncFullScreen() }
+    }
 
-    private func focus(on ordinal: Int?) {
-        layout.setFocus(ordinal)
-        documentView.needsDisplay = true
-        if let heading = layout.focusedHeading {
-            documentView.reveal(ordinal: heading)
+    /// The title bar empties out: no title, no buttons, no line under it.
+    ///
+    /// It is not given to the document with `fullSizeContentView`, though that
+    /// is the obvious way to run the text to the top edge. That flag re-frames
+    /// the window through the window server, and an offscreen draw of the
+    /// content then comes back **transparent** — the store picture of this very
+    /// mode would be an empty rectangle. Full screen, which is where zen spends
+    /// its time, hides the title bar itself and needs no flag.
+    private func applyTitleBar() {
+        guard let window else { return }
+        window.titlebarAppearsTransparent = isZen
+        window.titleVisibility = isZen ? .hidden : .visible
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(button)?.isHidden = isZen
         }
-        rerunSearchIfActive()
+    }
+
+    private func syncFullScreen() {
+        guard let window, window.screen != nil else { return }
+        let already = window.styleMask.contains(.fullScreen)
+        if isZen, !already {
+            zenTookFullScreen = true
+            window.toggleFullScreen(nil)
+        } else if !isZen, already, zenTookFullScreen {
+            zenTookFullScreen = false
+            window.toggleFullScreen(nil)
+        }
+    }
+
+    /// Escape leaves zen, as it does in VS Code.
+    ///
+    /// It arrives here only when nothing nearer the keyboard wanted it — a
+    /// filter row being typed into, the find bar, an enlarged diagram all take
+    /// their own Escape first — so leaving the mode never costs the reader one
+    /// of those.
+    override func cancelOperation(_ sender: Any?) {
+        guard isZen else { return }
+        setZen(false, fullScreen: true)
+    }
+
+    /// What the window is showing besides the document, for the test that asks
+    /// whether zen took all of it away.
+    var visibleChromeForTesting: [String] {
+        var showing: [String] = []
+        if !outline.isHidden { showing.append("outline") }
+        if !mapStrip.isHidden { showing.append("map") }
+        if !bottomBar.isHidden { showing.append("bottomBar") }
+        if !findBar.isHidden { showing.append("find") }
+        return showing
     }
 
     @objc func toggleOutline(_ sender: Any?) {
@@ -1067,6 +1121,17 @@ final class DocumentWindowController: NSWindowController {
 
     private func setSidebarVisible(_ visible: Bool, animated: Bool) {
         Preferences.outlineVisible = visible
+        applyOutlineVisibility(animated: animated)
+    }
+
+    /// The sidebar is showing when the reader asked for it and zen is off.
+    ///
+    /// Zen never writes the preference. It is a way of looking at one document
+    /// for a while, not a change to how the reader likes their windows — and a
+    /// crash or a quit in zen would otherwise hand them back an app that had
+    /// forgotten the outline they always keep open.
+    private func applyOutlineVisibility(animated: Bool = false) {
+        let visible = Preferences.outlineVisible && !isZen
         sidebarWidthConstraint.constant = visible ? 240 : 0
         outline.isHidden = !visible
         if animated {
@@ -1307,15 +1372,15 @@ extension DocumentWindowController: NSMenuItemValidation {
             item.state = sideBySide ? .on : .off
             return true
         }
+        if item.action == #selector(toggleZen(_:)) {
+            item.state = isZen ? .on : .off
+            return true
+        }
         if item.action == #selector(present(_:)) {
             // A document with no thematic breaks and no headings is not a deck,
             // and offering to present it would promise something this cannot
             // do: guess where the author wanted the screens to end.
             return slideCount > 0
-        }
-        if item.action == #selector(toggleFocus(_:)) {
-            item.state = isFocused ? .on : .off
-            return true
         }
         return true
     }

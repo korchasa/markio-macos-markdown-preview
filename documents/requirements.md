@@ -267,11 +267,14 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   until that would make it more than eight thousand pixels across, and records
   the resolution it settled on, so a viewer's full size is the size the diagram
   was drawn at either way.
-- **VIEW-30** Focus (⌥⌘F) folds the document down to the section the reader is
-  in: every heading stays, everything outside that section takes no room, and
-  clicking a heading moves the focus to it. Nothing is dropped — find, copy and
-  the outline still see the folded text — and folding again brings the document
-  back as it was.
+- **VIEW-30** Zen (⌥⌘Z) shows the document with nothing around it: the outline,
+  the map, the bottom bar and the find bar all go, the title bar keeps neither
+  its title nor its buttons, and the window takes the display, where macOS hides
+  the title bar as well. Escape leaves it, as it does in VS Code, and only after
+  anything nearer the keyboard — a filter row, the find bar, an enlarged
+  diagram — has had its own Escape. Leaving puts back exactly what the window
+  was showing, and the mode never writes the reader's preferences, so a quit in
+  zen costs them nothing.
 - **VIEW-31** Presentation (⌥⌘P) shows the document a screenful at a time, full
   screen, split where the author split it: on their thematic breaks, or failing
   those on the shallowest heading level that divides the document more than

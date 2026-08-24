@@ -1110,7 +1110,7 @@ to honour. The block types nothing: the fence's own text stays the block's
 plain text, which keeps the diagram findable and copyable as the source its
 author wrote.
 
-### Pages, slides and focus
+### Pages, slides and zen
 
 Three ways of showing the same layout, none of them a second renderer.
 
@@ -1128,11 +1128,18 @@ more than once — and returns an empty list for a document that is not a deck.
 `PresentationWindow` shows one range at a time and scales it to fit rather than
 laying it out again at another width.
 
-Focus is the disclosure machinery pointed at headings: `DocumentLayout.setFocus`
-adds the folded ranges to the same sorted `hidden` list a closed `<details>`
-uses, keeping every heading visible. Nothing is dropped, so find, copy and the
-outline are unaffected, and the blocks that are folded away simply have no
-height.
+Zen is not a third way of laying the document out at all — it is the same window
+with its chrome taken off. `DocumentWindowController.setZen` collapses the bottom
+bar to no height, routes the outline and the map through a flag that stands
+beside their preferences rather than overwriting them, and empties the title bar
+of its title and its buttons. It deliberately does **not** set
+`fullSizeContentView`, the obvious way to run the text to the top edge: that flag
+re-frames the window through the window server, and an offscreen draw of the
+content then comes back fully transparent — the store picture of the mode would
+be an empty rectangle. Full screen is where the mode is meant to live and hides
+the title bar by itself; going into it is a separate step, skipped when there is
+no screen to go full on, which is what lets an offscreen shot and a test drive
+zen without one.
 
 ### The map down the right edge
 

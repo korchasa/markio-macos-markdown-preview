@@ -229,12 +229,14 @@ enum MainMenu {
             keyEquivalent: "p"
         )
         present.keyEquivalentModifierMask = [.command, .option]
-        let focus = menu.addItem(
-            withTitle: "Focus on Section",
-            action: #selector(DocumentWindowController.toggleFocus(_:)),
-            keyEquivalent: "f"
+        // ⌥⌘Z rather than the ⌥⌘F the old focus mode had: a reader who knew
+        // that shortcut would otherwise press it and get a different feature.
+        let zen = menu.addItem(
+            withTitle: "Zen Mode",
+            action: #selector(DocumentWindowController.toggleZen(_:)),
+            keyEquivalent: "z"
         )
-        focus.keyEquivalentModifierMask = [.command, .option]
+        zen.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
         menu.addItem(
             withTitle: "Zoom In",

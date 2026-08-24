@@ -65,9 +65,10 @@ Markio reads. It never writes a file it opens.
   showing where you are. On a document longer than the map, it shows a window
   onto the text and slides it with you. Click to go there, drag to scroll, hover
   to see which section it is
-- **⌥⌘F** focus: fold the document down to the section you are reading, keeping
-  every heading, so the file reads as its own table of contents with one part
-  open
+- **⌥⌘Z** zen: the document and nothing else — no outline, no map, no bottom
+  bar, an empty title bar, and the window takes the display, which hides that
+  too. Escape leaves it, and the window comes back showing exactly what it
+  showed before
 - **⌥⌘P** presentation: the document a screenful at a time, split where the
   author split it — on their thematic breaks, or failing that on their headings
 - **⇧⌘E** export as PDF, **⌘P** print — real glyphs and vector diagrams, not a

@@ -80,10 +80,12 @@ enum Snapshot {
         var sortDescending: Bool = false
         /// Keep only the rows holding this, as though typed in the filter row.
         var tableFilter: String?
+        /// Take the picture in zen mode: the document with nothing around it.
+        var zen: Bool = false
 
         private enum CodingKeys: String, CodingKey {
             case file, appearance, outline, anchor, compare, sideBySide, find
-            case sortColumn, sortDescending, tableFilter
+            case sortColumn, sortDescending, tableFilter, zen
         }
 
         init(from decoder: Decoder) throws {
@@ -98,6 +100,7 @@ enum Snapshot {
             sortColumn = try values.decodeIfPresent(Int.self, forKey: .sortColumn)
             sortDescending = try values.decodeIfPresent(Bool.self, forKey: .sortDescending) ?? false
             tableFilter = try values.decodeIfPresent(String.self, forKey: .tableFilter)
+            zen = try values.decodeIfPresent(Bool.self, forKey: .zen) ?? false
         }
     }
 
@@ -240,6 +243,18 @@ enum Snapshot {
         NSApp.appearance = NSAppearance(named: shot.appearance.systemName)
 
         controller.stopComparing(nil)
+        // Zen first: it decides whether the outline can show at all, so setting
+        // it afterwards would leave the sidebar's state depending on the order
+        // two lines of this function happen to be in.
+        if controller.isZen != shot.zen {
+            controller.setZen(shot.zen, fullScreen: false)
+            // Switching the mode moves every edge in the window, and AppKit
+            // settles that a turn of the run loop later — after the shot has
+            // been scrolled to its anchor, which the settling then undoes.
+            // Without this wait the zen picture came out at the top of the
+            // document however the plan pointed it.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
         controller.setOutline(visible: shot.outline)
         // Always said, never assumed: an empty query closes the find bar, so
         // the shot after a search does not inherit its highlights.
