@@ -50,6 +50,16 @@ enum Preferences {
     /// to `readingWidth` is what keeps the reader's own choice.
     @MainActor static var pinnedWidth: Int?
 
+    /// Off for the length of a `--snapshot` run: the pictures neither read a
+    /// remembered position nor write one.
+    ///
+    /// The same trap the reading width fell into. Where a document was left is
+    /// a reader's preference, and the snapshot run is a reader like any other,
+    /// so a run that finished on its last shot's anchor handed that position
+    /// to the first shot of the next run — the store picture opened halfway
+    /// down the document, and nothing in the log said so.
+    @MainActor static var remembersPosition = true
+
     @MainActor static var readingWidth: Int {
         get {
             if let pinnedWidth { return clampWidth(pinnedWidth) }

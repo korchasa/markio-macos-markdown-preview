@@ -199,6 +199,11 @@ enum Snapshot {
         // slider was last left at. Pin it for the run instead.
         Preferences.pinnedWidth = Preferences.defaultWidth
         defer { Preferences.pinnedWidth = nil }
+        // The app turns this off before it opens anything, which is the only
+        // moment that helps a real run; here it covers the test that drives a
+        // run against a window of its own.
+        Preferences.remembersPosition = false
+        defer { Preferences.remembersPosition = true }
         controller.reapplyReadingWidth()
 
         for shot in plan.shots {

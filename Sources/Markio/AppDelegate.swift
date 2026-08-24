@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // when quitting an application", and this app's answer is not a default
         // but a decision.
         UserDefaults.standard.set(true, forKey: "NSQuitAlwaysKeepsWindows")
+        // Before the documents open, not when the shots start: opening one
+        // schedules the restore of where it was last left, and that scroll
+        // lands a turn of the run loop later — in the middle of the first
+        // shot. The picture then shows wherever the previous run finished,
+        // and nothing in the log says so.
+        if CommandLine.arguments.contains("--snapshot") { Preferences.remembersPosition = false }
         launchFiles = filesFromCommandLine()
     }
 

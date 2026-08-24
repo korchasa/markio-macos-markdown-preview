@@ -724,6 +724,10 @@ final class DocumentWindowController: NSWindowController {
     /// so a second scroll on the next turn corrects for what the first one
     /// learned.
     private func restoreScrollPosition() {
+        // Leaving `restoredScroll` false during a snapshot run is deliberate
+        // and does the second half of the job: both places that write a
+        // position are guarded by it, so the run cannot save one either.
+        guard Preferences.remembersPosition else { return }
         guard !restoredScroll, let url = markdownDocument.fileURL else { return }
         guard let y = Preferences.scrollPosition(for: url), y > 0 else {
             restoredScroll = true
@@ -1050,6 +1054,10 @@ final class DocumentWindowController: NSWindowController {
     func setOutline(visible: Bool) {
         setSidebarVisible(visible, animated: false)
     }
+
+    /// Where the document is scrolled to, for the test that asks whether a
+    /// remembered position reached a store picture.
+    var scrollOffsetForTesting: CGFloat { scrollView.contentView.bounds.minY }
 
     /// Back to the first line, for the same reason.
     func scrollToTop() {

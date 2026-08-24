@@ -194,6 +194,49 @@ final class SnapshotTests: XCTestCase {
         XCTAssertEqual(try shoot(storedWidth: 60), try shoot(storedWidth: 130))
     }
 
+    /// Where the document was last left must not reach the store pictures.
+    ///
+    /// The same trap as the reading width, one turn of the run loop later:
+    /// opening a document schedules the restore of its remembered position,
+    /// and that scroll lands in the middle of the first shot. The picture then
+    /// shows wherever the run before it finished — the set shipped on
+    /// 2026-08-24 had its first shot two thirds of the way down the document.
+    func testARememberedPositionDoesNotReachTheStorePictures() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let document = directory.appendingPathComponent("demo.md")
+        let text = (1...40).map { "Paragraph \($0), long enough to take a line of its own.\n" }
+            .joined(separator: "\n")
+        try Data("# Long\n\n\(text)".utf8).write(to: document)
+
+        let saved = Preferences.remembersPosition
+        defer { Preferences.remembersPosition = saved }
+        Preferences.setScrollPosition(4000, for: document)
+
+        Preferences.remembersPosition = false
+        let markdown = try MarkdownDocument(
+            contentsOf: document, ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: markdown)
+        defer { controller.window?.close() }
+        // A window with real geometry, or the scroll has nowhere to go: the
+        // restore clamps to the room below the fold, and in a window that was
+        // never laid out that room is zero and any position looks obeyed.
+        let window = try XCTUnwrap(controller.window)
+        window.setContentSize(NSSize(width: 1000, height: 600))
+        // Showing the window is what asks for the restore, so a test that only
+        // builds a controller never reaches the code it is about.
+        controller.showWindow(nil)
+        window.layoutIfNeeded()
+        // The restore is scheduled on the next turn of the run loop, so give it
+        // one before asking: the guard has to hold across that turn, not only
+        // at the moment the document opens.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(controller.scrollOffsetForTesting, 0)
+    }
+
     func testAMissingPlanIsAnError() throws {
         let document = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).md")
