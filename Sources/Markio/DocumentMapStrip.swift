@@ -186,12 +186,9 @@ final class DocumentMapStrip: NSView {
         guard !rows.isEmpty else { return }
         let top = y(clamping: reading.lowerBound)
         let bottom = max(top + 4, y(clamping: reading.upperBound + 1))
-        let rect = CGRect(x: 0.5, y: top + 0.5, width: bounds.width - 1, height: bottom - top - 1)
+        let rect = CGRect(x: 0, y: top, width: bounds.width, height: bottom - top)
         context.setFillColor(NSColor.labelColor.withAlphaComponent(0.08).cgColor)
         context.fill(rect)
-        context.setStrokeColor(NSColor.labelColor.withAlphaComponent(0.35).cgColor)
-        context.setLineWidth(1)
-        context.stroke(rect)
     }
 
     // MARK: - The line axis
