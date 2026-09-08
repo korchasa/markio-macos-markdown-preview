@@ -154,6 +154,10 @@ Two details that are not obvious:
 
 - **Code blocks are built span by span** so byte offsets never have to be
   converted to UTF-16 positions. Highlighting is skipped above 128 KiB.
+- **A ticked box strikes its whole line through `blockStyle`**, a style
+  `AttributedBuilder.build` folds into every run before choosing fonts and
+  attributes, so the strike takes each run's own colour exactly as `~~…~~`
+  would; the plain-text projection knows nothing of it.
 - **A single line positioned by its line box sags**, because half the leading
   is added twice; list markers, checkboxes and footnote labels go through a
   single-line path that aligns to the first line's baseline instead.
@@ -1174,7 +1178,12 @@ drift ran off the bottom of the strip. Clipping makes the row index arithmetic:
 
 *The classification rides on the walk `DocumentSummary` already makes*, rather
 than starting a second pass over half a million blocks: whichever of the two
-landed first owns the walk, and the summary landed first.
+landed first owns the walk, and the summary landed first. The same walk reports
+every task box it passes as a `TaskEntry` — ordinal, section, state and the
+item's first source line cut to `titleLimit` — as a delta per batch
+(`Result.newTasks`), so a report costs its batch and never copies what was
+already sent. The lines of the open boxes are a fifth layer on the strip,
+between the comparison marks and find's.
 
 *The strip has a lane of its own.* It sits inside the scroll view but stops a
 scroller's width short of its trailing edge, so the scroller draws to the right
@@ -1277,6 +1286,19 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   the content has no height of its own and AppKit would size the window down to
   a bare title bar; explicit floor and preference constraints on the scroll view
   are what give the window a size.
+- The stepper through the open boxes keeps `openTasks`, the ordinals the count
+  reported, sorted by construction; a step is one binary search from the
+  current box's ordinal (kept as an ordinal, not an index, so a batch that
+  grows the list cannot move it) or from the top of the view. The box reached
+  is marked by `DocumentView.setCurrentTask`, a block-wide highlight in find's
+  current-match colour, cleared when it scrolls out of view.
+- `OutlineSidebar` holds rows of two kinds — a heading, or a `TaskEntry` under
+  it. The headings are there the moment the document is parsed; the boxes come
+  from the count in batches, and the rows are merged again at most every
+  250 ms and once more when the count completes, because a 32 MB document
+  reports a thousand batches and a six-figure row list cannot be rebuilt on
+  the main thread for each. `headingRows` maps a heading to its row so the
+  scroll's selection survives the merge.
 - Zoom lives on the window, not in the theme's callers: `Theme.Metrics.scaled(by:)`
   multiplies every measurement at once — type, spacing, indents, corner radii,
   rule thickness with a floor of half a point — and records the factor, which is

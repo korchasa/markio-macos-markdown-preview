@@ -58,11 +58,14 @@ Markio reads. It never writes a file it opens.
   document's path
 - **⌘F** find, **⌘G** / **⌘⇧G** next and previous match
 - **⌥⌘S** the table of contents — the heading tree, click to jump, with each
-  section's ticked-of-total beside it
+  section's ticked-of-total beside it and its task items listed underneath,
+  one line each, the ticked ones struck through
+- **⌥⌘J** / **⌥⇧⌘J** next and previous open task box, also on the arrows
+  beside the count in the bottom bar
 - **⌥⌘M** the map down the right edge: the document itself, drawn small — every
   line as the words on it, at the column they start on, tinted by what the block
-  is, with the find matches, the blocks a comparison changed, and a rectangle
-  showing where you are. On a document longer than the map, it shows a window
+  is, with the find matches, the blocks a comparison changed, the open task
+  boxes, and a rectangle showing where you are. On a document longer than the map, it shows a window
   onto the text and slides it with you. Click to go there, drag to scroll, hover
   to see which section it is
 - **⌥⌘Z** zen: the document and nothing else — no outline, no map, no bottom
@@ -86,7 +89,8 @@ Markio reads. It never writes a file it opens.
   touched
 - The bottom bar says what the document says about itself: how many of its
   boxes are ticked, how long it takes to read, how many open questions it still
-  carries
+  carries. A ticked box's text is struck through; click the count, or its
+  arrows, to go to the next box that is still open
 - Hover a code block for its language and a Copy button; a diagram also offers
   Copy PNG, and clicking one shows it large over the window
 - Click a footnote's marker to jump to the note

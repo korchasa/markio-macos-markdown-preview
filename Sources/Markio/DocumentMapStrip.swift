@@ -20,8 +20,9 @@ import MarkioRender
 /// document is longer than that the map shows a window onto it and slides the
 /// window with the reader — again as an editor's minimap does.
 ///
-/// Four layers, in this order: the text, the blocks a comparison changed, the
-/// find matches, and the rectangle showing where the reader is.
+/// Five layers, in this order: the text, the blocks a comparison changed, the
+/// open boxes, the find matches, and the rectangle showing where the reader
+/// is.
 @MainActor
 final class DocumentMapStrip: NSView {
     /// Called with the index of the match nearest a click on one of its marks.
@@ -49,6 +50,8 @@ final class DocumentMapStrip: NSView {
     private var marks: [Int] = []
     private var current = -1
     private var changes: [(line: Int, isAdded: Bool)] = []
+    /// Lines with a box still open on them.
+    private(set) var openTaskLines: [Int] = []
     private var reading: ClosedRange<Int> = 0...0
     private var theme: Theme
     private var dragging = false
@@ -102,6 +105,12 @@ final class DocumentMapStrip: NSView {
         needsDisplay = true
     }
 
+    func setOpenTasks(lines: [Int]) {
+        guard lines != openTaskLines else { return }
+        openTaskLines = lines
+        needsDisplay = true
+    }
+
     func setReading(_ lines: ClosedRange<Int>) {
         guard lines != reading else { return }
         reading = lines
@@ -112,6 +121,7 @@ final class DocumentMapStrip: NSView {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         drawText(in: context)
         drawChanges(in: context)
+        drawOpenTasks(in: context)
         drawMarks(in: context)
         drawReading(in: context)
     }
@@ -156,6 +166,22 @@ final class DocumentMapStrip: NSView {
             context.setFillColor(
                 change.isAdded
                     ? theme.palette.diffAddedText : theme.palette.diffRemovedText)
+            context.fill(CGRect(x: 1, y: y, width: 3, height: DocumentMapStrip.rowHeight))
+        }
+    }
+
+    /// An open box is a short bar at the left edge, in the ink's own colour
+    /// rather than a tint of its own: it says where the work is, and leaves
+    /// the yellow to find, which the reader is looking for at that moment.
+    private func drawOpenTasks(in context: CGContext) {
+        guard !openTaskLines.isEmpty else { return }
+        context.setFillColor(
+            theme.palette.secondaryText.copy(alpha: 0.6) ?? theme.palette.secondaryText)
+        var lastY: CGFloat = -10
+        for line in openTaskLines {
+            guard let y = y(of: line) else { continue }
+            if abs(y - lastY) < 1 { continue }
+            lastY = y
             context.fill(CGRect(x: 1, y: y, width: 3, height: DocumentMapStrip.rowHeight))
         }
     }

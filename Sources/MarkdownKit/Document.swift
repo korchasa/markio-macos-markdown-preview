@@ -222,6 +222,13 @@ public struct Document: Sendable {
         public var level: Int
         public var text: String
         public var slug: String
+
+        public init(block: Int32, level: Int, text: String, slug: String) {
+            self.block = block
+            self.level = level
+            self.text = text
+            self.slug = slug
+        }
     }
 
     /// The heading tree, with GitHub-style slugs deduplicated the way GitHub

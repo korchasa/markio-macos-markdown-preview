@@ -152,7 +152,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
 - **VIEW-7** Code blocks are syntax-highlighted for the common languages, in
   both appearances.
 - **VIEW-8** Task list items show a real checkbox, checked or not, and are not
-  editable.
+  editable. A ticked item's text is struck through, end to end, in its own
+  colour; the plain text behind find and copy is unchanged.
 - **VIEW-9** The scroll position of a document is restored when it is reopened.
 - **VIEW-10** When the file changes on disk, the view reloads and the reader
   keeps their place. A write that does not change the bytes changes nothing.
@@ -303,8 +304,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   of its task boxes are ticked out of how many, how long it takes to read at a
   stated rate, and how many open questions — `TODO` and `FIXME` markers, and
   nothing else — it still carries. The outline shows the same counts per
-  heading. The count runs off the main thread and shows its figures settling
-  rather than delaying the first window.
+  heading, and under each heading lists its task items, one line each, cut
+  with an ellipsis and never wrapped, a ticked one struck through; clicking an
+  item scrolls to it. The count runs off the main thread and shows its figures
+  settling rather than delaying the first window.
 - **VIEW-36** Copy puts the selection on the pasteboard twice: with its styles,
   for an application that can keep them, and as plain text, character for
   character what it has always been.
@@ -320,6 +323,13 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   scrolls, and hovering names the section. Only the lines the map can show are
   ever read, so it costs the same on a 32 MB document as on a note. It is hidden
   on a document shorter than the window, and its visibility persists.
+- **VIEW-39** The bar's count is a stepper: ‹ and › beside it, a click on the
+  count, View ▸ Next Open Task (⌥⌘J) and Previous Open Task (⌥⇧⌘J) scroll to
+  the next or previous box that is still open — after the current one, or
+  after the top of the view when none is current — wrapping round at the ends.
+  The box reached is marked the way find's current match is, until it scrolls
+  out of view or the document reloads. The map marks the lines of the open
+  boxes. With no open box the arrows are hidden and the menu items disabled.
 - **VIEW-38** The menu bar carries what a macOS reader expects of it: Close All
   (⌥⌘W), the standard Edit items present and disabled on a document that cannot
   be edited, and Compare… on ⇧⌘C. Window tabbing is refused outright, because

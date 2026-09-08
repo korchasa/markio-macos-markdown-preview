@@ -54,9 +54,36 @@ public final class DocumentSummary {
         public var openQuestions = 0
     }
 
+    /// One box, where it is and what it says — enough for an outline row and
+    /// for the stepper that leads from box to box.
+    public struct TaskEntry: Sendable, Equatable {
+        /// Index into the document's leaves.
+        public var ordinal: Int
+        /// Index of the heading the item sits under; −1 before the first.
+        public var section: Int
+        public var isChecked: Bool
+        /// The item's first line, cut to `titleLimit`.
+        public var title: String
+
+        public init(ordinal: Int, section: Int, isChecked: Bool, title: String) {
+            self.ordinal = ordinal
+            self.section = section
+            self.isChecked = isChecked
+            self.title = title
+        }
+    }
+
+    /// The most an outline row can show of an item. A row is one line, so a
+    /// longer title would only be cut again by the cell; and a 32 MB document
+    /// must not keep its paragraphs alive under another name.
+    public nonisolated static let titleLimit = 120
+
     public struct Result: Sendable, Equatable {
         public var counts = Counts()
         public var sections: [SectionProgress] = []
+        /// The boxes counted since the previous report — a delta, so that a
+        /// report costs its batch and never copies what was already sent.
+        public var newTasks: [TaskEntry] = []
         /// What each leaf is, for the map down the right edge.
         ///
         /// The map wants exactly the walk this already makes, and two
@@ -93,6 +120,7 @@ public final class DocumentSummary {
             var sections: [SectionProgress] = []
             var classes: [DocumentMap.Kind] = []
             classes.reserveCapacity(leaves.count)
+            var newTasks: [TaskEntry] = []
             var ordinal = 0
             while ordinal < leaves.count {
                 let leaf = leaves[ordinal]
@@ -103,14 +131,22 @@ public final class DocumentSummary {
                 // scanner leaves `[ ]` as ordinary characters, and only a
                 // paragraph that heads a list item can be one at all — which is
                 // the cheap test that keeps this from reading every block.
-                if block.kind == .paragraph, block.flags.contains(.itemHead),
-                    let marker = document.taskMarker(in: document.content(of: leaf), leaf: leaf)
-                {
-                    counts.tasks += 1
-                    if !sections.isEmpty { sections[sections.count - 1].tasks += 1 }
-                    if marker.isChecked {
-                        counts.tasksDone += 1
-                        if !sections.isEmpty { sections[sections.count - 1].done += 1 }
+                if block.kind == .paragraph, block.flags.contains(.itemHead) {
+                    let content = document.content(of: leaf)
+                    if let marker = document.taskMarker(in: content, leaf: leaf) {
+                        counts.tasks += 1
+                        if !sections.isEmpty { sections[sections.count - 1].tasks += 1 }
+                        if marker.isChecked {
+                            counts.tasksDone += 1
+                            if !sections.isEmpty { sections[sections.count - 1].done += 1 }
+                        }
+                        newTasks.append(
+                            TaskEntry(
+                                ordinal: ordinal,
+                                section: sections.count - 1,
+                                isChecked: marker.isChecked,
+                                title: DocumentSummary.title(
+                                    of: content, from: marker.contentStart)))
                     }
                 }
                 // The text is read once per block and dropped: this is the
@@ -133,7 +169,10 @@ public final class DocumentSummary {
                 if shouldFlush {
                     var snapshot = counts
                     snapshot.progress = Double(ordinal) / Double(leaves.count)
-                    let result = Result(counts: snapshot, sections: sections, classes: classes)
+                    let result = Result(
+                        counts: snapshot, sections: sections, newTasks: newTasks,
+                        classes: classes)
+                    newTasks = []
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated {
                             guard let self, self.generation == token else { return }
@@ -143,6 +182,19 @@ public final class DocumentSummary {
                 }
             }
         }
+    }
+
+    /// An item's first source line after the box, as plain text, cut to what
+    /// a row can show. The source line rather than the first line on screen:
+    /// the plain-text projection folds a soft break into a space, and the
+    /// author's own line is the one the outline promises. Called from the
+    /// walk's queue, so it must not inherit the class's actor.
+    nonisolated static func title(of content: [UInt8], from start: Int) -> String {
+        var end = start
+        // 0x0A and 0x0D: a line ends at either, whichever the file was saved with.
+        while end < content.count, content[end] != 0x0A, content[end] != 0x0D { end += 1 }
+        let line = InlineText.plain(Array(content[start..<end]))
+        return String(line.prefix(titleLimit))
     }
 
     /// Words, counted the way anyone would count them by eye: runs of

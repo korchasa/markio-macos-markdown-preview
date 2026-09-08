@@ -35,6 +35,10 @@ enum AttributedBuilder {
     ///   line can reserve exactly the room it needs. Passing nil draws every
     ///   inline picture as an empty frame — the text is the same either way,
     ///   which is what keeps Find in step with what is drawn.
+    /// - Parameter blockStyle: a style the whole block carries on top of what
+    ///   its runs were written with — a ticked task item is struck through
+    ///   from end to end, in each run's own colour, as if it had been written
+    ///   between tildes.
     static func build(
         content: [UInt8],
         inline: InlineContent,
@@ -42,13 +46,15 @@ enum AttributedBuilder {
         baseFont: CTFont,
         baseColor: CGColor,
         skipBytes: Int = 0,
+        blockStyle: InlineStyle = [],
         image: ((InlineLink, CGFloat) -> CGImage?)? = nil
     ) -> StyledText {
         let attributed = NSMutableAttributedString()
         var spans: [StyledText.Span] = []
         spans.reserveCapacity(inline.runs.count)
 
-        for run in inline.runs {
+        for var run in inline.runs {
+            run.style.formUnion(blockStyle)
             let start = attributed.length
             // Alt text belongs to a picture, not to a destination: styling it
             // as a link would invite a click that goes nowhere.

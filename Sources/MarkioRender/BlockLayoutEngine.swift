@@ -229,9 +229,13 @@ struct BlockLayoutEngine {
         mutating func layoutParagraph(_ block: Block) {
             let content = document.content(of: leaf)
             var skip = 0
+            // A ticked box is finished work, and finished work is struck
+            // through: the box alone is easy to miss in a list of twenty.
+            var blockStyle: InlineStyle = []
             if let task = document.taskMarker(in: content, leaf: leaf) {
                 addCheckbox(checked: task.isChecked)
                 skip = task.contentStart
+                if task.isChecked { blockStyle.insert(.strikethrough) }
             }
             let inline = parseInline(content)
             if skip == 0, layoutLoneImage(content: content, inline: inline) { return }
@@ -242,6 +246,7 @@ struct BlockLayoutEngine {
                 baseFont: theme.body,
                 baseColor: theme.palette.text,
                 skipBytes: skip,
+                blockStyle: blockStyle,
                 image: { [engine] link, maxHeight in
                     engine.inlineImage(link: link, maxHeight: maxHeight)
                 }

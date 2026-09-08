@@ -238,6 +238,21 @@ enum MainMenu {
         )
         zen.keyEquivalentModifierMask = [.command, .option]
         menu.addItem(.separator())
+        // ⌘G and ⇧⌘G step through find's matches; the open boxes take J beside
+        // it, with the option key the rest of this menu uses.
+        let nextTask = menu.addItem(
+            withTitle: "Next Open Task",
+            action: #selector(DocumentWindowController.nextOpenTask(_:)),
+            keyEquivalent: "j"
+        )
+        nextTask.keyEquivalentModifierMask = [.command, .option]
+        let previousTask = menu.addItem(
+            withTitle: "Previous Open Task",
+            action: #selector(DocumentWindowController.previousOpenTask(_:)),
+            keyEquivalent: "j"
+        )
+        previousTask.keyEquivalentModifierMask = [.command, .option, .shift]
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: "Zoom In",
             action: #selector(DocumentWindowController.zoomIn(_:)),

@@ -36,6 +36,21 @@ final class DocumentWindowController: NSWindowController {
     /// questions — counted in the background and shown at the left of the bar.
     private let summaryLabel = NSTextField(labelWithString: "")
     private let summaryEngine = DocumentSummary()
+    /// Either side of the count: the way from one open box to the next.
+    private let previousTaskButton = NSButton()
+    private let nextTaskButton = NSButton()
+    /// Ordinals of the boxes still open, in document order, as the count
+    /// reports them. Sorted by construction, so a step is a binary search.
+    private(set) var openTasks: [Int] = []
+    /// The source line of each open box, for the map. Grown with `openTasks`,
+    /// a batch at a time, so the map is never asked to walk the list itself.
+    private var openTaskLines: [Int] = []
+    /// The open box the stepper last led to — its ordinal, not its index, so a
+    /// batch that grows `openTasks` cannot move it under the reader.
+    private(set) var currentOpenTask: Int?
+    /// The ordinal at the top of the view, where a step starts from when no
+    /// box is current.
+    private var visibleTop = 0
 
     private var findMatches: [DocumentView.FindMatch] = []
     private var currentMatch = -1
@@ -280,7 +295,8 @@ final class DocumentWindowController: NSWindowController {
             }
         }
 
-        outline.onSelect = { [weak self] index in self?.jumpToHeading(index) }
+        outline.onSelectHeading = { [weak self] index in self?.jumpToHeading(index) }
+        outline.onSelectTask = { [weak self] ordinal in self?.go(toOpenTask: ordinal) }
 
         findBar.onQueryChange = { [weak self] query in self?.runSearch(query) }
         findBar.onNext = { [weak self] in self?.step(by: 1) }
@@ -329,8 +345,21 @@ final class DocumentWindowController: NSWindowController {
         summaryLabel.font = NSFont.systemFont(ofSize: 10)
         summaryLabel.textColor = .secondaryLabelColor
         summaryLabel.lineBreakMode = .byTruncatingTail
+        // The count is the way to the boxes it counts: a click on it goes to
+        // the next open one, the same move as the arrow beside it.
+        summaryLabel.addGestureRecognizer(
+            NSClickGestureRecognizer(target: self, action: #selector(nextOpenTask(_:))))
 
-        for view in [widthSlider, widthLabel, summaryLabel] as [NSView] {
+        configureStepButton(
+            previousTaskButton, symbol: "chevron.left", action: #selector(previousOpenTask(_:)),
+            tip: "Previous open task (⌥⇧⌘J)")
+        configureStepButton(
+            nextTaskButton, symbol: "chevron.right", action: #selector(nextOpenTask(_:)),
+            tip: "Next open task (⌥⌘J)")
+
+        for view in [widthSlider, widthLabel, summaryLabel, previousTaskButton, nextTaskButton]
+            as [NSView]
+        {
             view.translatesAutoresizingMaskIntoConstraints = false
             bar.addSubview(view)
         }
@@ -340,12 +369,41 @@ final class DocumentWindowController: NSWindowController {
             widthSlider.trailingAnchor.constraint(equalTo: widthLabel.leadingAnchor, constant: -8),
             widthSlider.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
             widthSlider.widthAnchor.constraint(equalToConstant: 120),
-            summaryLabel.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
+            previousTaskButton.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 8),
+            previousTaskButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            summaryLabel.leadingAnchor.constraint(
+                equalTo: previousTaskButton.trailingAnchor, constant: 2),
             summaryLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            summaryLabel.trailingAnchor.constraint(
+            nextTaskButton.leadingAnchor.constraint(
+                equalTo: summaryLabel.trailingAnchor, constant: 2),
+            nextTaskButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            nextTaskButton.trailingAnchor.constraint(
                 lessThanOrEqualTo: widthSlider.leadingAnchor, constant: -12),
         ])
+        setStepperVisible(false)
         return bar
+    }
+
+    private func configureStepButton(
+        _ button: NSButton, symbol: String, action: Selector, tip: String
+    ) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.controlSize = .small
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = tip
+        button.target = self
+        button.action = action
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+
+    /// The arrows appear only while there is somewhere for them to go. Hidden
+    /// rather than disabled: a bar with two greyed arrows and nothing to step
+    /// through reads as broken, and their width is the label's to use.
+    private func setStepperVisible(_ visible: Bool) {
+        previousTaskButton.isHidden = !visible
+        nextTaskButton.isHidden = !visible
     }
 
     // MARK: - Reading width
@@ -802,13 +860,74 @@ final class DocumentWindowController: NSWindowController {
         // A different document has a different shape, and the old rows would
         // otherwise sit on the strip until the new classes arrived.
         mapClasses = []
+        openTasks = []
+        openTaskLines = []
+        mapStrip.setOpenTasks(lines: [])
+        currentOpenTask = nil
+        documentView.setCurrentTask(ordinal: nil)
+        setStepperVisible(false)
         summaryEngine.count(displayed) { [weak self] result in
             guard let self else { return }
             self.summaryLabel.stringValue = DocumentWindowController.summary(result.counts)
             self.outline.setProgress(result.sections)
+            self.outline.addTasks(result.newTasks, complete: result.counts.isComplete)
+            for entry in result.newTasks where !entry.isChecked {
+                self.openTasks.append(entry.ordinal)
+                self.openTaskLines.append(
+                    DocumentMap.firstLine(self.displayed, ordinal: entry.ordinal))
+            }
+            self.mapStrip.setOpenTasks(lines: self.openTaskLines)
+            self.setStepperVisible(!self.openTasks.isEmpty)
             self.mapClasses = result.classes
             self.scheduleRebin()
         }
+    }
+
+    // MARK: - Open boxes
+
+    /// The first open box after `position`, or the first of all when there is
+    /// none after it. `open` is sorted, so this is one binary search.
+    static func nextOpenTask(after position: Int, in open: [Int]) -> Int? {
+        guard let first = open.first else { return nil }
+        var low = 0
+        var high = open.count
+        while low < high {
+            let middle = (low + high) / 2
+            if open[middle] <= position { low = middle + 1 } else { high = middle }
+        }
+        return low < open.count ? open[low] : first
+    }
+
+    /// The last open box before `position`, or the last of all.
+    static func previousOpenTask(before position: Int, in open: [Int]) -> Int? {
+        guard let last = open.last else { return nil }
+        var low = 0
+        var high = open.count
+        while low < high {
+            let middle = (low + high) / 2
+            if open[middle] < position { low = middle + 1 } else { high = middle }
+        }
+        return low > 0 ? open[low - 1] : last
+    }
+
+    /// From the current box, or from the top of the view when none is current
+    /// — one before it, so a box sitting exactly at the top is the next one.
+    @objc func nextOpenTask(_ sender: Any?) {
+        let from = currentOpenTask ?? (visibleTop - 1)
+        guard let target = Self.nextOpenTask(after: from, in: openTasks) else { return }
+        go(toOpenTask: target)
+    }
+
+    @objc func previousOpenTask(_ sender: Any?) {
+        let from = currentOpenTask ?? visibleTop
+        guard let target = Self.previousOpenTask(before: from, in: openTasks) else { return }
+        go(toOpenTask: target)
+    }
+
+    private func go(toOpenTask ordinal: Int) {
+        currentOpenTask = ordinal
+        documentView.setCurrentTask(ordinal: ordinal)
+        documentView.reveal(ordinal: ordinal)
     }
 
     static func summary(_ counts: DocumentSummary.Counts) -> String {
@@ -825,6 +944,13 @@ final class DocumentWindowController: NSWindowController {
     }
 
     private func visibleRangeChanged(_ range: Range<Int>) {
+        visibleTop = range.lowerBound
+        // The reader who scrolls the current box away has moved on; the next
+        // step starts from where they are, not from where the box was.
+        if let current = currentOpenTask, !range.contains(current) {
+            currentOpenTask = nil
+            documentView.setCurrentTask(ordinal: nil)
+        }
         // Every block laid out replaces an estimate, so this is where the map
         // learns the document got taller.
         scheduleRebin()
@@ -1378,6 +1504,11 @@ extension DocumentWindowController: NSMenuItemValidation {
         // default is yes and the one exception is the command that needs a
         // comparison to stop.
         if item.action == #selector(stopComparing(_:)) { return isComparing }
+        if item.action == #selector(nextOpenTask(_:))
+            || item.action == #selector(previousOpenTask(_:))
+        {
+            return !openTasks.isEmpty
+        }
         if item.action == #selector(toggleSideBySide(_:)) {
             item.state = sideBySide ? .on : .off
             return true

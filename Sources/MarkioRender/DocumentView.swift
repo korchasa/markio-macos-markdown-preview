@@ -46,6 +46,8 @@ public final class DocumentView: NSView {
     /// Match ranges from the find bar, as (ordinal, utf16 range).
     private var findMatches: [FindMatch] = []
     private var currentMatch: Int = -1
+    /// The open box the stepper last led to, marked until the reader moves on.
+    private var currentTask: Int?
     /// The fenced block the pointer is over, and the pill it can click.
     private var hoveredCode: CodeHover?
     /// The block whose Copy was last pressed, so the pill can say so.
@@ -592,6 +594,19 @@ public final class DocumentView: NSView {
         selection: (start: TextPosition, end: TextPosition)?,
         in context: CGContext
     ) {
+        DocumentRenderer.draw(
+            box: box, highlights: highlights(box: box, ordinal: ordinal, selection: selection),
+            in: context)
+    }
+
+    /// Everything painted behind a block's text: the selection, find's
+    /// matches, and the open box the stepper is on. Separate from the draw so
+    /// a test can ask without a graphics context.
+    func highlights(
+        box: BlockBox,
+        ordinal: Int,
+        selection: (start: TextPosition, end: TextPosition)?
+    ) -> [DocumentRenderer.Highlight] {
         var highlights: [DocumentRenderer.Highlight] = []
         if let selection,
             let rects = selectionRects(box: box, ordinal: ordinal, selection: selection)
@@ -601,7 +616,17 @@ public final class DocumentView: NSView {
             )
         }
         highlights.append(contentsOf: findHighlights(box: box, ordinal: ordinal))
-        DocumentRenderer.draw(box: box, highlights: highlights, in: context)
+        if currentTask == ordinal {
+            // The whole line, in find's current-match colour: the reader was
+            // just taken here and is looking for what moved.
+            let rects = rects(in: box, from: 0, to: Int.max).map { $0.insetBy(dx: -1, dy: -1) }
+            if !rects.isEmpty {
+                highlights.append(
+                    DocumentRenderer.Highlight(
+                        rects: rects, color: layout.theme.palette.findCurrentMatch))
+            }
+        }
+        return highlights
     }
 
     private func selectionRects(
@@ -791,6 +816,13 @@ public final class DocumentView: NSView {
     }
 
     // MARK: - Find
+
+    /// Mark the open box the stepper led to, or nil to clear the mark.
+    public func setCurrentTask(ordinal: Int?) {
+        guard ordinal != currentTask else { return }
+        currentTask = ordinal
+        needsDisplay = true
+    }
 
     public func setFindMatches(_ matches: [FindMatch], current: Int) {
         findMatches = matches

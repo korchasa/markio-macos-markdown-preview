@@ -72,6 +72,52 @@ final class DocumentSummaryTests: XCTestCase {
         XCTAssertEqual(DocumentSummary.markers(in: "AUTODOWNLOAD"), 0)
     }
 
+    /// Every entry the walk reported, in the order the batches arrived.
+    private func tasks(_ text: String) async -> [DocumentSummary.TaskEntry] {
+        let engine = DocumentSummary()
+        return await withCheckedContinuation { continuation in
+            var gathered: [DocumentSummary.TaskEntry] = []
+            var resumed = false
+            engine.count(Document(text: text)) { result in
+                gathered.append(contentsOf: result.newTasks)
+                guard result.counts.isComplete, !resumed else { return }
+                resumed = true
+                continuation.resume(returning: gathered)
+            }
+        }
+    }
+
+    func testTheWalkRecordsEveryBoxOnceWithItsSectionAndFirstLine() async {
+        let entries = await tasks(
+            """
+            - [ ] Before any heading
+            ## Backfill
+            - [x] Read the **old** schema
+              and its second line
+            - [ ] Run it
+            ## Verification
+            - [x] Compare balances
+            """)
+        XCTAssertEqual(
+            entries.map(\.title),
+            [
+                "Before any heading", "Read the old schema", "Run it", "Compare balances",
+            ])
+        XCTAssertEqual(entries.map(\.section), [-1, 0, 0, 1])
+        XCTAssertEqual(entries.map(\.isChecked), [false, true, false, true])
+        // Ordinals are indices into the document's leaves, in document order.
+        XCTAssertEqual(entries.map(\.ordinal), entries.map(\.ordinal).sorted())
+        XCTAssertEqual(entries[0].ordinal, 0)
+    }
+
+    func testATitleIsOneLineAndNoLongerThanARowCanShow() async {
+        let long = String(repeating: "word ", count: 60)
+        let entries = await tasks("- [ ] \(long)\n")
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertLessThanOrEqual(entries[0].title.count, DocumentSummary.titleLimit)
+        XCTAssertFalse(entries[0].title.contains("\n"))
+    }
+
     func testADocumentWithNoBoxesReportsNone() async {
         let result = await count("# Notes\n\nJust prose, nothing to tick.")
         XCTAssertEqual(result.counts.tasks, 0)

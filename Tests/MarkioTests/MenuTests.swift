@@ -43,6 +43,21 @@ final class MenuTests: XCTestCase {
         XCTAssertEqual(compare.keyEquivalentModifierMask, [.command, .shift])
     }
 
+    func testTheOpenBoxesHaveAShortcutEachWay() throws {
+        // ⌘G is find's; the boxes take J beside it, with the option key the
+        // rest of the View menu uses.
+        let next = try XCTUnwrap(menu("View").items.first { $0.title == "Next Open Task" })
+        XCTAssertEqual(next.keyEquivalent, "j")
+        XCTAssertEqual(next.keyEquivalentModifierMask, [.command, .option])
+        XCTAssertEqual(next.action, #selector(DocumentWindowController.nextOpenTask(_:)))
+        let previous = try XCTUnwrap(
+            menu("View").items.first { $0.title == "Previous Open Task" })
+        XCTAssertEqual(previous.keyEquivalent, "j")
+        XCTAssertEqual(previous.keyEquivalentModifierMask, [.command, .option, .shift])
+        XCTAssertEqual(
+            previous.action, #selector(DocumentWindowController.previousOpenTask(_:)))
+    }
+
     func testSideBySideSitsUnderView() throws {
         // It lays the document out; it does nothing to the file. The old build
         // kept it next to the Table of Contents and that is where a returning
