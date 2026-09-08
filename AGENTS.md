@@ -105,6 +105,15 @@ quote a debug number.
   the wide empty frames that follow. `Snapshot.run` now pins the width for the
   length of the run and puts it back afterwards, so the reader's choice
   survives. Anything else a shot could inherit belongs in the same place.
+- **A static helper on a `@MainActor` class is main-actor isolated too,** and
+  `DocumentSummary`'s walk runs on a utility queue. A helper that contains a
+  closure (`prefix(while:)`, `map`) trips the executor check there and the
+  test process dies with `SIGTRAP` in `dispatch_assert_queue` — no message,
+  no line. The neighbours that work (`words(in:)`, `markers(in:)`) work by
+  accident of having no closure. Mark anything the walk calls `nonisolated`.
+- **In a `<name>.snapshot.json` plan, `file` is the output picture**, not the
+  document — the document is the one the app was launched with. Two shots with
+  the same `file` overwrite each other and the run still says it took both.
 - **A linear scan over `leaves` is quadratic in disguise.** A 32 MB document
   has ~537 000 leaves and ~159 000 headings; the outline looks each heading up
   once, and scanning cost 39 seconds before the first window appeared. `leaves`
