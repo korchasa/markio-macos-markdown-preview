@@ -43,6 +43,16 @@ final class MenuTests: XCTestCase {
         XCTAssertEqual(compare.keyEquivalentModifierMask, [.command, .shift])
     }
 
+    func testTheDocumentCanBeHandedToAnEditor() throws {
+        // ⇧⌘O beside ⌘O: open, and open to change.
+        let edit = try XCTUnwrap(fileMenu().items.first { $0.title == "Open in Editor" })
+        XCTAssertEqual(edit.keyEquivalent, "o")
+        XCTAssertEqual(edit.keyEquivalentModifierMask, [.command, .shift])
+        XCTAssertEqual(edit.action, #selector(DocumentWindowController.openInEditor(_:)))
+        let app = try menu(ProcessInfo.processInfo.processName)
+        XCTAssertNotNil(app.items.first { $0.title == "Editor" }?.submenu)
+    }
+
     func testTheOpenBoxesHaveAShortcutEachWay() throws {
         // ⌘G is find's; the boxes take J beside it, with the option key the
         // rest of the View menu uses.

@@ -293,6 +293,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   a link when that file exists beside the document, and opens there at that line
   in the editor the reader chose. A path that names nothing stays plain text, so
   a link never goes nowhere.
+- **VIEW-40** File ▸ Open in Editor (⇧⌘O) hands the document to the editor
+  chosen for VIEW-33. The "Default App" choice never resolves to Markio itself:
+  the next app registered for the file takes it, and TextEdit when there is
+  none, so the command always leaves the viewer.
 - **VIEW-34** A table can be sorted by clicking a column header, reversed by
   clicking it again, and put back into the author's order by a third click; a
   filter row keeps the rows that match what is typed into it; the header stays

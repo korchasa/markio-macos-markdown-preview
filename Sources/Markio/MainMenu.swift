@@ -34,11 +34,12 @@ enum MainMenu {
             keyEquivalent: ""
         )
         menu.addItem(.separator())
-        // Where a clicked path in a report opens. It lives in the app menu
-        // rather than in a settings window because it is the only preference
-        // this app has that a control on screen cannot carry.
-        let editors = NSMenuItem(title: "Open Code Paths In", action: nil, keyEquivalent: "")
-        let editorMenu = NSMenu(title: "Open Code Paths In")
+        // Where a clicked path in a report opens, and where File ▸ Open in
+        // Editor sends the document. It lives in the app menu rather than in a
+        // settings window because it is the only preference this app has that
+        // a control on screen cannot carry.
+        let editors = NSMenuItem(title: "Editor", action: nil, keyEquivalent: "")
+        let editorMenu = NSMenu(title: "Editor")
         for editor in CodeEditor.allCases {
             let choice = editorMenu.addItem(
                 withTitle: editor.title,
@@ -80,6 +81,14 @@ enum MainMenu {
             action: #selector(NSDocumentController.openDocument(_:)),
             keyEquivalent: "o"
         )
+        // A viewer that never writes still has to hand the file to something
+        // that does; the editor is the one chosen in the app menu.
+        let edit = menu.addItem(
+            withTitle: "Open in Editor",
+            action: #selector(DocumentWindowController.openInEditor(_:)),
+            keyEquivalent: "o"
+        )
+        edit.keyEquivalentModifierMask = [.command, .shift]
         // Open Recent is not built here. AppKit gives a document app one of its
         // own and fills it; building a second put two in the File menu, and the
         // one that came second stayed empty. Removing ours when the system's

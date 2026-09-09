@@ -1316,6 +1316,11 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   re-arms after each event, because an atomic save replaces the vnode.
 - The menu bar is built in code before launch completes, so it exists before
   the first window.
+- `CodeEditor` is one choice for two commands: a clicked code path, at its
+  line, and File ▸ Open in Editor, without one. "Default App" goes through
+  `openElsewhere`, which asks Launch Services for the file's handlers and skips
+  this bundle — the default app for Markdown is usually Markio itself — falling
+  back to TextEdit, which every Mac has.
 - Command-line files are collected in `applicationWillFinishLaunching`, because
   AppKit asks whether to open an untitled document before
   `applicationDidFinishLaunching` runs (UI-3).

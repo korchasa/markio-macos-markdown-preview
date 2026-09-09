@@ -75,14 +75,44 @@ enum CodeEditor: String, CaseIterable {
     static func open(_ file: URL, line: Int?) {
         let choice = Preferences.codeEditor
         guard let url = choice.url(for: file, line: line) else {
-            NSWorkspace.shared.open(file)
+            openElsewhere(file)
             return
         }
         NSWorkspace.shared.open(
             url, configuration: NSWorkspace.OpenConfiguration(),
             completionHandler: { _, error in
                 guard error != nil else { return }
-                DispatchQueue.main.async { NSWorkspace.shared.open(file) }
+                DispatchQueue.main.async { openElsewhere(file) }
             })
+    }
+
+    /// Hand a file to the system, in any app but this one.
+    ///
+    /// "Default App" for a Markdown file is usually Markio itself, so File ▸
+    /// Open in Editor would open the document it was pressed in, again. The
+    /// next app registered for the file takes it instead, and TextEdit, which
+    /// every Mac has, when no other is.
+    @MainActor
+    private static func openElsewhere(_ file: URL) {
+        let candidates = NSWorkspace.shared.urlsForApplications(toOpen: file)
+        let app =
+            other(than: Bundle.main.bundleURL, among: candidates)
+            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit")
+        guard let app else {
+            NSWorkspace.shared.open(file)
+            return
+        }
+        NSWorkspace.shared.open(
+            [file], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// The first of `candidates` that is not `own`, by standardized path — the
+    /// bundle URL Launch Services reports and the one this process runs from
+    /// can differ in a trailing slash or a symlink.
+    static func other(than own: URL, among candidates: [URL]) -> URL? {
+        let ownPath = own.standardizedFileURL.resolvingSymlinksInPath().path
+        return candidates.first {
+            $0.standardizedFileURL.resolvingSymlinksInPath().path != ownPath
+        }
     }
 }

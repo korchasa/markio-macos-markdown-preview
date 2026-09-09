@@ -1499,7 +1499,16 @@ extension DocumentWindowController: NSWindowDelegate {
 }
 
 extension DocumentWindowController: NSMenuItemValidation {
+    /// File ▸ Open in Editor: the document, in the editor chosen in the app
+    /// menu. No line — the reader is leaving to change the file, not to look
+    /// at one place in it.
+    @objc func openInEditor(_ sender: Any?) {
+        guard let file = markdownDocument.fileURL else { return }
+        CodeEditor.open(file, line: nil)
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(openInEditor(_:)) { return markdownDocument.fileURL != nil }
         // Only items routed to this window controller arrive here, so the
         // default is yes and the one exception is the command that needs a
         // comparison to stop.

@@ -54,7 +54,9 @@ Markio reads. It never writes a file it opens.
 
 ## Reading it
 
-- **⌘O** open, **⌘W** close, **⌥⌘W** close every window, **⌘⇧C** copy the
+- **⌘O** open, **⌘⇧O** open the document in your editor (Markio ▸ Editor
+  picks which; the default is the next app registered for the file, never
+  Markio itself), **⌘W** close, **⌥⌘W** close every window, **⌘⇧C** copy the
   document's path
 - **⌘F** find, **⌘G** / **⌘⇧G** next and previous match
 - **⌥⌘S** the table of contents — the heading tree, click to jump, with each
@@ -82,7 +84,7 @@ Markio reads. It never writes a file it opens.
 - Click a link to open it; light and dark follow the system
 - Drop a Markdown file on a window to open it
 - A file path a report names — `Sources/Markio/main.swift:42` — is a link when
-  the file is really there, and opens at that line in your editor
+  the file is really there, and opens at that line in the same editor
 - Click a table's header to sort by it, again to reverse it, and a third time
   to get the author's order back; type in its filter row to keep the rows that
   match. The header stays put while the rows scroll, and the file is never
