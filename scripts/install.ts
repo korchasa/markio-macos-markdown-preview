@@ -57,8 +57,41 @@ async function commit(): Promise<string> {
   return head.stdout.trim() + (dirty.stdout.trim() === "" ? "" : "+");
 }
 
+/** Process ids of the installed copy, if it is running. */
+async function runningPids(): Promise<number[]> {
+  const found = await run("pgrep", {
+    args: ["-f", `${INSTALLED}/Contents/MacOS/`],
+    capture: true,
+    allowFailure: true,
+  });
+  return found.stdout.split("\n").filter((line) => line.trim() !== "").map(Number);
+}
+
+/**
+ * Ask a running copy to quit, and wait until it has.
+ *
+ * A process keeps the code it started with, so a bundle replaced under a
+ * running app changes nothing on screen — a session spent looking at the old
+ * build and believing it is the new one, which is the very thing the install
+ * exists to prevent. The ask goes through Apple Events rather than a signal so
+ * that AppKit saves its window state on the way out; `open` afterwards then
+ * restores every document that was open, and the reader is back where they
+ * were, on the new code.
+ */
+async function quitRunningCopy(): Promise<boolean> {
+  if ((await runningPids()).length === 0) return false;
+  section(`Quitting the running ${DEV_NAME}`);
+  await run("osascript", { args: ["-e", `tell application id "${DEV_ID}" to quit`] });
+  for (let waited = 0; waited < 100; waited++) {
+    if ((await runningPids()).length === 0) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`${DEV_NAME} did not quit within 10 seconds — close it and run this again`);
+}
+
 /** Put `bundle` in /Applications under the local name and ids. */
 export async function installDevCopy(bundle: string): Promise<void> {
+  const wasRunning = await quitRunningCopy();
   section(`Installing ${INSTALLED}`);
   // A copy owned by root — an old bundle an installer put there — cannot be
   // replaced from here, and saying so is more use than a permission error
@@ -108,5 +141,9 @@ export async function installDevCopy(bundle: string): Promise<void> {
     { args: ["-f", INSTALLED] },
   );
 
+  if (wasRunning) {
+    section(`Relaunching ${DEV_NAME}`);
+    await run("open", { args: ["-a", INSTALLED] });
+  }
   section(`install: ${INSTALLED} is this build`);
 }

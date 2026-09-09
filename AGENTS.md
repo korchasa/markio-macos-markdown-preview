@@ -36,7 +36,10 @@ target.
 - `deno task app` — build `.build/Markio.app`, and put that bundle in
   `/Applications` as **Markio Dev**. The install is part of the build and not a
   verb anybody has to remember, so `dev`, `prod` and `dist` refresh the copy
-  too: what is installed is always what was last built. It carries its own
+  too: what is installed is always what was last built. A copy that is
+  running is asked to quit first and relaunched after, with its windows
+  restored by AppKit — a replaced bundle never reaches a running process, and
+  the old code on screen reads as the change not working. It carries its own
   bundle ids so it can sit beside the signed copy from the store, and its About
   panel names the commit it came from, with a `+` when the tree was dirty.
 - `deno task dev <file.md>` — build and open a document
