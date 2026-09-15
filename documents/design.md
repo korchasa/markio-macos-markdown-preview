@@ -1023,8 +1023,14 @@ a dark one. It found treemap tiles and git branch names on its first run.
 sandbox hands over the document that was opened and nothing else — not the
 folder it sits in, and not the picture beside it — so a document saying
 `![a picture](pic.png)` drew VIEW-16's empty frame on the Mac App Store and
-nowhere else: every local build is unsigned, and an unsigned build has no
-sandbox at all, which is why this survived to a shipped version. There is no
+nowhere else: local builds used to be linker-signed with no entitlements at all,
+and a build like that has no sandbox, which is why this survived to a shipped
+version. The same blind spot then cost a rejection over the save panel, so since
+2026-09-15 `deno task app` signs the bundle ad-hoc with
+`packaging/Markio.entitlements` and the dev copy in `/Applications` is signed
+the same way — the local build now lives in the sandbox the shipped one lives
+in. `deno task dist` still emits the unsigned bundle the signing outside this
+repository expects. There is no
 entitlement that widens a document to its folder; the only way in is the reader
 pointing at that folder in a panel, and `files.bookmarks.app-scope` to keep the
 grant across relaunches. The ask is driven from the failure rather than from the
@@ -1125,6 +1131,17 @@ real glyphs and the diagrams vector paths. It lays out one block at a time so
 the box cache's eviction still bounds memory on a document nobody could hold at
 once. `PrintableDocument` is the same drawing behind `NSView`, so Print and
 Export are one path.
+
+Both ends of that path go through a save panel, and a save panel is a sandbox
+capability rather than a class: AppKit refuses to display an `NSSavePanel` to an
+app holding only `files.user-selected.read-only`, so the panel never appears and
+the menu command looks dead. Markio shipped exactly that, and App Review
+rejected 1.0 under Guideline 2.1(a) on 2026-09-13 — "the tab does not respond
+when clicked" — while the system log said it plainly: "your app has the User
+Selected File Read entitlement but it needs User Selected File Read/Write to
+display save panels". The entitlements now ask for read/write, which reaches
+only the file the reader names in the panel, and `deno task check` fails if a
+source file uses `NSSavePanel` while the entitlements do not say so.
 
 `Slides.split` answers where a deck breaks — the author's thematic breaks if
 there are any, otherwise the shallowest heading level that divides the document

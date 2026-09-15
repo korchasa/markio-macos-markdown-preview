@@ -32,7 +32,22 @@ const MARKERS_ALLOWED = [
  */
 const WEB_ENGINE = /import WebKit|WKWebView|JavaScriptCore|loadHTMLString/;
 
-const TOTAL = 8;
+/**
+ * A save panel is a sandbox capability, not just a class.
+ *
+ * AppKit refuses to display an `NSSavePanel` to an app that holds only
+ * `com.apple.security.files.user-selected.read-only`: the panel never appears,
+ * the command looks dead, and nothing in the app says why. The refusal is
+ * invisible outside the sandbox, so a local build — which used to be
+ * linker-signed with no entitlements at all — showed the panel happily. App
+ * Review found it instead, and rejected 1.0 under Guideline 2.1(a) on
+ * 2026-09-13 because Export as PDF did nothing.
+ */
+const SAVE_PANEL = /NSSavePanel/;
+const SAVE_PANEL_ENTITLEMENT = "com.apple.security.files.user-selected.read-write";
+const APP_ENTITLEMENTS = "packaging/Markio.entitlements";
+
+const TOTAL = 9;
 
 async function check(): Promise<void> {
   section(`[1/${TOTAL}] Tooling (deno fmt --check, lint, type-check)`);
@@ -74,10 +89,24 @@ async function check(): Promise<void> {
   }
   console.log("    clean");
 
-  section(`[7/${TOTAL}] Format check (swift format lint)`);
+  section(`[7/${TOTAL}] Save-panel entitlement (code and sandbox agree)`);
+  const panels = await scanFiles(SWIFT_SOURCES, [".swift"], SAVE_PANEL);
+  if (panels.length > 0) {
+    const entitlements = await Deno.readTextFile(APP_ENTITLEMENTS);
+    if (!entitlements.includes(SAVE_PANEL_ENTITLEMENT)) {
+      panels.forEach((hit) => console.log(hit));
+      fail(
+        `a save panel is used but ${APP_ENTITLEMENTS} lacks ${SAVE_PANEL_ENTITLEMENT} — ` +
+          "AppKit will refuse to display the panel in the sandbox",
+      );
+    }
+  }
+  console.log("    clean");
+
+  section(`[8/${TOTAL}] Format check (swift format lint)`);
   await run("swift", { args: ["format", "lint", "-s", "-r", ...SWIFT_SOURCES] });
 
-  section(`[8/${TOTAL}] Tests`);
+  section(`[9/${TOTAL}] Tests`);
   await test();
 
   section("check: OK");

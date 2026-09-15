@@ -4,8 +4,18 @@
 <dict>
     <!--
       Markio opens files the reader chooses, one window per document, and
-      does nothing else with the system. The sandbox therefore needs read
-      access to user-selected files — and bookmarks to keep them.
+      does nothing else with the system. The sandbox therefore needs access to
+      user-selected files — and bookmarks to keep them.
+
+      Read *and write*, not read alone. Reading is all the app does to a
+      document, but Export as PDF and Print both put up a save panel, and
+      AppKit refuses to display one to an app holding only the read
+      entitlement: the panel never appears and the command looks dead. That is
+      what App Review saw on 2026-09-13 — rejected under Guideline 2.1(a),
+      "the tab does not respond when clicked" — and the log said it outright:
+      "your app has the User Selected File Read entitlement but it needs User
+      Selected File Read/Write to display save panels". Write access reaches
+      only the file the reader names in that panel.
 
       A document comes with access to itself and not to the folder it sits in,
       so the picture beside it cannot be read: there is no entitlement that
@@ -23,7 +33,7 @@
     -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
+    <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>

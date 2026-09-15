@@ -22,7 +22,13 @@ const RELEASE_BIN = `.build/release/${APP_PRODUCT}`;
 const QL_BIN = `.build/release/${QL_PRODUCT}`;
 export const QL_APPEX = `${APP_BUNDLE}/Contents/PlugIns/${QL_NAME}.appex`;
 
-export async function app(): Promise<void> {
+/**
+ * `signHost: false` leaves the outer bundle unsigned — that is the `dist`
+ * contract, where signing happens outside this repository. Every other caller
+ * wants the signature: without it the binary is linker-signed, carries no
+ * entitlements, and runs outside the sandbox the shipped app runs in.
+ */
+export async function app({ signHost = true }: { signHost?: boolean } = {}): Promise<void> {
   section("Building (release)");
   await run("swift", { args: ["build", "-c", "release"] });
 
@@ -64,9 +70,9 @@ export async function app(): Promise<void> {
   await Deno.mkdir(`${QL_APPEX}/Contents/MacOS`, { recursive: true });
   await Deno.copyFile(QL_BIN, `${QL_APPEX}/Contents/MacOS/${QL_NAME}`);
   await Deno.copyFile(QL_PLIST, `${QL_APPEX}/Contents/Info.plist`);
-  // Ad-hoc sign the extension only. pluginkit refuses to load an unsigned or
-  // unsandboxed extension even locally; the host app stays unsigned here, and
-  // everything is re-signed outside this repository, nested bundle first.
+  // Ad-hoc sign the extension. pluginkit refuses to load an unsigned or
+  // unsandboxed extension even locally; everything is re-signed outside this
+  // repository, nested bundle first.
   await run("codesign", {
     args: [
       "--force",
@@ -77,6 +83,28 @@ export async function app(): Promise<void> {
       QL_APPEX,
     ],
   });
+
+  // And the app itself, with the entitlements it ships with — the nested
+  // bundle first, then the one containing it. A linker-signed binary carries
+  // no entitlements at all, so a build left unsigned here runs outside the
+  // sandbox and answers every sandbox question wrongly: a save panel that
+  // AppKit would refuse in the store build opens locally, and nothing on this
+  // machine can tell. That is how a dead Export as PDF reached App Review on
+  // 2026-09-13. Re-signed outside this repository for distribution; this
+  // signature only makes the local build behave like the shipped one.
+  if (signHost) {
+    section(`Signing ${APP_BUNDLE}`);
+    await run("codesign", {
+      args: [
+        "--force",
+        "--sign",
+        "-",
+        "--entitlements",
+        "packaging/Markio.entitlements",
+        APP_BUNDLE,
+      ],
+    });
+  }
 
   // A build nobody can launch from Spotlight is half a build: the copy in
   // /Applications is refreshed here rather than by a verb somebody has to

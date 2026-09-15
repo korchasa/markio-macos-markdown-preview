@@ -131,6 +131,21 @@ export async function installDevCopy(bundle: string): Promise<void> {
     ],
   });
 
+  // The copy carries its own bundle id, so its own signature has to be made
+  // here too — with the app's real entitlements, so the dev copy lives in the
+  // sandbox the store build lives in. An unsandboxed dev copy is worse than no
+  // dev copy: it answers "works" to questions the shipped app answers "no" to.
+  await run("codesign", {
+    args: [
+      "--force",
+      "--sign",
+      "-",
+      "--entitlements",
+      "packaging/Markio.entitlements",
+      INSTALLED,
+    ],
+  });
+
   // LaunchServices reads a bundle when it is installed by an installer, and a
   // directory copied into place is not that: without this the Quick Look
   // extension is not offered and Finder goes on opening documents in whatever
