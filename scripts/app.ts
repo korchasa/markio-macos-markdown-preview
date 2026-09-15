@@ -27,8 +27,14 @@ export const QL_APPEX = `${APP_BUNDLE}/Contents/PlugIns/${QL_NAME}.appex`;
  * contract, where signing happens outside this repository. Every other caller
  * wants the signature: without it the binary is linker-signed, carries no
  * entitlements, and runs outside the sandbox the shipped app runs in.
+ *
+ * `installDev: false` skips the copy in /Applications, and `dist` needs that
+ * too: the install quits the running dev copy first, a reader can refuse that
+ * quit, and a refusal must not be able to fail the build that ships.
  */
-export async function app({ signHost = true }: { signHost?: boolean } = {}): Promise<void> {
+export async function app(
+  { signHost = true, installDev = true }: { signHost?: boolean; installDev?: boolean } = {},
+): Promise<void> {
   section("Building (release)");
   await run("swift", { args: ["build", "-c", "release"] });
 
@@ -109,7 +115,7 @@ export async function app({ signHost = true }: { signHost?: boolean } = {}): Pro
   // A build nobody can launch from Spotlight is half a build: the copy in
   // /Applications is refreshed here rather than by a verb somebody has to
   // remember, so what is installed is always what was last built.
-  await installDevCopy(APP_BUNDLE);
+  if (installDev) await installDevCopy(APP_BUNDLE);
 
   section(`app: built ${APP_BUNDLE}`);
 }

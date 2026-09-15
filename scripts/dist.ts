@@ -9,5 +9,5 @@
 import { section } from "./lib.ts";
 import { app, APP_BUNDLE } from "./app.ts";
 
-await app({ signHost: false });
+await app({ signHost: false, installDev: false });
 section(`dist: unsigned bundle ready at ${APP_BUNDLE} — sign outside this repo`);
