@@ -10,5 +10,4 @@
 - `tasks/<YYYY>/<MM>/<slug>.md` — per-task plans and findings, kept as they were
   written.
 
-Rules for working in this repository live in [`AGENTS.md`](../AGENTS.md); the
-user-facing overview is [`README.md`](../README.md).
+The user-facing overview is [`README.md`](../README.md).
