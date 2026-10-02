@@ -51,10 +51,26 @@ enum ImageLoader {
         guard url.isFileURL, let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             return nil
         }
+        // Image I/O caps the longer side, not the width, so a picture taller
+        // than it is wide came back narrower than the column and was drawn at
+        // a fraction of it. The cap is stretched by the picture's own shape.
+        var longest = pixelWidth
+        if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int, width > 0
+        {
+            // A rotated photo stands the other way up once the transform is
+            // applied, and the width that matters is the one it is drawn at.
+            let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
+            let (wide, tall) = orientation >= 5 ? (height, width) : (width, height)
+            if tall > wide {
+                longest = Int((CGFloat(pixelWidth) * CGFloat(tall) / CGFloat(wide)).rounded(.up))
+            }
+        }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: pixelWidth,
+            kCGImageSourceThumbnailMaxPixelSize: longest,
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }

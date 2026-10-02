@@ -45,6 +45,36 @@ final class ImageBlockTests: XCTestCase {
         XCTAssertGreaterThan(box!.height, 40)
     }
 
+    /// A picture taller than it is wide fills the column as a wide one does.
+    /// The decoder capped its height at the column's pixel width, so a tall
+    /// side-by-side picture came out at two thirds of the column or less.
+    func testATallImageIsAsWideAsTheColumn() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("markio-tall-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("tall.png")
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: 1200, height: 3000, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 1200, height: 3000))
+        let image = try XCTUnwrap(context.makeImage())
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        let (_, layout) = layout(
+            "![tall](tall.png)\n", baseURL: folder.appendingPathComponent("doc.md"))
+        let box = try XCTUnwrap(layout.box(at: 0))
+        var drawn: CGRect?
+        for case .image(_, let rect) in box.decorations { drawn = rect }
+        XCTAssertEqual(try XCTUnwrap(drawn).width, 520, accuracy: 1)
+    }
+
     func testAMissingFileFallsBackToTheAltText() {
         let base = fixtures.appendingPathComponent("images.md")
         let (document, layout) = layout("![missing picture](nowhere.png)\n", baseURL: base)

@@ -210,7 +210,9 @@ printing it would show as mojibake.
 A paragraph that is nothing but an image becomes the image. `ImageLoader`
 decodes through Image I/O at the width the block is drawn at, so a 6000-pixel
 photo costs what an 1800-pixel one does, and holds a bounded cache that evicts
-oldest-first. Only local files beside the document are read — there is no
+oldest-first. Image I/O's limit applies to the longer side, so for a picture
+taller than it is wide the limit is stretched by the picture's own proportions;
+held at the column's width it shrank a tall picture to a fraction of the column. Only local files beside the document are read — there is no
 network path, so a remote address falls back to the alt text.
 
 An image inside a sentence takes one object-replacement character with a
