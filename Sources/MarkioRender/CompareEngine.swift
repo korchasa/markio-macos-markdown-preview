@@ -65,8 +65,8 @@ public enum CompareEngine {
         var merged = Builder(capacity: current.count + baseline.count / 4)
         // Front matter is front matter only on the first line of a file, so the
         // second copy of a changed one would be read as a rule and a heading.
-        // It goes in as the YAML it is, fenced, which the page draws the same
-        // way.
+        // It goes in as the YAML it is, in a fence, which the page draws as
+        // YAML code too.
         var fence: [UInt8]?
         func add(
             _ source: [UInt8], _ lines: [Range<Int>], _ front: Range<Int>?, _ index: Int,

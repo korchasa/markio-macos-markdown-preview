@@ -1359,8 +1359,8 @@ blocks come from the parser, not from a second set of rules about what a fence
 is; `LineIndex` splits at the same newlines as the engine, so the line numbers
 agree. Front matter is front matter only on a file's first line, so in the
 merged view the second copy of a changed one goes in as a fenced `yaml` block,
-with a fence longer than any backticks inside it — the page draws both the same
-way. Side by side needs no such step, since each column has its own first line.
+with a fence longer than any backticks inside it, so it is still drawn as YAML
+code, only not dimmed. Side by side needs no such step, since each column has its own first line.
 
 Side by side takes the same edit script and builds two documents instead of one
 — the baseline with what it lost, the current file with what it gained — so the

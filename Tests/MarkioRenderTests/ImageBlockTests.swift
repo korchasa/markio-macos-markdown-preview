@@ -75,7 +75,9 @@ final class ImageBlockTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(drawn).width, 520, accuracy: 1)
     }
 
-    func testAMissingFileFallsBackToTheAltText() {
+    /// No picture, and the text Find sees is the text that is drawn: the
+    /// frame stands where the picture would.
+    func testAMissingFileLeavesAnEmptyFrame() {
         let base = fixtures.appendingPathComponent("images.md")
         let (document, layout) = layout("![missing picture](nowhere.png)\n", baseURL: base)
         let box = layout.box(at: 0)
