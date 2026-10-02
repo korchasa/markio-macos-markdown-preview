@@ -1591,6 +1591,50 @@ final class MermaidTests: XCTestCase {
         XCTAssertGreaterThan(drawn.height, flat.height)
     }
 
+    /// The rule down a timeline stops at each section's band instead of
+    /// running on through the section's name.
+    func testATimelineRuleStopsAtEverySectionBand() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                timeline TD
+                  section First
+                    Bullet 1 : one : two
+                  section Second
+                    Bullet 2 : three
+                    Bullet 3 : four
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 700)
+        var fills: [CGRect] = []
+        var rule: CGPath?
+        for decoration in drawing.decorations {
+            switch decoration {
+            case .fill(let rect, _, _): fills.append(rect)
+            case .path(let path, _, _, false) where path.boundingBox.width < 1:
+                rule = rule ?? path
+            default: continue
+            }
+        }
+        let widest = try XCTUnwrap(fills.map(\.width).max())
+        let bands = fills.filter { $0.width == widest }
+        XCTAssertEqual(bands.count, 2)
+        var runs: [(CGPoint, CGPoint)] = []
+        var at = CGPoint.zero
+        try XCTUnwrap(rule).applyWithBlock { element in
+            let point = element.pointee.points[0]
+            if element.pointee.type == .addLineToPoint { runs.append((at, point)) }
+            at = point
+        }
+        XCTAssertEqual(runs.count, 2)
+        for (from, to) in runs {
+            let run = CGRect(
+                x: from.x, y: min(from.y, to.y), width: 0.1, height: abs(to.y - from.y))
+            for band in bands {
+                XCTAssertFalse(run.intersects(band), "the rule runs through the band at \(band)")
+            }
+        }
+    }
+
     /// A quadrant point may say how big it is and in what colours, on its own
     /// line or through a `classDef`. What the point says wins over what its
     /// class says, and a class nobody defined leaves the point plain.

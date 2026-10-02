@@ -1433,18 +1433,19 @@ enum MermaidLayout {
         }
 
         // Where each row stands, with a band opened above the first row of every
-        // section. The rule runs from the first row to the last, so it is drawn
-        // once the whole run is measured.
+        // section. The rule runs from a section's first row to its last, so it
+        // is drawn once the whole run is measured; it stops at each band rather
+        // than running on through the section name written across it.
         var y = metrics.padding + titleRoom
         var placed: [(row: Int, top: CGFloat)] = []
         var lastSection: Int?
-        var railTop = y
-        var railBottom = y
+        var rails: [(top: CGFloat, bottom: CGFloat)] = []
         for (index, row) in rows.enumerated() {
             let section = timeline.periods[index].section
             if section != lastSection {
                 lastSection = section
                 if let section, section < timeline.sections.count {
+                    rails.append((top: .infinity, bottom: -.infinity))
                     let band = CGRect(
                         x: left, y: y, width: content, height: bandHeight - 4 * metrics.scale)
                     decorations.append(
@@ -1459,17 +1460,20 @@ enum MermaidLayout {
                     y += bandHeight
                 }
             }
-            if placed.isEmpty { railTop = y }
+            if rails.isEmpty { rails.append((top: .infinity, bottom: -.infinity)) }
+            rails[rails.count - 1].top = min(rails[rails.count - 1].top, y)
             placed.append((index, y))
             y += row.height + gap * 2
-            railBottom = y - gap * 2
+            rails[rails.count - 1].bottom = y - gap * 2
         }
         let height = y - gap * 2 + metrics.padding
 
         let rule = CGMutablePath()
         let railX = left + headWidth + rail / 2
-        rule.move(to: CGPoint(x: railX, y: railTop))
-        rule.addLine(to: CGPoint(x: railX, y: railBottom))
+        for piece in rails where piece.top < piece.bottom {
+            rule.move(to: CGPoint(x: railX, y: piece.top))
+            rule.addLine(to: CGPoint(x: railX, y: piece.bottom))
+        }
         decorations.append(
             .path(rule, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
 

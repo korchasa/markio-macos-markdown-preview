@@ -691,7 +691,8 @@ it is a stack of cards below. The colour comes from the section where there is
 one and from the column where there is not. `timeline TD` turns the whole thing
 a quarter turn: the rule runs down the page, each period is a row with its name
 on the left and its cards on the right, and a section is a band across the rows
-it owns. It is a second drawing rather than a transposed one, because the words
+it owns. The rule runs a section's rows and stops at the next band, since one
+rule from top to bottom ran through every section's name. It is a second drawing rather than a transposed one, because the words
 do not turn with the picture — a name reads left to right either way.
 
 A quadrant chart is a square cut in four, with each quarter's name along its own
