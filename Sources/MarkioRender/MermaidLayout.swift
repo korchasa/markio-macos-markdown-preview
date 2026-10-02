@@ -3602,7 +3602,21 @@ enum MermaidLayout {
                 // The words sit in the bar, so the arrow needs room for its
                 // points on top of them, on whichever sides it has points.
                 if up || down { box.height += size.height * 1.4 }
-                if left || right { box.width += size.width * 0.6 + 20 * metrics.scale }
+                if left || right {
+                    box.width += size.width * 0.6 + 20 * metrics.scale
+                }
+                // An arrow that is all shaft carries its words in the shaft,
+                // with shoulders standing out on both sides of them.
+                else {
+                    box.width += size.width * 0.35
+                }
+                if up || down {
+                    box.height = max(
+                        box.height,
+                        arrowHeight(
+                            up: up, down: down, across: left || right, words: size.height,
+                            margin: 4 * metrics.scale))
+                }
             // A named shape gets back whatever its own drawing takes away: the
             // corner it cuts, the wave along its foot, the rule down its side,
             // the copies stacked behind it.
@@ -4526,6 +4540,12 @@ enum MermaidLayout {
         case .triangle: y += box.frame.height * 0.2
         case .flippedTriangle: y -= box.frame.height * 0.2
         case .stackedProcess, .stackedDocument: y += 4
+        case .blockArrow(let up, let down, let left, let right):
+            // The words belong in the bar, and a point above or below only
+            // moves the bar off the frame's middle. Sideways they may run into
+            // a point's broad base, which crosses nothing.
+            let inside = arrowInside(box.frame, up: up, down: down, left: left, right: right)
+            y = inside.midY - box.labelSize.height / 2
         default: break
         }
         for line in box.lines {
@@ -4613,6 +4633,34 @@ enum MermaidLayout {
     private static func faded(_ color: CGColor, by style: Flowchart.Style) -> CGColor {
         guard let share = style.opacity else { return color }
         return color.copy(alpha: color.alpha * share) ?? color
+    }
+
+    /// How tall a fat arrow with a point above or below must stand for its
+    /// words to fit the room those points leave: all of what is between
+    /// them for a shaft, and the bar's share of it when the bar runs sideways.
+    private static func arrowHeight(
+        up: Bool, down: Bool, across: Bool, words: CGFloat, margin: CGFloat
+    ) -> CGFloat {
+        let points = CGFloat((up ? 1 : 0) + (down ? 1 : 0))
+        let room = (1 - 0.35 * points) * (across ? 0.7 : 1)
+        return (words + margin * 2) / room
+    }
+
+    /// What a fat arrow's points leave of its frame: the bar's room, and
+    /// where its words belong.
+    private static func arrowInside(
+        _ frame: CGRect, up: Bool, down: Bool, left: Bool, right: Bool
+    ) -> CGRect {
+        // Beside a point above or below, the side points are shorter, or
+        // the bar between them is left too narrow to grow that point from.
+        let reach = up || down ? 0.22 : 0.35
+        let headX = left || right ? min(frame.width * reach, frame.height / 2) : 0
+        let headY = up || down ? min(frame.height * 0.35, frame.width / 2) : 0
+        let minX = frame.minX + (left ? headX : 0)
+        let maxX = frame.maxX - (right ? headX : 0)
+        let minY = frame.minY + (up ? headY : 0)
+        let maxY = frame.maxY - (down ? headY : 0)
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
     private static func shape(_ box: Placed) -> CGPath {
@@ -4715,31 +4763,59 @@ enum MermaidLayout {
             // names. The point's base is as wide as the room left over once the
             // other axis has taken its own points, so a cross of four arrows
             // never runs outside itself.
-            let headX = left || right ? min(frame.width * 0.35, frame.height / 2) : 0
-            let headY = up || down ? min(frame.height * 0.35, frame.width / 2) : 0
-            let insideLeft = frame.minX + (left ? headX : 0)
-            let insideRight = frame.maxX - (right ? headX : 0)
-            let insideTop = frame.minY + (up ? headY : 0)
-            let insideBottom = frame.maxY - (down ? headY : 0)
+            let inside = arrowInside(frame, up: up, down: down, left: left, right: right)
+            let insideLeft = inside.minX
+            let insideRight = inside.maxX
+            let insideTop = inside.minY
+            let insideBottom = inside.maxY
             let baseX = (insideRight - insideLeft) / 2
             let baseY = (insideBottom - insideTop) / 2
-            let barX = (insideRight - insideLeft) * 0.25
+            // An arrow pointing only up or down is all shaft: a bar across it
+            // as well stood out past the shaft as two notches through the words.
+            // The words run across that shaft, so it is as wide as they are,
+            // short of the shoulders the point still needs.
+            let across = left || right
+            let barX =
+                across
+                ? (insideRight - insideLeft) * 0.25
+                : min(
+                    baseX * 0.85,
+                    max(baseX * 0.7, box.labelSize.width / 2 + box.labelSize.height * 0.4))
             let barY = (insideBottom - insideTop) * 0.35
-            let middleX = frame.midX
-            let middleY = frame.midY
-            var points: [CGPoint] = [CGPoint(x: insideLeft, y: middleY - barY)]
+            // Out of a bar that already points sideways, a point up or down
+            // grows from a shaft of its own; a base as wide as the whole bar
+            // folded back over the bar's ends.
+            let pointX = across ? min(baseX, barX * 1.8) : baseX
+            // The bars cross in the middle of what the points leave, not of the
+            // frame, or a point on one side pushes the bar past its own shoulder.
+            let middleX = (insideLeft + insideRight) / 2
+            let middleY = (insideTop + insideBottom) / 2
+            let barLeft = across ? insideLeft : middleX - barX
+            let barRight = across ? insideRight : middleX + barX
+            // That point stands straight on the bar: a stub of shaft between
+            // them was too short to read as one and drew two notches instead.
+            let stemTop = across ? middleY - barY : insideTop
+            let stemBottom = across ? middleY + barY : insideBottom
+            var points: [CGPoint] = [CGPoint(x: barLeft, y: middleY - barY)]
+            // A point standing on the bar has no shaft to step out from, and
+            // walking back along the bar to one drew a tick at every corner.
             if up {
-                points += [
-                    CGPoint(x: middleX - barX, y: middleY - barY),
-                    CGPoint(x: middleX - barX, y: insideTop),
-                    CGPoint(x: middleX - baseX, y: insideTop),
-                    CGPoint(x: middleX, y: frame.minY),
-                    CGPoint(x: middleX + baseX, y: insideTop),
-                    CGPoint(x: middleX + barX, y: insideTop),
-                    CGPoint(x: middleX + barX, y: middleY - barY),
-                ]
+                let shaft =
+                    across
+                    ? []
+                    : [
+                        CGPoint(x: middleX - barX, y: middleY - barY),
+                        CGPoint(x: middleX - barX, y: stemTop),
+                    ]
+                points +=
+                    shaft + [
+                        CGPoint(x: middleX - pointX, y: stemTop),
+                        CGPoint(x: middleX, y: frame.minY),
+                        CGPoint(x: middleX + pointX, y: stemTop),
+                    ]
+                points += shaft.reversed().map { CGPoint(x: 2 * middleX - $0.x, y: $0.y) }
             }
-            points.append(CGPoint(x: insideRight, y: middleY - barY))
+            points.append(CGPoint(x: barRight, y: middleY - barY))
             if right {
                 points += [
                     CGPoint(x: insideRight, y: middleY - baseY),
@@ -4747,19 +4823,24 @@ enum MermaidLayout {
                     CGPoint(x: insideRight, y: middleY + baseY),
                 ]
             }
-            points.append(CGPoint(x: insideRight, y: middleY + barY))
+            points.append(CGPoint(x: barRight, y: middleY + barY))
             if down {
-                points += [
-                    CGPoint(x: middleX + barX, y: middleY + barY),
-                    CGPoint(x: middleX + barX, y: insideBottom),
-                    CGPoint(x: middleX + baseX, y: insideBottom),
-                    CGPoint(x: middleX, y: frame.maxY),
-                    CGPoint(x: middleX - baseX, y: insideBottom),
-                    CGPoint(x: middleX - barX, y: insideBottom),
-                    CGPoint(x: middleX - barX, y: middleY + barY),
-                ]
+                let shaft =
+                    across
+                    ? []
+                    : [
+                        CGPoint(x: middleX + barX, y: middleY + barY),
+                        CGPoint(x: middleX + barX, y: stemBottom),
+                    ]
+                points +=
+                    shaft + [
+                        CGPoint(x: middleX + pointX, y: stemBottom),
+                        CGPoint(x: middleX, y: frame.maxY),
+                        CGPoint(x: middleX - pointX, y: stemBottom),
+                    ]
+                points += shaft.reversed().map { CGPoint(x: 2 * middleX - $0.x, y: $0.y) }
             }
-            points.append(CGPoint(x: insideLeft, y: middleY + barY))
+            points.append(CGPoint(x: barLeft, y: middleY + barY))
             if left {
                 points += [
                     CGPoint(x: insideLeft, y: middleY + baseY),
@@ -6771,7 +6852,21 @@ enum MermaidLayout {
         let cellWidth = max(
             metrics.minimumNodeWidth,
             (labels.map(\.size.width).max() ?? 0) + metrics.nodePaddingX * 2)
-        let cellHeight = (labels.map(\.size.height).max() ?? 0) + metrics.nodePaddingY * 2
+        let plainHeight = (labels.map(\.size.height).max() ?? 0) + metrics.nodePaddingY * 2
+        var cellHeight = plainHeight
+        // Every row is one height, so a fat arrow pointing up or down sets it
+        // for all of them; at a plain cell's height its words ran into its
+        // shoulders.
+        for (node, label) in zip(diagram.chart.nodes, labels) {
+            guard case .blockArrow(let up, let down, let left, let right) = node.shape,
+                up || down
+            else { continue }
+            cellHeight = max(
+                cellHeight,
+                arrowHeight(
+                    up: up, down: down, across: left || right, words: label.size.height,
+                    margin: 4 * metrics.scale))
+        }
         var gap = 10 * metrics.scale
         // A frame stands this far out from what it holds however wide the gaps
         // grow: the room a walked line needs is the line's, not the frame's.
@@ -6816,14 +6911,31 @@ enum MermaidLayout {
                     var frame = rect(
                         column: atColumn + column, row: atRow + row, wide: wide, tall: tall)
                     // A fat arrow keeps its own girth: stretched across a whole
-                    // row it would read as a band rather than an arrow.
+                    // row it would read as a band rather than an arrow. A row
+                    // made tall by an arrow pointing up or down is no reason
+                    // for one pointing sideways to grow as well.
                     switch diagram.chart.nodes[node].shape {
                     case .blockArrow(let up, let down, let left, let right)
                     where (up || down) && !left && !right:
-                        let side = min(frame.width, frame.height * 1.6)
+                        let side = min(
+                            frame.width,
+                            max(frame.height * 1.6, labels[node].size.width * 1.35))
                         frame = CGRect(
                             x: frame.midX - side / 2, y: frame.minY, width: side,
                             height: frame.height)
+                    case .blockArrow(let up, let down, _, _):
+                        let own =
+                            up || down
+                            ? max(
+                                plainHeight,
+                                arrowHeight(
+                                    up: up, down: down, across: true,
+                                    words: labels[node].size.height, margin: 4 * metrics.scale))
+                            : plainHeight
+                        let height = min(frame.height, own)
+                        frame = CGRect(
+                            x: frame.minX, y: frame.midY - height / 2, width: frame.width,
+                            height: height)
                     default:
                         break
                     }

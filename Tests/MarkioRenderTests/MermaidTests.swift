@@ -3142,6 +3142,63 @@ final class MermaidTests: XCTestCase {
         XCTAssertNil(MermaidDiagram.parse("block\n  a<[\"One\"]>(sideways)"))
     }
 
+    /// A fat arrow's words sit inside its outline. An arrow pointing only up
+    /// or down drew a bar across its shaft as well, whose ends stood out as
+    /// notches through the words; at a plain cell's height its shoulders ran
+    /// through them too.
+    func testNoArrowOutlineCrossesItsOwnWords() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                block
+                  a<["Label"]>(right)
+                  b<["Label"]>(up)
+                  c<["Label"]>(down)
+                  d<["Label"]>(y)
+                  e<["Label"]>(x, down)
+                  f<["Label"]>(x, y)
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 760)
+        var words: [CGRect] = []
+        for case .glyphs(let line, let origin) in drawing.decorations {
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+            words.append(
+                CGRect(x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        XCTAssertEqual(words.count, 6)
+        var outlines = 0
+        for case .path(let path, _, let lineWidth, false) in drawing.decorations where lineWidth > 0
+        {
+            guard
+                let word = words.first(where: {
+                    path.boundingBox.contains(CGPoint(x: $0.midX, y: $0.midY))
+                })
+            else { continue }
+            outlines += 1
+            var corners: [CGPoint] = []
+            path.applyWithBlock { element in
+                let kind = element.pointee.type
+                if kind == .moveToPoint || kind == .addLineToPoint {
+                    corners.append(element.pointee.points[0])
+                }
+            }
+            corners.append(corners[0])
+            for (from, to) in zip(corners, corners.dropFirst()) {
+                for step in 0...40 {
+                    let t = CGFloat(step) / 40
+                    let point = CGPoint(
+                        x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
+                    XCTAssertFalse(
+                        word.insetBy(dx: 0.5, dy: 0.5).contains(point),
+                        "an arrow's outline runs through its words at \(point)")
+                }
+            }
+        }
+        XCTAssertEqual(outlines, 6)
+    }
+
     /// A nested block need not be named. Mermaid opens a frame for a bare
     /// `block`, and what stands inside it may set its own column count.
     func testANamelessBlockOpensAFrameOfItsOwn() throws {

@@ -946,7 +946,13 @@ between bars after it, `A -->|X| B`. A block arrow carries the sides it points a
 four directions, so `(x)` points left and right at once and `(x, down)` all
 three; it is drawn as a bar with a point on every side it names, and each point's
 base spans whatever room the other axis left, so a cross of four never runs
-outside itself. The grid
+outside itself. An arrow pointing only up or down is all shaft, as wide as its
+words, because a bar across it as well stood out as two notches through them. A
+point above or below a sideways bar stands straight on the bar, with no stub of
+shaft between them, and the words sit in the middle of what the points leave rather
+than of the frame. Every row of the grid is one height, so an arrow pointing up or
+down raises it until its words fit between its shoulders; an arrow pointing only
+sideways keeps a plain cell's height and stands in the middle of the taller row. The grid
 is measured in the narrowest column any framed block needs, and a plain cell
 takes several of those columns at once, so the author's own column count still
 says where a row wraps while what is written inside a frame still fits. A frame
