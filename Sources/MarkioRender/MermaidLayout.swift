@@ -27,6 +27,30 @@ enum MermaidLayout {
         /// layout and so a second picture.
         var contentRect: CGRect = .zero
         var padding: CGFloat = 16
+        /// Where the boxes, lines and words of a graph came to rest, for the
+        /// layout bench to count crossings on. Kinds without boxes joined by
+        /// lines leave it empty.
+        var geometry: Geometry?
+    }
+
+    /// The parts of a graph drawing a layout is judged by, in the drawing's own
+    /// points. Nothing draws from this; it is read only to measure the layout.
+    struct Geometry: Encodable {
+        struct Line: Encodable {
+            /// The line as drawn, from the border it leaves to the border it
+            /// reaches, before the room for its end marks is taken off.
+            var points: [CGPoint]
+            /// The plate under the line's words, if it has any.
+            var label: CGRect?
+            /// The boxes the line belongs to — its ends, or everything inside a
+            /// frame it ends on — which it may touch without that being a fault.
+            var ends: [Int]
+            var loop: Bool
+        }
+
+        var nodes: [CGRect] = []
+        var frames: [CGRect] = []
+        var lines: [Line] = []
     }
 
     /// Every distance in a diagram, scaled together.
@@ -472,16 +496,22 @@ enum MermaidLayout {
             straight.append((index, entities[link.from].frame, entities[link.to].frame))
         }
         let pulled = spread(straight, metrics: metrics)
+        var geometry = Geometry(nodes: placed, frames: walls.map(\.rect))
         for (index, link) in diagram.links.enumerated() {
             guard link.from < entities.count, link.to < entities.count else { continue }
             let key = Pair(link)
             let place = taken[key, default: 0]
             taken[key] = place + 1
             let lane = CGFloat(place) - CGFloat((pairs[key] ?? 1) - 1) / 2
-            decorations += relation(
+            let drawn = relation(
                 link, from: entities[link.from].frame, to: entities[link.to].frame, lane: lane,
                 obstacles: standing(between: link), beside: beside[index],
                 pull: pulled[index] ?? (nil, nil), theme: theme, font: rowFont, metrics: metrics)
+            decorations += drawn.decorations
+            geometry.lines.append(
+                Geometry.Line(
+                    points: drawn.path, label: drawn.plate, ends: [link.from, link.to],
+                    loop: link.from == link.to))
         }
         for (index, entity) in entities.enumerated() {
             decorations += self.entity(
@@ -492,7 +522,8 @@ enum MermaidLayout {
         return Drawing(
             decorations: decorations,
             size: CGSize(width: width, height: content.height + metrics.padding * 2),
-            contentWidth: content.width
+            contentWidth: content.width,
+            geometry: geometry
         )
     }
 
@@ -773,7 +804,7 @@ enum MermaidLayout {
         _ link: BoxDiagram.Link, from: CGRect, to: CGRect, lane: CGFloat, obstacles: [CGRect],
         beside: (vertical: Bool, at: CGFloat)?, pull: (out: CGFloat?, into: CGFloat?),
         theme: Theme, font: CTFont, metrics: Metrics
-    ) -> [BlockBox.Decoration] {
+    ) -> (decorations: [BlockBox.Decoration], path: [CGPoint], plate: CGRect?) {
         let colour = theme.palette.secondaryText
         // A relation is a line between two boxes like any other, so it leaves,
         // runs and arrives the way a flowchart edge does; only its end marks and
@@ -846,7 +877,7 @@ enum MermaidLayout {
                 )
             )
         }
-        guard !link.label.isEmpty else { return decorations }
+        guard !link.label.isEmpty else { return (decorations, points, nil) }
         let line = text(link.label, font: font, color: colour)
         let size = measure(line)
         // Half way along the line the line actually takes, not half way between
@@ -856,18 +887,16 @@ enum MermaidLayout {
         let middle =
             from == to
             ? CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y) : apex
-        decorations.append(
-            .fill(
-                rect: CGRect(
-                    x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
-                    width: size.width + 6, height: size.height + 2),
-                color: theme.palette.background, cornerRadius: 2))
+        let plate = CGRect(
+            x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
+            width: size.width + 6, height: size.height + 2)
+        decorations.append(.fill(rect: plate, color: theme.palette.background, cornerRadius: 2))
         decorations.append(
             .glyphs(
                 line,
                 origin: CGPoint(
                     x: middle.x - size.width / 2, y: middle.y + size.height / 2 - descent(line))))
-        return decorations
+        return (decorations, points, plate)
     }
 
     /// How far the shaft stops short of the box, to leave the end its room.
@@ -3740,6 +3769,8 @@ enum MermaidLayout {
             straight.append((index, from, to))
         }
         let pulled = spread(straight, metrics: metrics)
+        var geometry = Geometry(
+            nodes: placed, frames: chart.groups.indices.compactMap { frames[$0] })
         for (index, edge) in chart.edges.enumerated() {
             guard let from = rect(edge.from), let to = rect(edge.to) else { continue }
             /// A frame is the rectangle it is drawn as, so only a box that is
@@ -3778,6 +3809,16 @@ enum MermaidLayout {
             decorations += drawn.shaft
             labels += drawn.label
             if let plate = drawn.plate { plates.append(plate) }
+            if !drawn.path.isEmpty {
+                var ends = held(by: edge, chart: chart)
+                for end in [edge.from, edge.to] {
+                    if case .node(let node) = end { ends.insert(node) }
+                }
+                geometry.lines.append(
+                    Geometry.Line(
+                        points: drawn.path, label: drawn.plate, ends: ends.sorted(),
+                        loop: edge.from == edge.to))
+            }
         }
         for box in boxes { decorations += node(box, theme: theme, metrics: metrics) }
         // An edge that skips a rank passes over whatever stands between, so its
@@ -3786,7 +3827,8 @@ enum MermaidLayout {
         return Drawing(
             decorations: decorations,
             size: CGSize(width: width, height: content.height + metrics.padding * 2),
-            contentWidth: content.width
+            contentWidth: content.width,
+            geometry: geometry
         )
     }
 
@@ -5398,10 +5440,13 @@ enum MermaidLayout {
         beside: (vertical: Bool, at: CGFloat)? = nil,
         pull: (out: CGFloat?, into: CGFloat?) = (nil, nil),
         fromOutline: CGPath? = nil, toOutline: CGPath? = nil
-    ) -> (shaft: [BlockBox.Decoration], label: [BlockBox.Decoration], plate: CGRect?) {
+    ) -> (
+        shaft: [BlockBox.Decoration], label: [BlockBox.Decoration], plate: CGRect?,
+        path: [CGPoint]
+    ) {
         // `A ~~~ B` is written to hold one box under another and nothing more,
         // so it has already done its work by the time there is a line to draw.
-        guard edge.stroke != .invisible else { return (shaft: [], label: [], plate: nil) }
+        guard edge.stroke != .invisible else { return (shaft: [], label: [], plate: nil, path: []) }
         let path = connection(
             from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside,
             pull: pull, fromOutline: fromOutline, toOutline: toOutline)
@@ -5444,7 +5489,7 @@ enum MermaidLayout {
         decorations += linkEnd(
             edge.tail, at: foot, from: body.first ?? end, along: backwards, color: color,
             width: width, metrics: metrics)
-        guard !edge.label.isEmpty else { return (decorations, [], nil) }
+        guard !edge.label.isEmpty else { return (decorations, [], nil, path) }
         let line = text(
             edge.label,
             font: scaled(theme.controlLabel, by: metrics.scale),
@@ -5459,7 +5504,7 @@ enum MermaidLayout {
             let middle = CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y)
             return (
                 decorations, words(line, size: size, centred: middle, theme: theme),
-                plate(size, centred: middle)
+                plate(size, centred: middle), path
             )
         }
         // An edge between neighbouring ranks is labelled in the middle; one that
@@ -5552,7 +5597,7 @@ enum MermaidLayout {
         }
         return (
             decorations, words(line, size: size, centred: middle, theme: theme),
-            plate(size, centred: middle)
+            plate(size, centred: middle), path
         )
     }
 

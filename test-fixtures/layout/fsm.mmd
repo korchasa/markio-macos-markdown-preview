@@ -1,0 +1,16 @@
+stateDiagram-v2
+  direction LR
+  LR_0 --> LR_2: SS(B)
+  LR_0 --> LR_1: SS(S)
+  LR_1 --> LR_3: S($end)
+  LR_2 --> LR_6: SS(b)
+  LR_2 --> LR_5: SS(a)
+  LR_2 --> LR_4: S(A)
+  LR_5 --> LR_7: S(b)
+  LR_5 --> LR_5: S(a)
+  LR_6 --> LR_6: S(b)
+  LR_6 --> LR_5: S(a)
+  LR_7 --> LR_8: S(b)
+  LR_7 --> LR_5: S(a)
+  LR_8 --> LR_6: S(b)
+  LR_8 --> LR_5: S(a)

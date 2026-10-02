@@ -15,12 +15,16 @@ import MarkdownKit
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 // `snapshot` renders a document to a PNG, `diagram` renders one Mermaid source
-// on its own, and `icon` draws the app icon; everything else is a measurement.
+// on its own, `layout` prints where a graph's parts were drawn, and `icon` draws
+// the app icon; everything else is a measurement.
 if arguments.first == "snapshot" {
     exit(Snapshot.run(arguments: Array(arguments.dropFirst())))
 }
 if arguments.first == "diagram" {
     exit(Diagram.run(arguments: Array(arguments.dropFirst())))
+}
+if arguments.first == "layout" {
+    exit(Layout.run(arguments: Array(arguments.dropFirst())))
 }
 if arguments.first == "icon" {
     exit(Icon.run(arguments: Array(arguments.dropFirst())))

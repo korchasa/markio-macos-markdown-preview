@@ -1,0 +1,15 @@
+stateDiagram-v2
+  [*] --> forming: first item, no target selected it yet
+  forming --> forming: item attached, revision + 1
+  forming --> published: a target selected and delivered it
+  forming --> dropped: quiet window elapsed, no target ever selected it
+  forming --> merged: found to be the same event as another unpublished story
+  published --> published: item attached, revision + 1
+  published --> dormant: quiet window elapsed
+  dropped --> [*]
+  merged --> [*]
+  dormant --> published: item attached inside the memory window
+  dormant --> closed: memory window elapsed
+  forming --> closed: event date passed (kind = event)
+  published --> closed: event date passed (kind = event)
+  closed --> [*]

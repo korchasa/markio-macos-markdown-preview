@@ -107,12 +107,12 @@ rewritten as the stages land.
 
 ## Definition of Done
 
-- [ ] VIEW-25: Markio can hand out the geometry it draws for a diagram, so it
+- [x] VIEW-25: Markio can hand out the geometry it draws for a diagram, so it
   can be measured.
-  - Test: `Tests/MarkioRenderTests/MermaidTests.swift::testLayoutGeometryDump`
+  - Test: `Tests/MarkioRenderTests/LayeredLayoutTests.swift` (the four geometry tests)
   - Evidence: `.build/release/markio-bench layout test-fixtures/layout/story.mmd`
     prints JSON with node rectangles, edge polylines and label rectangles
-- [ ] VIEW-25: `deno task layoutbench` measures the nine graphs with the same
+- [x] VIEW-25: `deno task layoutbench` measures the nine graphs with the same
   defect and detour definitions as the comparison bench, and prints a baseline
   for the old layout.
   - Evidence: `deno task layoutbench` (fixtures in `test-fixtures/layout/`)
@@ -197,3 +197,28 @@ Risks to watch:
 - Frames: ELK lays compound graphs out hierarchically; the recursive unit
   approach kept here may route cross-frame edges worse. The bench has no
   subgraph graph — add one from `test-fixtures` to the nine before stage 3.
+
+## Log
+
+### Stage 1 — baseline of the old layout (2026-10-02)
+
+`deno task layoutbench` on the ranked layout with lanes and bows:
+
+```
+graph           cross  through  labels  overlap  faults  detour  worst
+er                 13        2      15        0      30    1.14   1.49
+fsm                 5        0       8        0      13    1.03   1.07
+operations          1        0       0        0       1    1.01   1.02
+petersen            2        0       0        0       2    1.03   1.12
+publication         8        0       2        0      10    1.04   1.11
+source              0        0       4        0       4    1.02   1.06
+story               6        0       7        0      13    1.03   1.12
+tcp                 6        1       6        0      13    1.09   1.57
+unix               24       26       0        0      50    1.14   2.32
+total                                               136    1.06   2.32
+```
+
+The old layout's low detour is the direct lines: they are short because they
+run straight through whatever is in the way, which is what the 136 faults
+count. The gate for the new pipeline is the comparison's ELK result: 5 faults,
+mean detour 1.16, worst 2.05.

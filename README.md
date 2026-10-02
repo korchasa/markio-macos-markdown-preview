@@ -126,6 +126,8 @@ Other verbs:
 - `deno task viewbench` — what one document costs the Mac apps that open it,
   this one and any other, measured from the outside
   ([the procedure](documents/viewbench.md))
+- `deno task layoutbench` — crossings, lines through boxes, covered words and
+  detours in how the graphs in `test-fixtures/layout/` are laid out
 - `deno task icons` — redraw the app icon set from `Icon.swift`
 - `deno task dist` — the unsigned bundle; signing and upload happen outside
   this repository

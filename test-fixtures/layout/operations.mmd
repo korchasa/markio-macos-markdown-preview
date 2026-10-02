@@ -1,0 +1,16 @@
+flowchart LR
+  O1["1 acquire"] --> O2["2 parse"] --> O4["4 merge"]
+  O3["3 observe"] --> O4
+  O4 --> O5["5 attribute"] --> O6["6 group"] --> O7["7 recall"] --> O8["8 assess"] --> O9["9 select"]
+  O9 --> O10["10 enrich"] --> O11["11 verify"] --> O12["12 compose"] --> O13["13 format"] --> O14["14 deliver"] --> O15["15 record"]
+  O11 -. veto .-> X["not published,<br/>reason recorded"]
+  J[("journal")] -. read .-> O7
+  O15 -. write .-> J
+  O16["16 account"]
+  O1 -. attempts .-> O16
+  O15 -. deliveries .-> O16
+
+  classDef costly fill:#F7E7D8,stroke:#B9691F,color:#7A3D0E
+  classDef store fill:#E3EAF7,stroke:#2F5EA8,color:#173963
+  class O8,O10,O11,O12 costly
+  class J,O15 store

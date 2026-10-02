@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> planned: target selected this revision
+  planned --> vetoed: a claim contradicted its origin
+  planned --> rendered: artefact built within carrier limits
+  rendered --> delivered: carrier accepted it
+  rendered --> failed: carrier rejected or was unreachable
+  failed --> rendered: retried on a later run
+  delivered --> delivered: updated in place from a later revision
+  delivered --> superseded: a new publication issued for a turn
+  delivered --> withdrawn: published in error
+  superseded --> [*]
+  withdrawn --> [*]
+  vetoed --> [*]

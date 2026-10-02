@@ -121,6 +121,21 @@ public enum DocumentRenderer {
         return max(1, min(2, limit / longest))
     }
 
+    /// Where a graph diagram's boxes, lines and words were drawn, as JSON, for
+    /// the layout bench. `nil` when the source does not parse or is not a kind
+    /// made of boxes joined by lines.
+    @MainActor
+    public static func diagramGeometry(source: String, theme: Theme, width: CGFloat) throws
+        -> Data?
+    {
+        guard let parsed = MermaidDiagram.parse(source),
+            let geometry = MermaidLayout.draw(parsed, theme: theme, width: width).geometry
+        else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(geometry)
+    }
+
     /// A Mermaid fence drawn on its own, at whatever width is asked for.
     ///
     /// The source is re-read rather than a drawing kept beside the block: a

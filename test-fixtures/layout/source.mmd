@@ -1,0 +1,10 @@
+stateDiagram-v2
+  [*] --> active: registered
+  active --> degraded: consecutive failures over threshold
+  degraded --> active: a successful acquire
+  active --> unavailable: structurally inaccessible, e.g. login required
+  unavailable --> active: access restored
+  degraded --> retired: operator decision
+  unavailable --> retired: operator decision
+  active --> retired: operator decision
+  retired --> [*]

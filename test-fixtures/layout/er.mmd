@@ -1,0 +1,14 @@
+erDiagram
+  SOURCE ||--o{ ITEM : yields
+  WATCH ||--|{ READING : records
+  READING ||--o| ITEM : "fires as"
+  ORIGIN ||--o{ ITEM : "is traced to by"
+  STORY ||--|{ ITEM : contains
+  STORY ||--|{ REVISION : has
+  REVISION ||--o{ CLAIM : asserts
+  ORIGIN ||--o{ CLAIM : "is checked against"
+  STORY ||--o{ PUBLICATION : "published as"
+  TARGET ||--o{ PUBLICATION : carries
+  REVISION ||--o| PUBLICATION : "built from"
+  RUN ||--o{ ITEM : acquires
+  RUN ||--o{ PUBLICATION : "creates or updates"
