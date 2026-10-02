@@ -2830,6 +2830,43 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.cells.count, 3)
     }
 
+    /// Mermaid's own spelling of words on a block link puts them between the
+    /// two halves of the arrow, `A-- "X" -->B`, and the words are the link's
+    /// label rather than part of the first box's name.
+    func testWordsBetweenTheHalvesOfABlockLinkAreItsLabel() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                "block\n  A space B c\n  A-- \"X\" -->B\n  B -- \"far\" --- c")
+        else { return XCTFail("a labelled block link draws") }
+        XCTAssertEqual(diagram.chart.nodes.map(\.id), ["A", "B", "c"])
+        XCTAssertEqual(diagram.chart.edges.map(\.label), ["X", "far"])
+        XCTAssertEqual(diagram.chart.edges.map(\.arrow), [true, false])
+    }
+
+    /// A block may open after other cells on the same row, and the cells after
+    /// it on that row go inside it, up to an `end` that may stand on the row
+    /// too. Mermaid draws `a block:out:2 p q end b` as `a`, a frame round `p`
+    /// and `q`, then `b`.
+    func testABlockOpensPartWayAlongARow() throws {
+        guard
+            case .blocks(let diagram)? = MermaidDiagram.parse(
+                "block\n  columns 4\n  a block:out:2 p q end b\n  a --> p")
+        else { return XCTFail("a block opened mid-row draws") }
+        XCTAssertEqual(diagram.cells.count, 3)
+        XCTAssertEqual(diagram.cells.map(\.span), [1, 2, 1])
+        XCTAssertEqual(diagram.cells[1].block, 0)
+        XCTAssertEqual(diagram.blocks.map(\.id), ["out"])
+        let inside = diagram.blocks[0].cells.compactMap(\.node).map { diagram.chart.nodes[$0].id }
+        XCTAssertEqual(inside, ["p", "q"])
+
+        guard
+            case .blocks(let open)? = MermaidDiagram.parse(
+                "block\n  columns 4\n  a block:out:2\n    p q\n  end\n  a --> p")
+        else { return XCTFail("a block opened mid-row may close on a later line") }
+        XCTAssertEqual(open.cells.count, 2)
+        XCTAssertEqual(open.blocks[0].cells.count, 2)
+    }
+
     /// A frame named twice, a cell asking for no room, a reply with nobody
     /// waiting and a brace on its own: Mermaid draws past all four, and so does
     /// this.

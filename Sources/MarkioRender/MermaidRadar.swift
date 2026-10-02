@@ -174,39 +174,6 @@ struct BlockDiagram {
                 }
                 continue
             }
-            // A nested block need not be named: `block … end` opens a frame
-            // that no arrow can reach, which is a way of grouping alone.
-            if word == "block", rest.isEmpty {
-                blocks.append(Block(id: "", columns: nil, cells: []))
-                add(Cell(node: nil, span: 1, block: blocks.count - 1))
-                open.append(blocks.count - 1)
-                continue
-            }
-            if word.hasPrefix("block:") {
-                var id = String(word.dropFirst("block:".count))
-                // `block:group:2` takes two of the row's columns, the same way
-                // `a["Wide"]:2` does.
-                var span = 1
-                if let colon = id.lastIndex(of: ":") {
-                    guard let read = Int(id[id.index(after: colon)...]) else { return nil }
-                    // A cell always takes a place, however few it asks for.
-                    span = max(read, 1)
-                    id = String(id[id.startIndex..<colon])
-                }
-                // A name written twice makes a second block: an id is how an
-                // arrow finds a frame, and the first frame to take the name
-                // keeps it, which is what Mermaid draws.
-                guard !id.isEmpty, rest.isEmpty, identifiers[id] == nil else { return nil }
-                blocks.append(Block(id: id, columns: nil, cells: []))
-                add(Cell(node: nil, span: span, block: blocks.count - 1))
-                open.append(blocks.count - 1)
-                continue
-            }
-            if word == "end" {
-                guard rest.isEmpty, !open.isEmpty else { return nil }
-                open.removeLast()
-                continue
-            }
             if word == "classDef" {
                 let parts = rest.split(
                     separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
@@ -240,6 +207,44 @@ struct BlockDiagram {
                 continue
             }
             for token in tokens(of: line) {
+                // A block opens and closes at a token rather than a line:
+                // Mermaid takes `a block:out:2 p q end b` as `a`, a frame round
+                // `p` and `q`, then `b`, and the block's cells may as well run
+                // on to later lines before the `end`.
+                if token == "end" {
+                    guard !open.isEmpty else { return nil }
+                    open.removeLast()
+                    continue
+                }
+                // A nested block need not be named: `block … end` opens a
+                // frame that no arrow can reach, which is a way of grouping
+                // alone.
+                if token == "block" {
+                    blocks.append(Block(id: "", columns: nil, cells: []))
+                    add(Cell(node: nil, span: 1, block: blocks.count - 1))
+                    open.append(blocks.count - 1)
+                    continue
+                }
+                if token.hasPrefix("block:") {
+                    var id = String(token.dropFirst("block:".count))
+                    // `block:group:2` takes two of the row's columns, the same
+                    // way `a["Wide"]:2` does.
+                    var span = 1
+                    if let colon = id.lastIndex(of: ":") {
+                        guard let read = Int(id[id.index(after: colon)...]) else { return nil }
+                        // A cell always takes a place, however few it asks for.
+                        span = max(read, 1)
+                        id = String(id[id.startIndex..<colon])
+                    }
+                    // A name written twice makes a second block: an id is how
+                    // an arrow finds a frame, and the first frame to take the
+                    // name keeps it, which is what Mermaid draws.
+                    guard !id.isEmpty, identifiers[id] == nil else { return nil }
+                    blocks.append(Block(id: id, columns: nil, cells: []))
+                    add(Cell(node: nil, span: span, block: blocks.count - 1))
+                    open.append(blocks.count - 1)
+                    continue
+                }
                 var text = token
                 var span = 1
                 // `a["Wide"]:2` takes two of the row's columns.
@@ -352,7 +357,7 @@ struct BlockDiagram {
         )
     }
 
-    /// `a --> b`, `a -->|words| b`, `a --- b`, `a -.-> b`.
+    /// `a --> b`, `a -->|words| b`, `a-- "words" -->b`, `a --- b`, `a -.-> b`.
     private static func link(_ line: Substring)
         -> (from: String, to: String, label: String, stroke: Flowchart.Stroke, arrow: Bool)?
     {
@@ -362,9 +367,18 @@ struct BlockDiagram {
         guard let spelling = spellings.first(where: { line.contains($0.text) }),
             let range = line.range(of: spelling.text)
         else { return nil }
-        let from = line[line.startIndex..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+        var from = line[line.startIndex..<range.lowerBound].trimmingCharacters(in: .whitespaces)
         var tail = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
         var label = ""
+        // `A-- "X" -->B`: the words sit between the two halves of the arrow,
+        // which is the spelling Mermaid's own block page uses.
+        if let half = from.range(of: "--") {
+            label = String(from[half.upperBound...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            from = String(from[from.startIndex..<half.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+            guard !label.isEmpty else { return nil }
+        }
         if tail.hasPrefix("|"), let close = tail.dropFirst().firstIndex(of: "|") {
             label = String(tail[tail.index(after: tail.startIndex)..<close])
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))

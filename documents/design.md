@@ -906,7 +906,10 @@ flowchart already has.
 `block:ID … end` is a grid inside a cell of the grid, and the same routine lays
 it out, which is why a block inside a block needs no case of its own. The name is
 optional — a bare `block` opens a frame no arrow can reach, which is a way of
-grouping alone. A block arrow carries the sides it points at rather than one of
+grouping alone. A block opens and closes at a word rather than a line, as in
+Mermaid: `a block:out:2 p q end b` is `a`, a frame round `p` and `q`, then `b`.
+Words on a link sit between the halves of the arrow, `A-- "X" -->B`, or
+between bars after it, `A -->|X| B`. A block arrow carries the sides it points at rather than one of
 four directions, so `(x)` points left and right at once and `(x, down)` all
 three; it is drawn as a bar with a point on every side it names, and each point's
 base spans whatever room the other axis left, so a cross of four never runs

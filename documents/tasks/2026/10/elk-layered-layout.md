@@ -413,6 +413,9 @@ lines that leave Parse and Cache; the covered words are a label in a gap three
 lines share. `testABlockDiagramLineGoesRoundTheBlocksInItsWay` fails without
 the walk: before it, lines in all three of its diagrams ran over boxes.
 
-Found on the way, not fixed: the block reader takes `a -- "far" --> d` as a
-block named `a -- "far"`, and refuses a `block:` opened on the same line as
-another cell.
+Found on the way and fixed after: the block reader took `a -- "far" --> d` as
+a block named `a -- "far"`, and refused a `block:` opened on the same line as
+another cell. It now reads the words as the link's label and opens and closes a
+block at a word, as Mermaid 11.16.1 does
+(`testWordsBetweenTheHalvesOfABlockLinkAreItsLabel`,
+`testABlockOpensPartWayAlongARow`).
