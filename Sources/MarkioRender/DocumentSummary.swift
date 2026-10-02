@@ -199,7 +199,7 @@ public final class DocumentSummary {
 
     /// Words, counted the way anyone would count them by eye: runs of
     /// non-space. Good enough to divide by a rate, and it costs one pass.
-    static func words(in text: String) -> Int {
+    nonisolated static func words(in text: String) -> Int {
         var count = 0
         var inWord = false
         for character in text.unicodeScalars {
@@ -214,7 +214,7 @@ public final class DocumentSummary {
     }
 
     /// `TODO` and `FIXME`, as whole words, in any case.
-    static func markers(in text: String) -> Int {
+    nonisolated static func markers(in text: String) -> Int {
         guard !text.isEmpty else { return 0 }
         var found = 0
         let haystack = text as NSString
@@ -233,7 +233,7 @@ public final class DocumentSummary {
         return found
     }
 
-    private static func isWholeWord(_ range: NSRange, in text: NSString) -> Bool {
+    private nonisolated static func isWholeWord(_ range: NSRange, in text: NSString) -> Bool {
         let letters = CharacterSet.alphanumerics
         if range.location > 0,
             let before = text.substring(

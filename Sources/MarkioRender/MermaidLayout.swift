@@ -4439,7 +4439,7 @@ enum MermaidLayout {
         titleRoom: CGFloat, nameAt: CGFloat? = nil, named: Bool = true
     ) -> [BlockBox.Decoration] {
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
-        var decorations: [BlockBox.Decoration] = [
+        let decorations: [BlockBox.Decoration] = [
             .path(
                 path,
                 color: faded(
