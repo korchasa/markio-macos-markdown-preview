@@ -560,7 +560,11 @@ exactly that point (a fixed port), and the pieces are put together into one
 line. The order of fixed ports along a frame counts when the parent orders its
 layers, so a line held at the right end of a frame is fed from the right. A
 frame whose own layers run across its parent's has no such point on the side a
-line crosses: that line is joined to its box once every box has its place. A
+line crosses: that line is joined to its box once every box has its place. The
+join slides the line's last run across onto the middle of the box's facing
+side, so the turn the line already made towards the frame is the turn that
+brings it in; only where that run would cross another box does the line keep
+its place and step in with two turns more. A
 word that names a frame makes no box: a stand-in node parsed before the frame
 was known is folded into the frame it names once the whole source has been
 read.
@@ -622,7 +626,11 @@ hollow and says one class is another, while `<--` and `<..` merely point and are
 drawn as two strokes meeting, the way an arrow on a flowchart is. They differ
 only in how they are read
 and in which ends their lines may have, which is why `BoxDiagram` is shared and
-`ClassDiagram`/`EntityDiagram` are two readers of it. How far apart two ranks
+`ClassDiagram`/`EntityDiagram` are two readers of it. One more difference is how a box
+is cut: a class is three compartments in UML — name, attributes, operations —
+and an empty compartment still says the class has none, so a class keeps both
+rules under its name with nothing between them (`keepsEmptyCompartments`); an
+entity and a requirement are only the rows they have. How far apart two ranks
 stand is measured from what the relations between them actually draw — both end
 marks, the words on the line, and a run of shaft left over. A crow's foot alone
 eats most of an ordinary gap, and an entity diagram whose relations have one at
@@ -689,10 +697,13 @@ quarter and a green quarter are a verdict, and the author wrote four names, not
 four verdicts. A colour the author *did* write is drawn: a point may say how big
 it is and in what colours, on its own line or through a `classDef` it wears with
 `:::`, and what the point says wins over what its class says. A
-point's name goes to the right of its dot, and if that name would leave the
-square or land on something already drawn it is tried on the left and then a
-line up or down, in that order — every dot is placed before any name, so a name
-is never allowed to cover a point it does not belong to. An xy chart is bars and lines over named categories, and
+point's name is written under its dot and centred on it, as Mermaid writes it;
+a name beside the dot had to change sides near the right edge, so names jumped
+from one side of their dots to the other for no reason a reader could see. If
+the name would leave the square or land on something already drawn it is tried
+above the dot and then a line further away, in that order — every dot is placed
+before any name, so a name is never allowed to cover a point it does not
+belong to. An xy chart is bars and lines over named categories, and
 several bar series share a category by each taking a slice of it. Its y axis is
 named above itself rather than turned on its side: rotated glyphs are the one
 thing this drawing has no way to place.
@@ -738,6 +749,9 @@ A journey is read downwards rather than as a curve. A section is a band over the
 run of steps it owns, and each step is a card under that band in the same
 colour, so a section looks like a group of its own instead of a stripe with
 loose boxes below it; the bands are held apart and outlined for the same reason.
+One gap separates every two pieces — card and card, band and band, a band and
+the cards under it — and a band covers exactly the cards it owns: three gaps
+would say three relations where the source states one.
 Under the cards runs the axis, and from each step a dotted line drops to a face
 drawn at the height of its score — a smile, a straight mouth or a frown. The
 score is what the author wrote the step for, so it is drawn as a face rather
@@ -940,7 +954,10 @@ either background. A state machine has no layout of its own at all — it is rea
 into a `Flowchart` whose start and end are a filled dot and a ring, because that
 is the only thing about it a flowchart cannot already draw. `state Big { … }` is
 written out as a `subgraph`, so a machine inside a machine is a frame inside a
-frame. `[*]` inside one is that machine's own beginning and end rather than the
+frame. The end is stood under the start when each is alone in its layer, so the
+machine is entered and left on one column — but only when no line turns more
+often for it, because a line that ran straight into the end is worth more than
+the end's place. `[*]` inside one is that machine's own beginning and end rather than the
 whole diagram's, so the points are named after the state that holds them — two
 composite states each get their own dot and their own ring. A `<<fork>>` and a
 `<<join>>` are the same solid bar and a `<<choice>>` is a diamond, all three
@@ -958,7 +975,10 @@ A sequence diagram is columns with dashed lifelines, walked in document order.
 Somebody made part way through — `create participant Carl` — has their box on the
 message that makes them rather than at the top, and somebody destroyed has a
 second box where their lifeline stops; an arrow to either of those boxes ends at
-its edge instead of running through the name written inside it.
+its edge instead of running through the name written inside it — for an actor,
+at the ends of the stick figure's arms. Every arrowhead touches what it points
+at, and a cross is drawn just short of it rather than over it. An actor's name
+is written under the figure, so its lifeline starts under the name.
 Each gap between two lifelines is as wide as what crosses that gap, and no
 wider. The words of a message go over its arrow, so a gap sized to the
 participant boxes alone leaves them hanging off both lifelines — but one

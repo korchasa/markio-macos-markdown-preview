@@ -155,4 +155,61 @@ final class SequenceLayoutTests: XCTestCase {
         }
         return tallest == .zero ? nil : tallest
     }
+
+    /// Somebody made partway through is a box or a figure standing on the
+    /// message that makes them; the arrow touches it, and an actor's lifeline
+    /// starts under the name written beneath the figure.
+    func testAMadeParticipantIsReachedAndAnActorsNameStaysClear() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                sequenceDiagram
+                    participant A
+                    create participant C as Carl
+                    A->>C: make
+                    create actor D as Donald
+                    C->>D: hi
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 900)
+        var heads: [CGRect] = []
+        var boxes: [CGRect] = []
+        var strokes: [CGRect] = []
+        for case .path(let path, _, _, let filled) in drawing.decorations {
+            let box = path.boundingBox
+            if filled {
+                if box.width < 15, box.height < 15 { heads.append(box) }
+                if box.width > 30 { boxes.append(box) }
+            } else {
+                strokes.append(box)
+            }
+        }
+        var words: [CGRect] = []
+        for case .glyphs(let line, let origin) in drawing.decorations {
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            var leading: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+            words.append(
+                CGRect(x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        heads.sort { $0.minY < $1.minY }
+        XCTAssertEqual(heads.count, 2)
+
+        // Carl's box is the one standing on the first message.
+        let carl = try XCTUnwrap(boxes.first { $0.minY < heads[0].midY && $0.maxY > heads[0].midY })
+        XCTAssertEqual(heads[0].maxX, carl.minX, accuracy: 0.5)
+
+        // The figure: arms, body and legs in one stroke, wider than a line.
+        let figure = try XCTUnwrap(
+            strokes.first {
+                $0.width > 5 && $0.height > 10 && $0.minY < heads[1].midY
+                    && $0.maxY > heads[1].midY
+            })
+        XCTAssertEqual(heads[1].maxX, figure.minX, accuracy: 0.5)
+        let name = try XCTUnwrap(
+            words.first { abs($0.midX - figure.midX) < 1 && $0.minY >= figure.maxY - 1 })
+        let lifeline = try XCTUnwrap(
+            strokes.first { $0.width < 1 && abs($0.midX - figure.midX) < 1 })
+        XCTAssertGreaterThanOrEqual(lifeline.minY, name.maxY)
+    }
 }

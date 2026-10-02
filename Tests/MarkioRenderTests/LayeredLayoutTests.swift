@@ -413,3 +413,108 @@ extension LayeredCoreTests {
         XCTAssertGreaterThan(result.frames[0].midX, result.frames[1].midX)
     }
 }
+
+@MainActor
+extension LayeredLayoutTests {
+    /// How many quarter turns a drawn line makes, its rounded corners
+    /// included: the headings of its pieces, summed.
+    private func turns(_ points: [CGPoint]) -> Int {
+        var total: CGFloat = 0
+        var heading: CGFloat?
+        for (one, other) in zip(points, points.dropFirst()) {
+            guard hypot(other.x - one.x, other.y - one.y) > 0.01 else { continue }
+            let angle = atan2(other.y - one.y, other.x - one.x)
+            if let heading {
+                var change = angle - heading
+                while change > .pi { change -= 2 * .pi }
+                while change < -.pi { change += 2 * .pi }
+                total += abs(change)
+            }
+            heading = angle
+        }
+        return Int((total / (.pi / 2)).rounded())
+    }
+
+    /// A state machine's start and end: the two small square boxes, top first.
+    private func endMarks(_ drawn: MermaidLayout.Geometry) -> [CGRect] {
+        let marks: [CGRect] = drawn.nodes.filter { (box: CGRect) -> Bool in
+            box.width == box.height && box.width < 30
+        }
+        return marks.sorted { (one: CGRect, other: CGRect) -> Bool in one.minY < other.minY }
+    }
+
+    /// A line into a box inside a frame turned twice to reach it and then
+    /// twice more on the way in, a step it had no reason to take.
+    func testALineIntoAFrameTurnsNoMoreThanItHasTo() throws {
+        let drawn = try XCTUnwrap(
+            geometry(
+                """
+                flowchart LR
+                    subgraph subgraph1
+                        direction TB
+                        top1[top] --> bottom1[bottom]
+                    end
+                    subgraph subgraph2
+                        direction TB
+                        top2[top] --> bottom2[bottom]
+                    end
+                    outside --> subgraph1
+                    outside ---> top2
+                """
+            ))
+        // Boxes are numbered in the order they were written: top2 is third.
+        let wanted: [Int] = [2, 4]
+        let line = try XCTUnwrap(drawn.lines.first { $0.ends == wanted })
+        XCTAssertLessThanOrEqual(turns(line.points), 2, "\(line.points)")
+        let end = try XCTUnwrap(line.points.last)
+        XCTAssertEqual(end.x, drawn.nodes[2].minX, accuracy: 1)
+        XCTAssertEqual(end.y, drawn.nodes[2].midY, accuracy: 1)
+    }
+
+    /// A state machine is entered at the top and left at the bottom, and the
+    /// two marks read best one over the other.
+    func testAStateMachineEndsUnderItsStart() throws {
+        let drawn = try XCTUnwrap(
+            geometry(
+                """
+                stateDiagram
+                    [*] --> Still
+                    Still --> [*]
+                    Still --> Moving
+                    Moving --> Still
+                    Moving --> Crash
+                    Crash --> [*]
+                """
+            ))
+        let marks = endMarks(drawn)
+        XCTAssertEqual(marks.count, 2)
+        XCTAssertEqual(marks[0].midX, marks[1].midX, accuracy: 0.5)
+    }
+
+    /// The end is not moved under the start when that bends a line that ran
+    /// straight into it.
+    func testAStraightLineIntoTheEndStaysStraight() throws {
+        let drawn = try XCTUnwrap(
+            geometry(
+                """
+                stateDiagram-v2
+                    [*] --> active
+                    active --> degraded
+                    active --> unavailable
+                    active --> retired
+                    degraded --> retired
+                    unavailable --> retired
+                    retired --> [*]
+                """
+            ))
+        let marks = endMarks(drawn)
+        let end = try XCTUnwrap(marks.last)
+        let reach = end.insetBy(dx: -1, dy: -1)
+        let into = try XCTUnwrap(
+            drawn.lines.first { (line: MermaidLayout.Geometry.Line) -> Bool in
+                guard let last = line.points.last else { return false }
+                return reach.contains(last)
+            })
+        XCTAssertEqual(turns(into.points), 0, "\(into.points)")
+    }
+}

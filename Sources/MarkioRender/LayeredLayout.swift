@@ -89,9 +89,16 @@ enum LayeredLayout {
     ///   written first, cycle or not. For relations that read the same both
     ///   ways — an entity diagram's — the order the author wrote the boxes in
     ///   is the only order there is.
+    /// - Parameter stacked: pairs of boxes the second of which stands on the
+    ///   column of the first, when each is alone in its layer — a state
+    ///   machine's end under its start. Nothing else stands in either layer,
+    ///   so moving the box there moves nothing into it. The move is kept only
+    ///   when the lines turn no more often for it: a line that ran straight
+    ///   into the box is worth more than the box's place.
     static func layout(
         sizes: [CGSize], edges: [Edge], loopRoom: [CGFloat] = [], pinned: [Int: Pin] = [:],
-        inTextOrder: Bool = false, spacing: Spacing
+        inTextOrder: Bool = false, stacked: [(anchor: Int, moved: Int)] = [],
+        spacing: Spacing
     ) -> Result {
         var graph = Graph(sizes: sizes, loopRoom: loopRoom)
         graph.pinned = Set(pinned.keys)
@@ -125,8 +132,20 @@ enum LayeredLayout {
         }
         order(&layers, links: links, graph: graph)
         let x = coordinates(layers: layers, links: links, graph: graph, spacing: spacing)
-        return route(
+        let laid = route(
             layers: layers, x: x, chains: chains, edges: edges, graph: graph, spacing: spacing)
+        var moved = x
+        for pair in stacked
+        where layers.contains([pair.anchor]) && layers.contains([pair.moved]) {
+            moved[pair.moved] = x[pair.anchor]
+        }
+        guard moved != x else { return laid }
+        let stood = route(
+            layers: layers, x: moved, chains: chains, edges: edges, graph: graph, spacing: spacing)
+        func turns(_ result: Result) -> Int {
+            result.routes.reduce(0) { $0 + max(0, simplified($1).count - 2) }
+        }
+        return turns(stood) <= turns(laid) ? stood : laid
     }
 
     // MARK: - The graph with its added boxes

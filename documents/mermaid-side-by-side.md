@@ -28,7 +28,7 @@ restyling, so one without it was written to show the plain case.
 
 Putting the two pictures side by side found faults that looking at ours alone
 never did: a reader who has only one drawing cannot see what is missing from it.
-Five rounds of comparison went through every example here, and every defect they
+Six rounds of comparison went through every example here, and every defect they
 found is closed. They fell into five kinds.
 
 **A picture that said something its source did not.** `--->` lost its arrowhead.
@@ -50,7 +50,9 @@ line. Edges are routed by a layered layout now, each on a track of its own,
 around whatever they would otherwise cross. An
 edge label as wide as the gap left no line either side of it, and a message label
 hung off both lifelines and crossed its own arrow; the room between ranks and
-between lifelines is measured from the words that have to fit in it.
+between lifelines is measured from the words that have to fit in it. An actor's
+lifeline ran down through the name written under the figure, and starts under it
+now.
 
 **A picture cut off at its own edge.** Each kind reported the width of the boxes it
 laid out, which is not the width of the picture: a loop beside a box and a
@@ -63,7 +65,14 @@ large window came back centred in a field of empty card — the width it is give
 limit now, not a frame. An entity's attribute was written name first where the
 source says type first, a requirement's rows carried the source's keywords instead
 of words a person would say, and a relation between two boxes standing one over the
-other was drawn leaning.
+other was drawn leaning. A class was drawn as its name alone where UML and Mermaid
+draw three compartments, empty or not. A line into a box inside a frame turned
+twice more than it had to; every sequence arrow stopped two points short of what
+it pointed at, and one to an actor stopped at an invisible box wider than the
+figure. A quadrant point's name sat beside its dot and changed sides near the right
+edge, where Mermaid writes it centred underneath. A journey held its cards, its
+bands and the two apart by three different gaps, and a state machine's end stood
+off the column of its start.
 
 **A construct not drawn at all.** Nineteen examples here used to be shown as
 source. For the first eight the reason was almost always the same one: something

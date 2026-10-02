@@ -3314,4 +3314,83 @@ final class MermaidTests: XCTestCase {
             }
         }
     }
+
+    /// A class is three compartments in UML whether or not anything is in
+    /// them; an entity is only the rows it has.
+    func testAClassKeepsItsEmptyCompartmentsAndAnEntityDoesNot() throws {
+        guard case .boxes(let classes)? = MermaidDiagram.parse("classDiagram\n  A <|-- B")
+        else { return XCTFail("expected a class diagram") }
+        XCTAssertTrue(classes.keepsEmptyCompartments)
+        XCTAssertEqual(classes.boxes.map(\.compartments), [[[], []], [[], []]])
+        guard
+            case .boxes(let entities)? = MermaidDiagram.parse(
+                "erDiagram\n  CUSTOMER ||--o{ ORDER : places")
+        else { return XCTFail("expected an entity diagram") }
+        XCTAssertFalse(entities.keepsEmptyCompartments)
+    }
+
+    /// Card and card, band and band, band and the cards under it: one gap.
+    func testAJourneyKeepsOneGapBetweenItsPieces() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                journey
+                    section Go to work
+                      Make tea: 5: Me
+                      Go upstairs: 3: Me
+                    section Go home
+                      Sit down: 5: Me
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 900)
+        var pieces: [CGRect] = []
+        for case .fill(let rect, _, _) in drawing.decorations { pieces.append(rect) }
+        let top = try XCTUnwrap(pieces.map(\.minY).min())
+        let bands = pieces.filter { abs($0.minY - top) < 0.5 }.sorted { $0.minX < $1.minX }
+        let cards = pieces.filter { $0.minY > top + 1 }.sorted { $0.minX < $1.minX }
+        XCTAssertEqual(bands.count, 2)
+        XCTAssertEqual(cards.count, 3)
+        let gap = bands[1].minX - bands[0].maxX
+        XCTAssertGreaterThan(gap, 0)
+        for (one, other) in zip(cards, cards.dropFirst()) {
+            XCTAssertEqual(other.minX - one.maxX, gap, accuracy: 0.5)
+        }
+        XCTAssertEqual(cards[0].minY - bands[0].maxY, gap, accuracy: 0.5)
+        // A band covers exactly the cards of its part of the day.
+        XCTAssertEqual(bands[0].minX, cards[0].minX, accuracy: 0.5)
+        XCTAssertEqual(bands[0].maxX, cards[1].maxX, accuracy: 0.5)
+    }
+
+    /// A point's name is written under it, centred on it, wherever the point
+    /// stands, so names do not jump from one side of their dots to the other.
+    func testAQuadrantPointIsNamedUnderItsDot() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                quadrantChart
+                    A: [0.2, 0.7]
+                    B: [0.9, 0.6]
+                    C: [0.5, 0.3]
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        var dots: [CGRect] = []
+        for case .path(let path, _, _, true) in drawing.decorations {
+            let box = path.boundingBox
+            if box.width < 20, abs(box.width - box.height) < 0.5 { dots.append(box) }
+        }
+        var names: [CGRect] = []
+        for case .glyphs(let line, let origin) in drawing.decorations {
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            var leading: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+            names.append(
+                CGRect(x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        XCTAssertEqual(dots.count, 3)
+        for dot in dots {
+            XCTAssertTrue(
+                names.contains { abs($0.midX - dot.midX) < 0.5 && $0.minY > dot.maxY },
+                "nothing is written centred under the dot at \(dot)")
+        }
+    }
 }

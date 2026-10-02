@@ -70,6 +70,11 @@ struct BoxDiagram {
     /// A class diagram is drawn with the parent above; an entity diagram reads
     /// across the page.
     var direction: Flowchart.Direction
+    /// Whether a compartment with nothing in it is still drawn. A class is
+    /// three compartments in UML — name, attributes, operations — and an empty
+    /// one still says the class has none; an entity or a requirement is its
+    /// rows and nothing more.
+    var keepsEmptyCompartments = false
 
     mutating func index(of name: String) -> Int {
         if let existing = boxes.firstIndex(where: { $0.name == name }) { return existing }
@@ -216,6 +221,12 @@ enum ClassDiagram {
             continue
         }
         guard open == nil, openNamespaces.isEmpty else { return nil }
+        for index in diagram.boxes.indices {
+            while diagram.boxes[index].compartments.count < 2 {
+                diagram.boxes[index].compartments.append([])
+            }
+        }
+        diagram.keepsEmptyCompartments = true
         return diagram
     }
 
