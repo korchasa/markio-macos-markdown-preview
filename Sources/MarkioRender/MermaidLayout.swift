@@ -2806,6 +2806,10 @@ enum MermaidLayout {
         let quarterTint =
             theme.palette.tableHeaderBackground.copy(alpha: 0.5)
             ?? theme.palette.tableHeaderBackground
+        // What is already on the square: every quarter's name, every dot, and
+        // every point's name written so far. A point's name goes where it runs
+        // into none of them.
+        var written: [CGRect] = []
         for (index, corner) in corners.enumerated() {
             decorations.append(
                 .fill(rect: corner.insetBy(dx: 1, dy: 1), color: quarterTint, cornerRadius: 0))
@@ -2815,12 +2819,17 @@ enum MermaidLayout {
             let size = measure(line)
             // Along the top of its own quarter rather than through the middle
             // of it, which is where the points are.
+            let top = corner.minY + 10 * metrics.scale
             decorations.append(
                 .glyphs(
                     line,
                     origin: CGPoint(
                         x: corner.midX - size.width / 2,
-                        y: corner.minY + 10 * metrics.scale + size.height - descent(line))))
+                        y: top + size.height - descent(line))))
+            written.append(
+                CGRect(
+                    x: corner.midX - size.width / 2, y: top, width: size.width,
+                    height: size.height))
         }
         let frame = CGMutablePath()
         frame.addRect(plot)
@@ -2831,10 +2840,9 @@ enum MermaidLayout {
         decorations.append(
             .path(frame, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
 
-        // What is already on the square: every dot, and every name written so
-        // far. A name goes where it runs into neither.
-        var written: [CGRect] = []
         var centres: [CGPoint] = []
+        var reaches: [CGFloat] = []
+        var dots: [CGRect] = []
         for point in chart.points {
             // y grows up the page here and down everywhere else, so a point
             // written at 1 belongs at the top.
@@ -2849,7 +2857,12 @@ enum MermaidLayout {
             let radius = CGFloat(point.radius ?? 5) * metrics.scale
             let dot = CGRect(
                 x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)
-            written.append(dot)
+            // A ring drawn round the dot is half outside it, and a name over
+            // the ring is as hard to read as one over the dot.
+            let ring = point.stroke == nil ? 0 : CGFloat(point.strokeWidth ?? 1) * metrics.scale / 2
+            written.append(dot.insetBy(dx: -ring, dy: -ring))
+            dots.append(dot.insetBy(dx: -ring, dy: -ring))
+            reaches.append(radius + ring)
             let disc = CGPath(ellipseIn: dot, transform: nil)
             decorations.append(
                 .path(
@@ -2869,35 +2882,81 @@ enum MermaidLayout {
             // Under its dot and centred on it, the way Mermaid writes it. A name
             // beside the dot had to change sides near the right edge, so names
             // jumped left and right of their dots for no reason a reader could
-            // see. Where the place under the dot is taken by another name — two
-            // campaigns a few points apart — the name goes above the dot, then a
-            // further line away, because two names on top of each other say
-            // less than one.
-            let radius = CGFloat(point.radius ?? 5) * metrics.scale
-            let below = radius + 4 * metrics.scale + size.height / 2
+            // see. Where the place under the dot is taken — by another dot, by
+            // another name, by a quarter's name — the name tries above the dot,
+            // then leaning to one side under or over it, then beside it, then a
+            // line further away or off a corner, because two things on top of
+            // each other say less than one. A name never leaves the square:
+            // outside it, it stands among the axis words and belongs to no dot.
+            let radius = reaches[index]
+            let gap = 4 * metrics.scale
+            let below = radius + gap + size.height / 2
+            let aside = radius + gap + size.width / 2
             let step = size.height + 3 * metrics.scale
-            let x = centre.x - size.width / 2
-            let places = [below, -below, below + step, -below - step].map {
-                CGPoint(x: x, y: centre.y + $0)
+            // Under or over the dot, a name that does not fit centred may still
+            // fit starting or ending at the dot.
+            let lean = max(0, size.width / 2 - radius)
+            let offsets: [CGVector] = [
+                CGVector(dx: 0, dy: below), CGVector(dx: 0, dy: -below),
+                CGVector(dx: -lean, dy: below), CGVector(dx: lean, dy: below),
+                CGVector(dx: -lean, dy: -below), CGVector(dx: lean, dy: -below),
+                CGVector(dx: aside, dy: 0), CGVector(dx: -aside, dy: 0),
+            ]
+            // Beside the dot, a name a little lower or higher still reads as
+            // level with it, and often clears a neighbour the level one grazes.
+            let nudges = [size.height / 4, -size.height / 4, size.height / 2, -size.height / 2]
+            let further: [CGVector] =
+                nudges.flatMap {
+                    [CGVector(dx: aside, dy: $0), CGVector(dx: -aside, dy: $0)]
+                } + [
+                    CGVector(dx: 0, dy: below + step), CGVector(dx: 0, dy: -below - step),
+                    CGVector(dx: aside, dy: below), CGVector(dx: -aside, dy: below),
+                    CGVector(dx: aside, dy: -below), CGVector(dx: -aside, dy: -below),
+                ]
+            // A place that runs past the edge is pushed back inside: a name
+            // over a dot in the corner stands over it, flush with the border.
+            let boxes = (offsets + further).map {
+                CGRect(
+                    x: max(
+                        plot.minX, min(centre.x + $0.dx - size.width / 2, plot.maxX - size.width)),
+                    y: max(
+                        plot.minY,
+                        min(centre.y + $0.dy - size.height / 2, plot.maxY - size.height)),
+                    width: size.width, height: size.height)
             }
-            var origin = places[0]
-            for place in places {
-                let x = max(plot.minX, min(place.x, plot.maxX - size.width))
-                let box = CGRect(
-                    x: x, y: place.y - size.height / 2, width: size.width, height: size.height)
-                guard plot.contains(box) else { continue }
-                if !written.contains(where: { $0.intersects(box.insetBy(dx: -2, dy: -1)) }) {
-                    origin = CGPoint(x: x, y: place.y)
-                    written.append(box)
-                    break
+            // How much of a place is already taken; the first place with none
+            // wins, and when every place is taken, the one taken least. A name
+            // over its own dot hides the very thing it names, so that counts
+            // three times over.
+            func covered(_ box: CGRect) -> CGFloat {
+                func area(_ other: CGRect) -> CGFloat {
+                    let overlap = other.intersection(box.insetBy(dx: -2, dy: 0))
+                    return overlap.isNull ? 0 : overlap.width * overlap.height
+                }
+                return written.reduce(0) { $0 + area($1) } + 2 * area(dots[index])
+            }
+            // A name nearer another dot than its own reads as that dot's name,
+            // which is worse than a name a little in the way: it costs as much
+            // as a quarter of the name being covered.
+            func distance(from box: CGRect, to dot: Int) -> CGFloat {
+                let near = CGPoint(
+                    x: max(box.minX, min(centres[dot].x, box.maxX)),
+                    y: max(box.minY, min(centres[dot].y, box.maxY)))
+                return hypot(near.x - centres[dot].x, near.y - centres[dot].y) - reaches[dot]
+            }
+            func ownsIt(_ box: CGRect) -> Bool {
+                let own = distance(from: box, to: index)
+                return !centres.indices.contains {
+                    $0 != index && distance(from: box, to: $0) < own - 1
                 }
             }
+            func cost(_ box: CGRect) -> CGFloat {
+                covered(box) + (ownsIt(box) ? 0 : box.width * box.height / 4)
+            }
+            let box = boxes.min { cost($0) < cost($1) } ?? boxes[0]
+            written.append(box)
             decorations.append(
-                .glyphs(
-                    line,
-                    origin: CGPoint(
-                        x: max(plot.minX, min(origin.x, plot.maxX - size.width)),
-                        y: origin.y + size.height / 2 - descent(line))))
+                .glyphs(line, origin: CGPoint(x: box.minX, y: box.maxY - descent(line))))
         }
 
         for (words, position) in [
@@ -5371,11 +5430,17 @@ enum MermaidLayout {
             && !target.insetBy(dx: 1, dy: 1).contains(end)
         guard !onBorder else { return points }
         let before = points[points.count - 2]
-        // When the box is not straight ahead, the run that brought the line to
-        // the frame is slid across to the middle of the box instead: the turn
-        // before that run already points the right way, so the line arrives
-        // with the turns it had rather than a step of two more.
-        if points.count >= 3, let slid = slid(points, onto: target, boxes: boxes) {
+        // A box straight ahead is simply run on into. Only when it is not does
+        // the run that brought the line to the frame slide across to the middle
+        // of the box: the turn before that run already points the right way, so
+        // the line arrives with the turns it had rather than a step of two more.
+        // Sliding a line that could run straight on pulls every line into one
+        // side onto its middle, where they lie on top of one another.
+        let ahead =
+            abs(end.x - before.x) < 0.5
+            ? end.x > target.minX + 4 && end.x < target.maxX - 4
+            : end.y > target.minY + 4 && end.y < target.maxY - 4
+        if !ahead, points.count >= 3, let slid = slid(points, onto: target, boxes: boxes) {
             return slid
         }
         var out = points

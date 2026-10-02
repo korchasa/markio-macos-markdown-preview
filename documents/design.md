@@ -560,11 +560,14 @@ exactly that point (a fixed port), and the pieces are put together into one
 line. The order of fixed ports along a frame counts when the parent orders its
 layers, so a line held at the right end of a frame is fed from the right. A
 frame whose own layers run across its parent's has no such point on the side a
-line crosses: that line is joined to its box once every box has its place. The
-join slides the line's last run across onto the middle of the box's facing
-side, so the turn the line already made towards the frame is the turn that
-brings it in; only where that run would cross another box does the line keep
-its place and step in with two turns more. A
+line crosses: that line is joined to its box once every box has its place. A
+line whose last run already points at the box runs straight on into it. One that
+would miss the box slides its last run across onto the middle of the box's
+facing side, so the turn the line already made towards the frame is the turn
+that brings it in; only where that run would cross another box does the line
+keep its place and step in with two turns more. Sliding a line that could run
+straight on would pull every line into that side onto its middle, on top of one
+another. A
 word that names a frame makes no box: a stand-in node parsed before the frame
 was known is folded into the frame it names once the whole source has been
 read.
@@ -700,10 +703,15 @@ it is and in what colours, on its own line or through a `classDef` it wears with
 point's name is written under its dot and centred on it, as Mermaid writes it;
 a name beside the dot had to change sides near the right edge, so names jumped
 from one side of their dots to the other for no reason a reader could see. If
-the name would leave the square or land on something already drawn it is tried
-above the dot and then a line further away, in that order — every dot is placed
-before any name, so a name is never allowed to cover a point it does not
-belong to. An xy chart is bars and lines over named categories, and
+that place is taken — by a dot, a quarter's name or another point's name — the
+name tries above the dot, then leaning to one side under or over it, then beside
+it (level, or nudged a little up or down), then a line further away or off a
+corner. Every dot is placed before any name. A place past the square's edge is
+pushed back inside, because a name outside the square stands among the axis
+words. The first place nothing covers wins; when every place is covered, the one
+covered least, with a name over its own dot counted three times over and a place
+nearer another dot than its own costing a quarter of the name, since it reads as
+that dot's name. An xy chart is bars and lines over named categories, and
 several bar series share a category by each taking a slice of it. Its y axis is
 named above itself rather than turned on its side: rotated glyphs are the one
 thing this drawing has no way to place.

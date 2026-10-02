@@ -3360,6 +3360,59 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(bands[0].maxX, cards[1].maxX, accuracy: 0.5)
     }
 
+    /// Crowded points with big dots leave no free place under every dot. A
+    /// name then moves round its dot rather than over another one, and never
+    /// out of the square, where it would stand among the axis words.
+    func testACrowdedQuadrantKeepsEveryNameInsideAndOffTheDots() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                quadrantChart
+                  x-axis Low Reach --> High Reach
+                  y-axis Low Engagement --> High Engagement
+                  quadrant-1 We should expand
+                  quadrant-2 Need to promote
+                  quadrant-3 Re-evaluate
+                  quadrant-4 May be improved
+                  Campaign A: [0.9, 0.0] radius: 12
+                  Campaign B: [0.8, 0.1] color: #ff3300, radius: 10
+                  Campaign C: [0.7, 0.2] radius: 25, color: #00ff33, stroke-color: #10f0f0
+                  Campaign D: [0.6, 0.3] radius: 15, stroke-color: #00ff0f, stroke-width: 5px
+                  Campaign E: [0.5, 0.4] radius: 10, stroke-color: #310085, stroke-width: 10px
+                  Campaign F: [0.4, 0.5] color: #0000ff
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        var plot = CGRect.null
+        var dots: [CGRect] = []
+        var names: [CGRect] = []
+        // The points' names are the six lines written right after the dots.
+        for decoration in drawing.decorations {
+            switch decoration {
+            case .path(let path, _, _, false) where path.boundingBox.width > 100:
+                plot = path.boundingBox
+            case .path(let path, _, _, true):
+                dots.append(path.boundingBox)
+                names = []
+            case .glyphs(let line, let origin) where !dots.isEmpty && names.count < 6:
+                var ascent: CGFloat = 0
+                var descent: CGFloat = 0
+                let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+                names.append(
+                    CGRect(
+                        x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+            default: continue
+            }
+        }
+        XCTAssertEqual(dots.count, 6)
+        XCTAssertEqual(names.count, 6)
+        for name in names {
+            XCTAssertTrue(plot.contains(name), "\(name) is outside the square \(plot)")
+            for dot in dots {
+                XCTAssertFalse(name.intersects(dot.insetBy(dx: 1, dy: 1)), "\(name) covers \(dot)")
+            }
+        }
+    }
+
     /// A point's name is written under it, centred on it, wherever the point
     /// stands, so names do not jump from one side of their dots to the other.
     func testAQuadrantPointIsNamedUnderItsDot() throws {

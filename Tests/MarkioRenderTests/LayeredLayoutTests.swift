@@ -517,4 +517,37 @@ extension LayeredLayoutTests {
             })
         XCTAssertEqual(turns(into.points), 0, "\(into.points)")
     }
+
+    /// Lines that come into one side of a frame each keep the place the layout
+    /// gave them; none is slid onto the middle where another already arrives.
+    func testLinesIntoOneSideOfAFrameStayApart() throws {
+        let drawn = try XCTUnwrap(
+            geometry(
+                """
+                flowchart TB
+                    c1-->a2
+                    subgraph one
+                    a1-->a2
+                    end
+                    subgraph two
+                    b1-->b2
+                    end
+                    subgraph three
+                    c1-->c2
+                    end
+                    one --> two
+                    three --> two
+                    two --> c2
+                """
+            ))
+        // Frames are numbered in the order they were written: two is second.
+        let two = drawn.frames[1]
+        let over = CGRect(x: two.minX, y: two.minY - 40, width: two.width, height: 41)
+        let arrivals = drawn.lines.flatMap { [$0.points.first, $0.points.last] }
+            .compactMap { $0 }.filter { over.contains($0) }.map(\.x).sorted()
+        XCTAssertEqual(arrivals.count, 3, "\(arrivals)")
+        for (one, next) in zip(arrivals, arrivals.dropFirst()) {
+            XCTAssertGreaterThan(next - one, 6, "\(arrivals)")
+        }
+    }
 }
