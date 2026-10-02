@@ -72,3 +72,175 @@ final class LayeredLayoutTests: XCTestCase {
         XCTAssertNil(try geometry("sequenceDiagram\n    A->>B: hi"))
     }
 }
+
+/// The layered pipeline on its own, on graphs small enough to reason about.
+final class LayeredCoreTests: XCTestCase {
+    private let spacing = LayeredLayout.Spacing(node: 32, layer: 40, edge: 10)
+    private let box = CGSize(width: 60, height: 30)
+
+    private func layout(
+        _ count: Int, _ edges: [(Int, Int)], labels: [Int: CGSize] = [:]
+    ) -> LayeredLayout.Result {
+        LayeredLayout.layout(
+            sizes: Array(repeating: box, count: count),
+            edges: edges.enumerated().map {
+                LayeredLayout.Edge(from: $0.element.0, to: $0.element.1, label: labels[$0.offset])
+            },
+            spacing: spacing)
+    }
+
+    func testAChainStandsInOneStraightColumn() {
+        let result = layout(3, [(0, 1), (1, 2)])
+        XCTAssertEqual(result.frames[0].midX, result.frames[1].midX, accuracy: 0.5)
+        XCTAssertEqual(result.frames[1].midX, result.frames[2].midX, accuracy: 0.5)
+        XCTAssertLessThan(result.frames[0].maxY, result.frames[1].minY)
+        XCTAssertLessThan(result.frames[1].maxY, result.frames[2].minY)
+        XCTAssertEqual(result.routes[0].count, 2, "a line between neighbours is one stroke")
+        XCTAssertEqual(result.routes[0].first!.y, result.frames[0].maxY, accuracy: 0.5)
+        XCTAssertEqual(result.routes[0].last!.y, result.frames[1].minY, accuracy: 0.5)
+    }
+
+    /// Longest path would put the end of a shortcut as low as the long way
+    /// round; network simplex keeps every edge as short as it can.
+    func testLayersKeepEdgesShort() {
+        // 0 → 1 → 2 → 3, and 4 → 3 written last: 4 belongs just above 3, not
+        // at the top.
+        let result = layout(5, [(0, 1), (1, 2), (2, 3), (4, 3)])
+        XCTAssertEqual(result.frames[4].midY, result.frames[2].midY, accuracy: 0.5)
+    }
+
+    /// A line back to a box written earlier is laid out as if it pointed the
+    /// other way, and drawn from where it really starts.
+    func testABackEdgeRunsFromItsOwnStart() {
+        let result = layout(2, [(0, 1), (1, 0)])
+        XCTAssertLessThan(result.frames[0].maxY, result.frames[1].minY)
+        let back = result.routes[1]
+        XCTAssertEqual(back.first!.y, result.frames[1].minY, accuracy: 0.5)
+        XCTAssertEqual(back.last!.y, result.frames[0].maxY, accuracy: 0.5)
+        XCTAssertNotEqual(result.routes[0].first!.x, back.last!.x, "two lines, two places")
+    }
+
+    func testWordsGetALayerOfTheirOwn() {
+        let words = CGSize(width: 50, height: 28)
+        let result = layout(2, [(0, 1)], labels: [0: words])
+        let label = try! XCTUnwrap(result.labels[0])
+        XCTAssertGreaterThan(label.minY, result.frames[0].maxY)
+        XCTAssertLessThan(label.maxY, result.frames[1].minY)
+        XCTAssertEqual(label.size, words)
+    }
+
+    func testOrderRemovesACrossing() {
+        // Written so that the first order crosses: 0 → 3 and 1 → 2.
+        let result = layout(4, [(0, 3), (1, 2)])
+        let firstLeft = result.frames[0].midX < result.frames[1].midX
+        let targetLeft = result.frames[3].midX < result.frames[2].midX
+        XCTAssertEqual(firstLeft, targetLeft)
+    }
+
+    func testLinesNeverCrossTheBoxesBetweenTheirEnds() {
+        // A long edge past a box in the middle layer.
+        let result = layout(3, [(0, 1), (1, 2), (0, 2)])
+        let long = result.routes[2]
+        let middle = result.frames[1].insetBy(dx: 1, dy: 1)
+        for index in 1..<long.count {
+            let a = long[index - 1]
+            let b = long[index]
+            let run = CGRect(
+                x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
+            XCTAssertFalse(run.intersects(middle), "segment \(a)–\(b) crosses the middle box")
+            XCTAssertTrue(a.x == b.x || a.y == b.y, "segments run along or across the layers")
+        }
+    }
+}
+
+extension LayeredCoreTests {
+    /// Two lines into one box from boxes written on either side of it: no
+    /// cycle, so neither is turned round.
+    func testAnEdgeOutsideACycleKeepsItsDirection() {
+        // A --> C, then B --> C: C was written before B.
+        let result = layout(3, [(0, 1), (2, 1)])
+        XCTAssertLessThan(result.frames[2].maxY, result.frames[1].minY)
+    }
+
+    func testCyclesAreTheStronglyConnectedParts() {
+        let parts = LayeredLayout.cycles(
+            count: 5,
+            edges: [(0, 1), (1, 2), (2, 0), (2, 3), (3, 4)].map {
+                LayeredLayout.Edge(from: $0.0, to: $0.1, label: nil)
+            })
+        XCTAssertEqual(parts[0], parts[1])
+        XCTAssertEqual(parts[1], parts[2])
+        XCTAssertNotEqual(parts[2], parts[3])
+        XCTAssertNotEqual(parts[3], parts[4])
+    }
+}
+
+extension LayeredCoreTests {
+    /// The line of an edge that was not turned round runs from where it starts,
+    /// whichever of its ends was written first.
+    func testALineOutsideACycleRunsFromItsStart() {
+        let result = layout(3, [(0, 1), (2, 1)])
+        XCTAssertEqual(result.routes[1].first!.y, result.frames[2].maxY, accuracy: 0.5)
+        XCTAssertEqual(result.routes[1].last!.y, result.frames[1].minY, accuracy: 0.5)
+    }
+}
+
+extension LayeredCoreTests {
+    /// A point on a frame's border stands beyond every box, however short
+    /// the edge to it would otherwise be.
+    func testAPinnedBoxStandsBeyondEverything() {
+        let result = LayeredLayout.layout(
+            sizes: [box, box, box, .zero],
+            edges: [(0, 1), (1, 2), (3, 1)].map {
+                LayeredLayout.Edge(from: $0.0, to: $0.1, label: nil)
+            },
+            pinned: [3: .first], spacing: spacing)
+        XCTAssertLessThan(result.frames[3].maxY, result.frames[0].minY)
+        XCTAssertEqual(result.routes[2].first!.y, result.frames[3].maxY, accuracy: 0.5)
+        XCTAssertEqual(result.routes[2].last!.y, result.frames[1].minY, accuracy: 0.5)
+    }
+
+    /// A frame's own layout ran a line to a point on its border, and the
+    /// layout around the frame arrives at exactly that point.
+    func testAFixedPortIsWhereTheLineArrives() {
+        let wide = CGSize(width: 200, height: 30)
+        let result = LayeredLayout.layout(
+            sizes: [box, wide],
+            edges: [LayeredLayout.Edge(from: 0, to: 1, label: nil, toPort: 170)],
+            spacing: spacing)
+        XCTAssertEqual(result.routes[0].last!.x, result.frames[1].minX + 170, accuracy: 0.5)
+        XCTAssertEqual(result.routes[0].last!.y, result.frames[1].minY, accuracy: 0.5)
+    }
+}
+
+extension LayeredLayoutTests {
+    /// A line to a box inside a frame is laid out inside the frame too, so it
+    /// passes no box on its way in, whichever way the frame's layers run.
+    func testALineIntoAFrameAvoidsTheBoxesInside() throws {
+        for direction in ["TD", "BT"] {
+            let drawn = try XCTUnwrap(
+                geometry(
+                    """
+                    flowchart \(direction)
+                        outside --> deep
+                        subgraph group [Group]
+                            first --> second --> deep
+                        end
+                    """
+                ))
+            let line = try XCTUnwrap(drawn.lines.first { $0.ends == [0, 1] })
+            for (index, box) in drawn.nodes.enumerated() where index > 1 {
+                let inner = box.insetBy(dx: 2, dy: 2)
+                for step in 1..<line.points.count {
+                    let a = line.points[step - 1]
+                    let b = line.points[step]
+                    let run = CGRect(
+                        x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x),
+                        height: abs(a.y - b.y))
+                    XCTAssertFalse(
+                        run.intersects(inner), "\(direction): the line crosses box \(index)")
+                }
+            }
+        }
+    }
+}

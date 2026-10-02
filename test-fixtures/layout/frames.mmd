@@ -1,0 +1,17 @@
+flowchart TD
+  request[Request] --> gate{Signed in?}
+  gate -->|no| login[Sign-in page]
+  gate -->|yes| app
+  subgraph app [Application]
+    direction TB
+    router[Router] --> pages[Pages]
+    router --> api[API handlers]
+    subgraph data [Data access]
+      cache[(Cache)] --> store[(Database)]
+    end
+    api -->|read| cache
+    pages --> api
+  end
+  login -->|retry| request
+  store -. audit .-> log[Audit log]
+  app --> response[Response]

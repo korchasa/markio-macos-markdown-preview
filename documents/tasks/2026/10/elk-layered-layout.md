@@ -1,6 +1,6 @@
 ---
 date: 2026-10-02
-status: to do
+status: in progress
 implements: [VIEW-25]
 tags: [mermaid, layout, flowchart, class-diagram, er-diagram]
 related_tasks: []
@@ -116,7 +116,7 @@ rewritten as the stages land.
   defect and detour definitions as the comparison bench, and prints a baseline
   for the old layout.
   - Evidence: `deno task layoutbench` (fixtures in `test-fixtures/layout/`)
-- [ ] VIEW-25: ranks come from network simplex over the graph with cycles broken
+- [x] VIEW-25: ranks come from network simplex over the graph with cycles broken
   in text order; boxes in a rank are ordered by layer sweep with text order as
   the tie-break; edge labels are layout dummies, wrapped at 12 characters.
   - Test: `Tests/MarkioRenderTests/LayeredLayoutTests.swift`
@@ -222,3 +222,50 @@ The old layout's low detour is the direct lines: they are short because they
 run straight through whatever is in the way, which is what the 136 faults
 count. The gate for the new pipeline is the comparison's ELK result: 5 faults,
 mean detour 1.16, worst 2.05.
+
+### Stages 2 and 3 — the core, wired into flowcharts (2026-10-02)
+
+`Sources/MarkioRender/LayeredLayout.swift` holds the pipeline; flowcharts and
+state diagrams go through it, box diagrams (`er`) still use the old layout.
+`frames.mmd` was added as the tenth fixture: nested frames, a frame with its own
+direction, lines into and out of frames, a line to a frame.
+
+```
+graph           cross  through  labels  overlap  faults  detour  worst
+er                 13        2      15        0      30    1.14   1.49
+frames              0        0       0        0       0    1.03   1.17
+fsm                 0        0       0        0       0    1.20   1.66
+operations          0        0       0        0       0    1.08   1.30
+petersen            2        0       0        0       2    1.15   1.34
+publication         0        0       0        0       0    1.24   1.46
+source              0        0       0        0       0    1.29   1.92
+story               0        0       0        0       0    1.23   1.37
+tcp                 0        0       0        0       0    1.22   1.49
+unix                2        0       0        0       2    1.14   1.36
+total                                                34    1.17   1.92
+```
+
+Without `er`, the nine graphs of the comparison score 4 faults against ELK's 5
+(ELK: unix 2, petersen 3, everything else 0).
+
+What it took beyond the papers:
+
+- Cycle breaking turns an edge round only inside a strongly connected part;
+  turning every edge against text order put `A --> C, B --> C` with B below C.
+- The barycenter sort keeps a layer's current order on a tie. Breaking ties by
+  text order erased every starting order on the first pass, so 27 starts gave
+  one answer; with the fix, the sweeps run from the author's order, two walks
+  and 24 seeded shuffles, and operations and tcp went from 2 and 1 crossings
+  to 0.
+- In a layout across the page a loop stands below its box instead of in the
+  gap the lines cross, and the room for it is reserved there (fsm: 3 → 0).
+- A frame is laid out with a point on its border for every line that crosses
+  it, pinned to its first or last layer; the layout around the frame arrives
+  at exactly that point (`fromPort`/`toPort`) and the two parts are joined.
+  Before, a line was stopped at the frame and carried straight on to its box,
+  through whatever stood between (frames, BT: 3 lines through boxes → 0). A
+  frame whose layers run across the layers around it gets no such point, and
+  its lines are still carried on from the border.
+
+Known and left for later: several lines on a small box get ports 5–10 points
+apart, and their rounded corners nearly touch (unix, `6th Edition`).

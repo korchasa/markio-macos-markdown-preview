@@ -3266,8 +3266,9 @@ final class MermaidTests: XCTestCase {
                 CGRect(
                     x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
         }
-        // Three states, two ends and five transitions.
-        XCTAssertEqual(written.count, 8)
+        // Three states, two ends and five transitions, one of whose words
+        // are broken over two lines.
+        XCTAssertEqual(written.count, 9)
         for first in written.indices {
             for second in (first + 1)..<written.count {
                 XCTAssertFalse(
