@@ -98,10 +98,11 @@ public enum PDFExport {
             guard let box = layout.box(at: slice.ordinal) else { continue }
             context.saveGState()
             context.translateBy(x: 0, y: slice.y)
+            let skipped = (PageLayout.drawingTop(of: slice, in: box) - slice.from) * slice.scale
             context.clip(
                 to: CGRect(
-                    x: -geometry.margin, y: 0, width: geometry.pageSize.width,
-                    height: slice.height + 0.5))
+                    x: -geometry.margin, y: skipped, width: geometry.pageSize.width,
+                    height: slice.height + 0.5 - skipped))
             if slice.scale != 1 { context.scaleBy(x: slice.scale, y: slice.scale) }
             // A slice starting part-way down its block is drawn by moving the
             // block up: the clip above keeps the rest of it off this page.

@@ -114,6 +114,26 @@ public enum PageLayout {
         return pages
     }
 
+    /// Where a slice's drawing starts, in its block's coordinates.
+    ///
+    /// A break sits on the bottom of a line, and a link's underline sits on
+    /// that bottom too. A continuation clipped exactly there leaves the rule on
+    /// the clip's edge, and a renderer that paints any pixel a shape touches —
+    /// Ghostscript, the engine behind much of printing — opened the next page
+    /// on a stray line. The clip starts a little lower, in the empty gap before
+    /// the next line, and never into that line.
+    static func drawingTop(of slice: Slice, in box: BlockBox) -> CGFloat {
+        guard slice.from > 0 else { return 0 }
+        var next = slice.to
+        for segment in box.segments {
+            for line in segment.lines {
+                let top = line.origin.y - line.ascent
+                if top > slice.from - 0.01 { next = min(next, top) }
+            }
+        }
+        return slice.from + max(0, min(0.75, (next - slice.from) / 2))
+    }
+
     /// The lowest line boundary inside a box that still fits on the page.
     ///
     /// Boundaries are the bottoms of typeset lines: cutting anywhere else puts

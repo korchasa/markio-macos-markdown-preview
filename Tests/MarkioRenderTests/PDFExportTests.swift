@@ -54,6 +54,35 @@ final class PDFExportTests: XCTestCase {
         }
     }
 
+    /// A link's underline lies on the bottom of its line, which is where a
+    /// page breaks. A continuation drawn from exactly that edge left the rule
+    /// on the edge of its clip, and a renderer that paints every pixel a shape
+    /// touches opened the next page on a stray blue line.
+    func testAContinuationStartsBelowTheUnderlineOfTheLineAboveIt() {
+        let words = (1...400).map { "word\($0)" }.joined(separator: " ")
+        let document = layout("[\(words)](https://example.com)")
+        let pages = PageLayout.paginate(layout: document, geometry: geometry)
+        XCTAssertGreaterThan(pages.count, 1)
+        guard let box = document.box(at: 0) else { return XCTFail("no box") }
+        var rules: [CGRect] = []
+        for case .fill(let rect, _, _) in box.decorations where rect.height <= 1.5 {
+            rules.append(rect)
+        }
+        let tops = box.segments.flatMap { $0.lines.map { $0.origin.y - $0.ascent } }
+        for slice in pages.flatMap(\.slices) where slice.from > 0 {
+            let start = PageLayout.drawingTop(of: slice, in: box)
+            for rule in rules where rule.maxY <= slice.from + 0.01 {
+                XCTAssertGreaterThanOrEqual(
+                    start - rule.maxY, 0.5,
+                    "the page starting at \(slice.from) is drawn from \(start), on the rule \(rule)"
+                )
+            }
+            for top in tops where top >= slice.from {
+                XCTAssertLessThanOrEqual(start, top, "the clip cuts into the line at \(top)")
+            }
+        }
+    }
+
     func testSlicesCoverTheBlockExactlyOnce() {
         let fence = "```\n" + (1...200).map { "line \($0)" }.joined(separator: "\n") + "\n```"
         let document = layout(fence)

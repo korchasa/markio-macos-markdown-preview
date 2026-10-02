@@ -1209,6 +1209,13 @@ the box cache's eviction still bounds memory on a document nobody could hold at
 once. `PrintableDocument` is the same drawing behind `NSView`, so Print and
 Export are one path.
 
+A cut lands on the bottom of a line, which is also where a link's underline
+lies. A continuation clipped from exactly that edge leaves the rule touching the
+clip, and a renderer that paints every pixel a shape touches — Ghostscript, not
+Preview — opened the next page on a stray line. `PageLayout.drawingTop` starts a
+continuation's clip a little below the cut, never lower than halfway to the
+next line's top, so the text it starts with is whole.
+
 Both ends of that path go through a save panel, and a save panel is a sandbox
 capability rather than a class: AppKit refuses to display an `NSSavePanel` to an
 app holding only `files.user-selected.read-only`, so the panel never appears and
