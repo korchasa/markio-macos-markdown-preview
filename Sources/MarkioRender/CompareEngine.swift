@@ -1,4 +1,5 @@
 import Foundation
+import MarkdownKit
 
 /// Compares two versions of a Markdown file and builds one source out of both.
 ///
@@ -10,7 +11,10 @@ import Foundation
 ///
 /// The diff is line-based. Word-level refinement would need a second engine
 /// inside every changed line and buys little on prose that is edited a
-/// paragraph at a time.
+/// paragraph at a time. A block whose lines only mean something together — a
+/// fence, a table, front matter, an HTML block, a formula written across lines
+/// — is compared as one unit instead: a line apart from its block is not
+/// Markdown that parses back into that block.
 public enum CompareEngine {
     public enum Mark: Sendable, Equatable {
         /// In the current document but not in the baseline.
@@ -59,17 +63,52 @@ public enum CompareEngine {
     public static func merge(current: [UInt8], baseline: [UInt8]) -> Result {
         let comparison = script(current: current, baseline: baseline)
         var merged = Builder(capacity: current.count + baseline.count / 4)
+        // Front matter is front matter only on the first line of a file, so the
+        // second copy of a changed one would be read as a rule and a heading.
+        // It goes in as the YAML it is, fenced, which the page draws the same
+        // way.
+        var fence: [UInt8]?
+        func add(
+            _ source: [UInt8], _ lines: [Range<Int>], _ front: Range<Int>?, _ index: Int,
+            _ mark: Mark?
+        ) {
+            guard let front, front.contains(index) else {
+                return merged.add(source[lines[index]], mark: mark)
+            }
+            if index == front.lowerBound {
+                fence =
+                    merged.bytes.isEmpty ? nil : self.fence(around: front.map { source[lines[$0]] })
+            }
+            guard let fence, index == front.lowerBound || index == front.upperBound - 1 else {
+                return merged.add(source[lines[index]], mark: mark)
+            }
+            merged.add(
+                index == front.lowerBound ? fence + Array("yaml\n".utf8) : fence + [0x0A],
+                mark: mark)
+        }
         for step in comparison.steps {
             switch step {
             case .same(let index):
-                merged.add(current, comparison.currentLines[index], mark: nil)
+                add(current, comparison.currentLines, comparison.currentFront, index, nil)
             case .added(let index):
-                merged.add(current, comparison.currentLines[index], mark: .added)
+                add(current, comparison.currentLines, comparison.currentFront, index, .added)
             case .removed(let index):
-                merged.add(baseline, comparison.baselineLines[index], mark: .removed)
+                add(baseline, comparison.baselineLines, comparison.baselineFront, index, .removed)
             }
         }
         return merged.result
+    }
+
+    /// A backtick fence longer than any run of backticks opening a line inside
+    /// it, so nothing in the YAML can close it early. A closing fence may be
+    /// indented by up to three spaces.
+    private static func fence(around lines: [ArraySlice<UInt8>]) -> [UInt8] {
+        var longest = 2
+        for line in lines {
+            let text = line.dropFirst(min(3, line.prefix { $0 == 0x20 }.count))
+            longest = max(longest, text.prefix { $0 == 0x60 }.count)
+        }
+        return [UInt8](repeating: 0x60, count: longest + 1)
     }
 
     /// The same comparison, kept in two documents instead of one.
@@ -82,12 +121,12 @@ public enum CompareEngine {
             case .same(let index):
                 // The line is the same on both sides, so one copy of it serves
                 // for both columns.
-                left.add(current, comparison.currentLines[index], mark: nil)
-                right.add(current, comparison.currentLines[index], mark: nil)
+                left.add(current[comparison.currentLines[index]], mark: nil)
+                right.add(current[comparison.currentLines[index]], mark: nil)
             case .added(let index):
-                right.add(current, comparison.currentLines[index], mark: .added)
+                right.add(current[comparison.currentLines[index]], mark: .added)
             case .removed(let index):
-                left.add(baseline, comparison.baselineLines[index], mark: .removed)
+                left.add(baseline[comparison.baselineLines[index]], mark: .removed)
             }
         }
         return Sides(baseline: left.result, current: right.result)
@@ -103,7 +142,7 @@ public enum CompareEngine {
 
         init(capacity: Int) { bytes.reserveCapacity(capacity) }
 
-        mutating func add(_ source: [UInt8], _ range: Range<Int>, mark: Mark?) {
+        mutating func add<Line: Collection<UInt8>>(_ line: Line, mark: Mark?) {
             // A removed line followed straight away by the line that replaced it
             // would be read as one paragraph, and the whole thing would take the
             // mark of its first byte. A blank line between runs of different
@@ -112,7 +151,7 @@ public enum CompareEngine {
             if previous != nil, previous! != mark { separate(&bytes) }
             previous = mark
             let start = bytes.count
-            appendLine(&bytes, source, range)
+            appendLine(&bytes, line)
             if let mark { append(&marks, start..<bytes.count, mark) }
         }
 
@@ -122,15 +161,94 @@ public enum CompareEngine {
     /// The line ranges of both versions and the edit script between them, so
     /// merging and splitting share one comparison.
     private static func script(current: [UInt8], baseline: [UInt8]) -> (
-        steps: [Step], currentLines: [Range<Int>], baselineLines: [Range<Int>]
+        steps: [Step], currentLines: [Range<Int>], baselineLines: [Range<Int>],
+        currentFront: Range<Int>?, baselineFront: Range<Int>?
     ) {
         let currentLines = lines(of: current)
         let baselineLines = lines(of: baseline)
-        let steps = diff(
-            baseline: baselineLines.map { hash(baseline, $0) },
-            current: currentLines.map { hash(current, $0) }
+        let currentUnits = units(of: current, lineCount: currentLines.count)
+        let baselineUnits = units(of: baseline, lineCount: baselineLines.count)
+        let unitSteps = diff(
+            baseline: baselineUnits.units.map { hash(baseline, baselineLines, $0) },
+            current: currentUnits.units.map { hash(current, currentLines, $0) }
         )
-        return (steps, currentLines, baselineLines)
+        var steps: [Step] = []
+        steps.reserveCapacity(max(currentLines.count, baselineLines.count))
+        for step in unitSteps {
+            switch step {
+            case .same(let unit): steps += currentUnits.units[unit].map { .same($0) }
+            case .added(let unit): steps += currentUnits.units[unit].map { .added($0) }
+            case .removed(let unit): steps += baselineUnits.units[unit].map { .removed($0) }
+            }
+        }
+        return (steps, currentLines, baselineLines, currentUnits.front, baselineUnits.front)
+    }
+
+    /// The lines a version is compared in, as runs of line indices: one line
+    /// each, except where a block only reads whole.
+    ///
+    /// Line by line, one changed line of a fence put the old and the new line
+    /// into the same fence with a blank line between them and no mark on
+    /// either, and a changed table row fell out of its table and was shown as
+    /// pipes. The blocks come from the parser rather than from a second set of
+    /// rules about what a fence is; its lines are split at the same newlines as
+    /// `lines(of:)`, so the indices agree. The front matter's lines come back
+    /// on their own as well, since a merge has to treat them differently.
+    private static func units(of bytes: [UInt8], lineCount: Int) -> (
+        units: [Range<Int>], front: Range<Int>?
+    ) {
+        let document = Document(bytes: bytes)
+        var spans: [Range<Int>] = []
+        var front: Range<Int>?
+        for leaf in document.leaves {
+            let block = document.block(leaf)
+            var first = Int(block.firstLine)
+            var last = Int(block.lastLine)
+            switch block.kind {
+            case .codeBlock where block.flags.contains(.fenced), .frontMatter:
+                // The fences are lines of the block too, though not of its
+                // content. An unclosed fence runs to the end of the file.
+                first -= 1
+                last = min(Int(block.firstLine + block.lineCount), lineCount - 1)
+            case .codeBlock, .table, .htmlBlock:
+                break
+            case .paragraph where spansFormula(document, leaf):
+                break
+            default:
+                continue
+            }
+            guard first >= 0, last > first else { continue }
+            spans.append(first..<(last + 1))
+            if block.kind == .frontMatter { front = spans.last }
+        }
+        var units: [Range<Int>] = []
+        units.reserveCapacity(lineCount)
+        var line = 0
+        var next = 0
+        while line < lineCount {
+            while next < spans.count, spans[next].upperBound <= line { next += 1 }
+            if next < spans.count, spans[next].lowerBound == line {
+                units.append(spans[next])
+                line = spans[next].upperBound
+            } else {
+                units.append(line..<(line + 1))
+                line += 1
+            }
+        }
+        return (units, front)
+    }
+
+    /// A paragraph holding `$$`: a display formula may be written across its
+    /// lines, and half a formula is not one.
+    private static func spansFormula(_ document: Document, _ leaf: Int32) -> Bool {
+        guard document.block(leaf).lineCount > 1 else { return false }
+        let range = document.sourceRange(of: leaf)
+        var index = Int(range.lowerBound)
+        while index + 1 < Int(range.upperBound) {
+            if document.bytes[index] == 0x24, document.bytes[index + 1] == 0x24 { return true }
+            index += 1
+        }
+        return false
     }
 
     /// End the current block, unless the source already ended one.
@@ -146,8 +264,8 @@ public enum CompareEngine {
     /// A file whose last line is unterminated is otherwise glued to whatever
     /// follows it, and the two versions differ exactly where the reader is least
     /// interested — at the end of the file.
-    private static func appendLine(_ bytes: inout [UInt8], _ source: [UInt8], _ range: Range<Int>) {
-        bytes.append(contentsOf: source[range])
+    private static func appendLine<Line: Collection<UInt8>>(_ bytes: inout [UInt8], _ line: Line) {
+        bytes.append(contentsOf: line)
         if bytes.last != 0x0A { bytes.append(0x0A) }
     }
 
@@ -185,6 +303,17 @@ public enum CompareEngine {
     ///
     /// The trailing newline is left out of the hash: whether a file ends with
     /// one is not a change worth marking.
+    /// One unit's lines, folded into one number.
+    private static func hash(_ bytes: [UInt8], _ lines: [Range<Int>], _ unit: Range<Int>) -> UInt64
+    {
+        guard unit.count > 1 else { return hash(bytes, lines[unit.lowerBound]) }
+        var value: UInt64 = 0xcbf2_9ce4_8422_2325
+        for line in unit {
+            value = (value ^ hash(bytes, lines[line])) &* 0x0000_0100_0000_01b3
+        }
+        return value
+    }
+
     private static func hash(_ bytes: [UInt8], _ range: Range<Int>) -> UInt64 {
         var value: UInt64 = 0xcbf2_9ce4_8422_2325
         var range = range

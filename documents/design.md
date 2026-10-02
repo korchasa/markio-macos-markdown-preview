@@ -1348,6 +1348,20 @@ Markdown buffer containing both, plus the byte ranges that came from each side.
 A blank line goes in wherever the origin changes, or a replaced paragraph's old
 and new text would parse as a single block and take a single mark.
 
+Prose is compared a line at a time, but some blocks only read whole: a fenced
+or indented code block, a table, an HTML block, front matter, and a paragraph
+holding a `$$` formula across its lines. Line by line, one changed line of a
+fence put the old and the new line into the same fence with a blank line between
+them and no mark on either, and a changed table row fell out of its table and
+was shown as pipes. Those blocks are therefore single units of the diff — the
+old block removed, the new one added, each still the kind of block it was. The
+blocks come from the parser, not from a second set of rules about what a fence
+is; `LineIndex` splits at the same newlines as the engine, so the line numbers
+agree. Front matter is front matter only on a file's first line, so in the
+merged view the second copy of a changed one goes in as a fenced `yaml` block,
+with a fence longer than any backticks inside it — the page draws both the same
+way. Side by side needs no such step, since each column has its own first line.
+
 Side by side takes the same edit script and builds two documents instead of one
 — the baseline with what it lost, the current file with what it gained — so the
 window can put a layout in each of two scroll views. The unchanged lines are in

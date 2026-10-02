@@ -130,6 +130,96 @@ final class CompareEngineTests: XCTestCase {
         XCTAssertEqual(sides.baseline.bytes, sides.current.bytes)
     }
 
+    /// Each block of a compared source: what it parsed as, and its mark.
+    private func blocks(_ result: CompareEngine.Result) -> [(BlockKind, CompareEngine.Mark?)] {
+        let document = Document(bytes: result.bytes)
+        let layout = DocumentLayout(
+            document: document, theme: Theme(isDark: false), columnWidth: 520)
+        layout.comparison = result
+        return (0..<layout.blockCount).map { ordinal in
+            (document.block(document.leaves[ordinal]).kind, layout.mark(at: ordinal))
+        }
+    }
+
+    /// One line changed inside a block whose lines only mean something
+    /// together. Line by line, the old and the new line went into one fence
+    /// with blank lines between them and no mark at all; a table row fell out
+    /// of its table and was shown as pipes; changed front matter held both
+    /// dates. The block is the unit there: the old one removed, the new one
+    /// added, each still the kind of block it was.
+    func testABlockThatOnlyReadsWholeIsComparedWhole() {
+        let cases: [(String, String, BlockKind)] = [
+            (
+                "```swift\nlet a = 1\nlet b = 2\n```\n", "```swift\nlet a = 1\nlet b = 3\n```\n",
+                .codeBlock
+            ),
+            (
+                "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n",
+                "| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 5 |\n", .table
+            ),
+            (
+                "---\ntitle: T\ndate: 2026-08-04\n---\n", "---\ntitle: T\ndate: 2026-08-11\n---\n",
+                .frontMatter
+            ),
+            (
+                "<table>\n<tr><td>1</td></tr>\n<tr><td>2</td></tr>\n</table>\n",
+                "<table>\n<tr><td>1</td></tr>\n<tr><td>3</td></tr>\n</table>\n", .htmlBlock
+            ),
+        ]
+        for (old, new, kind) in cases {
+            // Front matter is only front matter on the file's first line.
+            let head = kind == .frontMatter ? "" : "# Title\n\n"
+            let before: [BlockKind] = kind == .frontMatter ? [] : [.heading]
+            let unmarked: [CompareEngine.Mark?] = kind == .frontMatter ? [] : [nil]
+            let source = "\(head)\(old)\nTail.\n"
+            let changed = "\(head)\(new)\nTail.\n"
+            let merged = blocks(merge(changed, source))
+            // Front matter opens a file or is not front matter; the new copy
+            // is the same YAML in a fence, drawn the same way.
+            let second: BlockKind = kind == .frontMatter ? .codeBlock : kind
+            XCTAssertEqual(merged.map(\.0), before + [kind, second, .paragraph], "\(kind)")
+            XCTAssertEqual(merged.map(\.1), unmarked + [.removed, .added, nil], "\(kind)")
+
+            let sides = CompareEngine.split(
+                current: Array(changed.utf8), baseline: Array(source.utf8))
+            XCTAssertEqual(blocks(sides.baseline).map(\.0), before + [kind, .paragraph], "\(kind)")
+            XCTAssertEqual(blocks(sides.baseline).map(\.1), unmarked + [.removed, nil], "\(kind)")
+            XCTAssertEqual(blocks(sides.current).map(\.0), before + [kind, .paragraph], "\(kind)")
+            XCTAssertEqual(blocks(sides.current).map(\.1), unmarked + [.added, nil], "\(kind)")
+        }
+    }
+
+    /// The fence keeps its own lines: nothing is put between them.
+    func testAChangedFenceKeepsItsLinesTogether() {
+        let result = merge("```\none\ntwo\nthree\n```\n", "```\none\n2\nthree\n```\n")
+        XCTAssertEqual(text(result), "```\none\n2\nthree\n```\n\n```\none\ntwo\nthree\n```\n")
+    }
+
+    /// A formula written across lines is one paragraph whose lines are one
+    /// formula; split, neither half is a formula.
+    func testAFormulaAcrossLinesIsComparedWhole() {
+        let result = merge("$$\na + c\n$$\n", "$$\na + b\n$$\n")
+        XCTAssertEqual(text(result), "$$\na + b\n$$\n\n$$\na + c\n$$\n")
+        XCTAssertEqual(result.marks.map(\.mark), [.removed, .added])
+    }
+
+    /// The fence round the new copy of the front matter is longer than any
+    /// backticks inside it, and the YAML itself is kept as it was.
+    func testTheSecondFrontMatterIsFencedAsYAML() {
+        let result = merge("---\nnote: |\n  ```\n---\nBody.\n", "---\nnote: x\n---\nBody.\n")
+        XCTAssertEqual(
+            text(result), "---\nnote: x\n---\n\n````yaml\nnote: |\n  ```\n````\n\nBody.\n")
+    }
+
+    /// Prose is still compared a line at a time: one changed line of a long
+    /// paragraph does not mark the rest of it.
+    func testAParagraphIsStillComparedLineByLine() {
+        let result = merge("one\ntwo\nthree\n", "one\n2\nthree\n")
+        XCTAssertNil(mark(result, containing: "one"))
+        XCTAssertEqual(mark(result, containing: "2"), .removed)
+        XCTAssertEqual(mark(result, containing: "two"), .added)
+    }
+
     func testWithoutAComparisonNothingIsMarked() {
         let layout = DocumentLayout(
             document: Document(text: "# Title\n\nBody.\n"),
