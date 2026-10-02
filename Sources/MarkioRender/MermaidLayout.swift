@@ -395,54 +395,86 @@ enum MermaidLayout {
             )
         }
 
-        let down = diagram.direction == .down || diagram.direction == .up
-        // Between two boxes a relation has to fit its two end marks and its own
-        // words, and still show a shaft between them. A crow's foot alone eats
-        // most of the ordinary gap, so the gap is measured from what the
-        // relations actually draw rather than fixed.
+        // A relation keeps room at each end for its marks and its counts, so
+        // the stretch between a box and the words or the next box has to hold
+        // two of them; the words are a layer of their own.
         let headRoom = 11 * metrics.scale
         let markRoom =
             diagram.links.flatMap { [$0.fromEnd, $0.toEnd] }
             .map { inset($0, room: headRoom) + 3 * metrics.scale }.max() ?? 0
-        let wordRoom =
-            diagram.links.filter { !$0.label.isEmpty }
-            .map { measure(text($0.label, font: rowFont, color: theme.palette.text)) }
-            .map { down ? $0.height : $0.width }.max() ?? 0
-        let gap = markRoom * 2 + wordRoom + 24 * metrics.scale
-        var frames: [CGRect]
-        var content: CGSize
-        var walls: [(rect: CGRect, name: String)] = []
-        if diagram.namespaces.isEmpty {
-            (frames, content) = ranked(
-                sizes: entities.map(\.frame.size), links: diagram.links.map { ($0.from, $0.to) },
-                down: down, gap: gap, metrics: metrics)
-        } else {
-            (frames, content, walls) = walled(
-                diagram, sizes: entities.map(\.frame.size), down: down, gap: gap, theme: theme,
-                font: rowFont, metrics: metrics)
+        let colour = theme.palette.secondaryText
+        var labelSizes: [Int: CGSize] = [:]
+        for (index, link) in diagram.links.enumerated()
+        where !link.label.isEmpty && link.from != link.to {
+            let said = edgeWords(link.label, font: rowFont, color: colour)
+            labelSizes[index] = plate(said.size, centred: .zero).size
         }
-        // A relation that returns to its own box loops out beside it, and that
-        // room belongs to the picture as much as the box does.
-        for link in diagram.links where link.from == link.to && link.from < frames.count {
+        var loops: [Int: CGSize] = [:]
+        for link in diagram.links where link.from == link.to {
             let said =
-                link.label.isEmpty
-                ? 0
-                : measure(text(link.label, font: rowFont, color: theme.palette.text)).width
-                    + 12 * metrics.scale
-            content.width = max(
-                content.width,
-                frames[link.from].maxX + loopReach(metrics) + metrics.arrowLength + said)
+                link.label.isEmpty ? .zero : measure(text(link.label, font: rowFont, color: colour))
+            let beside =
+                loopReach(metrics) + metrics.arrowLength
+                + (said.width > 0 ? said.width + 12 * metrics.scale : 0)
+            let below =
+                loopReach(metrics) + metrics.arrowLength
+                + (said.height > 0 ? said.height + 6 * metrics.scale : 0)
+            let known = loops[link.from] ?? .zero
+            loops[link.from] = CGSize(
+                width: max(known.width, beside), height: max(known.height, below))
+        }
+        let titleRoom =
+            measure(text("X", font: rowFont, color: theme.palette.text)).height
+            + 10 * metrics.scale
+        // The same layout a flowchart gets: a namespace is a frame, a relation
+        // an edge between two boxes.
+        let chart = Flowchart(
+            direction: diagram.direction, nodes: [],
+            edges: diagram.links.map {
+                Flowchart.Edge(
+                    from: $0.from, to: $0.to, label: $0.label, stroke: .solid, arrow: false)
+            },
+            groups: diagram.namespaces.enumerated().map { index, space in
+                Flowchart.Group(
+                    title: space.name,
+                    members: diagram.boxes.indices.filter { diagram.boxes[$0].namespace == index },
+                    parent: space.parent)
+            })
+        let placement = placed(
+            chart: chart, sizes: entities.map(\.frame.size), labels: labelSizes, loops: loops,
+            metrics: metrics, titleRoom: titleRoom, inset: 12 * metrics.scale,
+            layerGap: metrics.rankGap,
+            // Two crow's feet side by side need their own width apart, and a
+            // little more, or they read as one mark; and a line turns only
+            // past its mark and the count written beside it.
+            lineGap: 18 * metrics.scale, endRoom: markRoom + 12 * metrics.scale, inTextOrder: true)
+        var content = placement.size
+        for link in diagram.links where link.from == link.to {
+            guard let frame = placement.nodes[link.from], let room = loops[link.from] else {
+                continue
+            }
+            if placement.below.contains(link.from) {
+                content.height = max(content.height, frame.maxY + room.height)
+            } else {
+                content.width = max(content.width, frame.maxX + room.width)
+            }
         }
         let left = max(metrics.padding, (width - content.width) / 2)
-        for index in frames.indices {
-            frames[index].origin.x += left
-            frames[index].origin.y += metrics.padding
+        for index in entities.indices {
+            entities[index].frame = (placement.nodes[index] ?? .zero).offsetBy(dx: left, dy: 0)
         }
-        for index in walls.indices {
-            walls[index].rect.origin.x += left
-            walls[index].rect.origin.y += metrics.padding
+        // A namespace's name is written inside its frame, in the strip the
+        // layout kept above what the frame holds.
+        let walls = diagram.namespaces.indices.compactMap {
+            index -> (rect: CGRect, name: String)? in
+            guard let box = placement.frames[index] else { return nil }
+            return (
+                rect: CGRect(
+                    x: box.minX + left, y: box.minY - titleRoom, width: box.width,
+                    height: box.height + titleRoom),
+                name: diagram.namespaces[index].name
+            )
         }
-        for index in entities.indices { entities[index].frame = frames[index] }
         // Where every box came to rest, taken once and not read again from the
         // array they live in. A relation asks this while it is being routed,
         // and a closure that reaches back into a variable the surrounding code
@@ -458,55 +490,19 @@ enum MermaidLayout {
             decorations += namespace(
                 wall.rect, named: wall.name, theme: theme, font: rowFont, metrics: metrics)
         }
-        // Two relations between the same pair are told apart by their lane, and
-        // a relation reaching past a box goes round it rather than under it.
-        struct Pair: Hashable {
-            var one: Int
-            var other: Int
-
-            init(_ link: BoxDiagram.Link) {
-                one = min(link.from, link.to)
-                other = max(link.from, link.to)
-            }
-        }
-        var pairs: [Pair: Int] = [:]
-        for link in diagram.links { pairs[Pair(link), default: 0] += 1 }
-        var taken: [Pair: Int] = [:]
-        func standing(between link: BoxDiagram.Link) -> [CGRect] {
-            placed.indices.filter { $0 != link.from && $0 != link.to }.map { placed[$0] }
-        }
-        // The lanes beside a box are handed out for the picture as a whole, so
-        // two relations passing the same box do not run down the same one.
-        var wanted: [Int: Bypass] = [:]
-        for (index, link) in diagram.links.enumerated() {
-            guard link.from < entities.count, link.to < entities.count,
-                let choice = laneChoice(
-                    from: entities[link.from].frame, to: entities[link.to].frame,
-                    obstacles: standing(between: link), metrics: metrics)
-            else { continue }
-            wanted[index] = choice
-        }
-        let beside = lanes(wanted, metrics: metrics)
-        // Three children of one parent would put three heads in the same place,
-        // so a crowd landing on one side is spread along it.
-        var straight: [(index: Int, from: CGRect, to: CGRect)] = []
-        for (index, link) in diagram.links.enumerated() where beside[index] == nil {
-            guard link.from < entities.count, link.to < entities.count, link.from != link.to
-            else { continue }
-            straight.append((index, entities[link.from].frame, entities[link.to].frame))
-        }
-        let pulled = spread(straight, metrics: metrics)
         var geometry = Geometry(nodes: placed, frames: walls.map(\.rect))
         for (index, link) in diagram.links.enumerated() {
             guard link.from < entities.count, link.to < entities.count else { continue }
-            let key = Pair(link)
-            let place = taken[key, default: 0]
-            taken[key] = place + 1
-            let lane = CGFloat(place) - CGFloat((pairs[key] ?? 1) - 1) / 2
+            let from = placed[link.from]
+            let to = placed[link.to]
             let drawn = relation(
-                link, from: entities[link.from].frame, to: entities[link.to].frame, lane: lane,
-                obstacles: standing(between: link), beside: beside[index],
-                pull: pulled[index] ?? (nil, nil), theme: theme, font: rowFont, metrics: metrics)
+                link, from: from, to: to,
+                route: placement.routes[index].map {
+                    carried($0.map { CGPoint(x: $0.x + left, y: $0.y) }, from: from, to: to)
+                },
+                wordsAt: placement.labels[index]?.offsetBy(dx: left, dy: 0),
+                loopBelow: placement.below.contains(link.from), theme: theme, font: rowFont,
+                metrics: metrics)
             decorations += drawn.decorations
             geometry.lines.append(
                 Geometry.Line(
@@ -666,10 +662,13 @@ enum MermaidLayout {
         return [
             .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true),
             .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
+            // Written at the left, as a flowchart frame's name is: a line
+            // entering the frame comes in near the middle and would cross it.
             .glyphs(
                 line,
                 origin: CGPoint(
-                    x: rect.midX - size.width / 2, y: rect.minY + 6 * metrics.scale + size.height)),
+                    x: rect.minX + 8 * metrics.scale, y: rect.minY + 6 * metrics.scale + size.height
+                )),
         ]
     }
 
@@ -801,17 +800,30 @@ enum MermaidLayout {
     }
 
     private static func relation(
-        _ link: BoxDiagram.Link, from: CGRect, to: CGRect, lane: CGFloat, obstacles: [CGRect],
-        beside: (vertical: Bool, at: CGFloat)?, pull: (out: CGFloat?, into: CGFloat?),
-        theme: Theme, font: CTFont, metrics: Metrics
+        _ link: BoxDiagram.Link, from: CGRect, to: CGRect, route: [CGPoint]?, wordsAt: CGRect?,
+        loopBelow: Bool, theme: Theme, font: CTFont, metrics: Metrics
     ) -> (decorations: [BlockBox.Decoration], path: [CGPoint], plate: CGRect?) {
         let colour = theme.palette.secondaryText
-        // A relation is a line between two boxes like any other, so it leaves,
-        // runs and arrives the way a flowchart edge does; only its end marks and
-        // its counts belong to the diagram that wrote it.
-        let points = connection(
-            from: from, to: to, lane: lane, obstacles: obstacles, metrics: metrics, beside: beside,
-            pull: pull)
+        // A relation is a line between two boxes like any other, so it runs
+        // the way the layout routed it, corners rounded, as a flowchart edge
+        // does; only its end marks and its counts belong to the diagram that
+        // wrote it. A loop is the one line the layout leaves to the caller.
+        let points: [CGPoint]
+        if let route, route.count >= 2 {
+            points = rounded(route, radius: 12 * metrics.scale)
+        } else if loopBelow && from == to {
+            let reach = loopReach(metrics) * 4 / 3
+            let left = from.minX + from.width / 4
+            let right = from.maxX - from.width / 4
+            points = samples(
+                from: CGPoint(x: right, y: from.maxY),
+                out: CGPoint(x: right, y: from.maxY + reach),
+                in: CGPoint(x: left, y: from.maxY + reach),
+                to: CGPoint(x: left, y: from.maxY))
+        } else {
+            points = connection(
+                from: from, to: to, lane: 0, obstacles: [], metrics: metrics)
+        }
         let start = points[0]
         let end = points[points.count - 1]
         // Which way the line is going where it meets each box, which is where
@@ -878,6 +890,14 @@ enum MermaidLayout {
             )
         }
         guard !link.label.isEmpty else { return (decorations, points, nil) }
+        // The layout made a block for the words; they are written in it.
+        if let wordsAt {
+            let said = edgeWords(link.label, font: font, color: colour)
+            decorations.append(
+                .fill(rect: wordsAt, color: theme.palette.background, cornerRadius: 2))
+            decorations += centred(said.lines, size: said.size, in: wordsAt)
+            return (decorations, points, wordsAt)
+        }
         let line = text(link.label, font: font, color: colour)
         let size = measure(line)
         // Half way along the line the line actually takes, not half way between
@@ -885,8 +905,11 @@ enum MermaidLayout {
         // loop is the exception — its words stand past its furthest point.
         let apex = point(along: points, at: length(of: points) / 2).point
         let middle =
-            from == to
-            ? CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y) : apex
+            from != to
+            ? apex
+            : loopBelow
+                ? CGPoint(x: apex.x, y: apex.y + size.height / 2 + 6 * metrics.scale)
+                : CGPoint(x: apex.x + size.width / 2 + 6 * metrics.scale, y: apex.y)
         let plate = CGRect(
             x: middle.x - size.width / 2 - 3, y: middle.y - size.height / 2 - 1,
             width: size.width + 6, height: size.height + 2)
@@ -3647,8 +3670,9 @@ enum MermaidLayout {
                 labelLines($0.title, font: labelFont, color: theme.palette.text).size.height
             }.max() ?? 0) + 7 * metrics.scale
         let placement = placed(
-            chart: chart, boxes: boxes, labels: labelSizes, loops: loops, metrics: metrics,
-            titleRoom: titleRoom)
+            chart: chart, sizes: boxes.map(\.frame.size), labels: labelSizes, loops: loops,
+            metrics: metrics, titleRoom: titleRoom, inset: metrics.siblingGap / 2,
+            layerGap: metrics.rankGap, lineGap: 10 * metrics.scale)
         for (index, frame) in placement.nodes { boxes[index].frame = frame }
         // A loop stands out beside the box it returns to, and that room is part
         // of the picture: without it the loop is cut off at the edge.
@@ -3943,24 +3967,24 @@ enum MermaidLayout {
     /// in different frames is, at this level, an edge between the two blocks,
     /// so the frames themselves fall into ranks the same way boxes do.
     private static func placed(
-        chart: Flowchart, boxes: [Placed], labels: [Int: CGSize], loops: [Int: CGSize],
-        metrics: Metrics, titleRoom: CGFloat
+        chart: Flowchart, sizes boxSizes: [CGSize], labels: [Int: CGSize], loops: [Int: CGSize],
+        metrics: Metrics, titleRoom: CGFloat, inset: CGFloat, layerGap: CGFloat,
+        lineGap: CGFloat, endRoom: CGFloat = 0, inTextOrder: Bool = false
     ) -> Placement {
-        var owner = [Int?](repeating: nil, count: boxes.count)
+        var owner = [Int?](repeating: nil, count: boxSizes.count)
         for (index, group) in chart.groups.enumerated() {
             for member in group.members where member < owner.count { owner[member] = index }
         }
         // Every box a frame holds, however deep — what an edge crossing frames
         // has to be resolved against.
         var reach = [Set<Int>](repeating: [], count: chart.groups.count)
-        for index in boxes.indices {
+        for index in boxSizes.indices {
             var walk = owner[index]
             while let group = walk {
                 reach[group].insert(index)
                 walk = chart.groups[group].parent
             }
         }
-        let inset = metrics.siblingGap / 2
 
         func direction(of container: Int?) -> Flowchart.Direction {
             container.map { chart.groups[$0].direction ?? chart.direction } ?? chart.direction
@@ -3984,22 +4008,64 @@ enum MermaidLayout {
             }
         }
 
+        // Where an edge is laid out as one line — the innermost container in
+        // which its two ends are different blocks — and whether it is turned
+        // round there. Every frame it crosses on the way to a box is entered
+        // from the side that layout reaches it from.
+        func laidOut(_ edge: Flowchart.Edge) -> (level: Int?, turned: Bool) {
+            func enclosing(_ end: Flowchart.End) -> [Int?] {
+                var walk: Int?
+                switch end {
+                case .node(let node): walk = owner[node]
+                case .frame(let group): walk = chart.groups[group].parent
+                }
+                var chain: [Int?] = []
+                while let group = walk {
+                    chain.insert(group, at: 0)
+                    walk = chart.groups[group].parent
+                }
+                return [nil] + chain
+            }
+            func key(_ end: Flowchart.End) -> Int {
+                switch end {
+                case .node(let node): return node
+                case .frame(let group): return reach[group].min() ?? Int.max
+                }
+            }
+            let one = enclosing(edge.from)
+            let other = enclosing(edge.to)
+            var depth = 0
+            while depth + 1 < min(one.count, other.count), one[depth + 1] == other[depth + 1] {
+                depth += 1
+            }
+            func unit(_ chain: [Int?], _ end: Flowchart.End) -> Int {
+                depth + 1 < chain.count ? key(.frame(chain[depth + 1]!)) : key(end)
+            }
+            return (one[depth], inTextOrder && unit(one, edge.from) > unit(other, edge.to))
+        }
+
         func layout(container: Int?) -> Placement {
             let children = chart.groups.indices.filter { chart.groups[$0].parent == container }
-            let loose = boxes.indices.filter { owner[$0] == container }
+            let loose = boxSizes.indices.filter { owner[$0] == container }
             enum Unit {
                 case node(Int)
                 case frame(Int)
                 /// Where an edge crosses this frame's border.
                 case port(Int)
             }
-            var units: [Unit] = loose.map { .node($0) } + children.map { .frame($0) }
+            // In the order the author wrote them: a frame stands where the
+            // first box it holds was written, so text order breaks ties for
+            // frames as it does for boxes.
+            var units: [Unit] =
+                (loose.map { (Unit.node($0), $0) }
+                + children.map { (Unit.frame($0), reach[$0].min() ?? Int.max) })
+                .sorted { $0.1 < $1.1 }.map(\.0)
             var inner: [Int: Placement] = [:]
             var sizes: [CGSize] = []
             for unit in units {
                 switch unit {
                 case .node(let index):
-                    sizes.append(boxes[index].frame.size)
+                    sizes.append(boxSizes[index])
                 case .frame(let group):
                     let laid = layout(container: group)
                     inner[group] = laid
@@ -4070,7 +4136,6 @@ enum MermaidLayout {
             var crossing: [Int] = []
             var against = Set<Int>()
             if let container {
-                let outer = start(direction(of: chart.groups[container].parent))
                 func outside(_ end: Flowchart.End) -> Bool {
                     guard unitOf[end] == nil else { return false }
                     if case .frame(let group) = end {
@@ -4082,7 +4147,9 @@ enum MermaidLayout {
                     let entering = outside(edge.from) && unitOf[edge.to] != nil
                     let leaving = unitOf[edge.from] != nil && outside(edge.to)
                     guard entering || leaving else { continue }
-                    let side = entering ? outer : opposite(outer)
+                    let whole = laidOut(edge)
+                    let outer = start(direction(of: whole.level))
+                    let side = entering != whole.turned ? outer : opposite(outer)
                     let first = start(turn)
                     let pin: LayeredLayout.Pin
                     if side == first {
@@ -4129,8 +4196,9 @@ enum MermaidLayout {
             }
             let laid = LayeredLayout.layout(
                 sizes: sizes.map(across), edges: links, loopRoom: loopRoom, pinned: pinned,
+                inTextOrder: inTextOrder,
                 spacing: LayeredLayout.Spacing(
-                    node: metrics.siblingGap, layer: metrics.rankGap, edge: 10 * metrics.scale))
+                    node: metrics.siblingGap, layer: layerGap, edge: lineGap, end: endRoom))
             let along = laid.size.height
             // `BT` and `RL` are the same graph read from the other end, so the
             // layer axis is turned over once every block is placed.
@@ -4202,7 +4270,7 @@ enum MermaidLayout {
                 case .node(let node):
                     if !down { placement.below.insert(node) }
                     placement.nodes[node] = CGRect(
-                        origin: origins[index], size: boxes[node].frame.size)
+                        origin: origins[index], size: boxSizes[node])
                 case .frame(let group):
                     guard let laid = inner[group] else { continue }
                     let box = CGRect(

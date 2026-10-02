@@ -244,3 +244,40 @@ extension LayeredLayoutTests {
         }
     }
 }
+
+extension LayeredCoreTests {
+    /// Relations that read the same both ways are laid out in the order the
+    /// boxes were written, cycle or not.
+    func testInTextOrderEveryLineRunsFromTheBoxWrittenFirst() {
+        let result = LayeredLayout.layout(
+            sizes: [box, box],
+            edges: [LayeredLayout.Edge(from: 1, to: 0, label: nil)],
+            inTextOrder: true, spacing: spacing)
+        XCTAssertLessThan(result.frames[0].maxY, result.frames[1].minY)
+        XCTAssertEqual(result.routes[0].first!.y, result.frames[1].minY, accuracy: 0.5)
+    }
+
+    /// A line to a point on a frame's border keeps the direction the point
+    /// was pinned for, even when text order would turn it round.
+    func testALineToAPinnedPointIsNeverTurned() {
+        let result = LayeredLayout.layout(
+            sizes: [box, .zero],
+            edges: [LayeredLayout.Edge(from: 1, to: 0, label: nil)],
+            pinned: [1: .first], inTextOrder: true, spacing: spacing)
+        XCTAssertLessThan(result.frames[1].maxY, result.frames[0].minY)
+    }
+
+    /// Two lines held at the two ends of one wide box cross unless the boxes
+    /// they come from stand in the same order.
+    func testHeldPortsDecideTheOrderAbove() {
+        let wide = CGSize(width: 300, height: 30)
+        let result = LayeredLayout.layout(
+            sizes: [box, box, wide],
+            edges: [
+                LayeredLayout.Edge(from: 0, to: 2, label: nil, toPort: 280),
+                LayeredLayout.Edge(from: 1, to: 2, label: nil, toPort: 20),
+            ],
+            spacing: spacing)
+        XCTAssertGreaterThan(result.frames[0].midX, result.frames[1].midX)
+    }
+}

@@ -64,6 +64,9 @@ enum LayeredLayout {
         var layer: CGFloat
         /// Between two lines, and between a line and a box it passes.
         var edge: CGFloat
+        /// The least straight run a line keeps where it meets a box, before it
+        /// turns: room for whatever mark the caller draws at its end.
+        var end: CGFloat = 0
     }
 
     struct Result {
@@ -82,13 +85,17 @@ enum LayeredLayout {
     ///
     /// - Parameter loopRoom: per box, room to keep free on its right for a
     ///   line that leaves the box and comes back to it, which the caller draws.
+    /// - Parameter inTextOrder: every edge is laid out pointing from the box
+    ///   written first, cycle or not. For relations that read the same both
+    ///   ways — an entity diagram's — the order the author wrote the boxes in
+    ///   is the only order there is.
     static func layout(
         sizes: [CGSize], edges: [Edge], loopRoom: [CGFloat] = [], pinned: [Int: Pin] = [:],
-        spacing: Spacing
+        inTextOrder: Bool = false, spacing: Spacing
     ) -> Result {
         var graph = Graph(sizes: sizes, loopRoom: loopRoom)
         graph.pinned = Set(pinned.keys)
-        let arcs = graph.arcs(for: edges, spacing: spacing)
+        let arcs = graph.arcs(for: edges, inTextOrder: inTextOrder, spacing: spacing)
         var rank = ranks(count: graph.count, arcs: arcs)
         // A pinned box takes a layer of its own beyond everything else, so
         // the line from it crosses every layer it has to on the inside.
@@ -107,7 +114,15 @@ enum LayeredLayout {
         }
         let chains = graph.chains(edges: edges, arcs: arcs, rank: rank)
         var layers = graph.layers(rank: rank, chains: chains)
-        let links = Links(count: graph.count, chains: chains)
+        var links = Links(count: graph.count, chains: chains)
+        for (index, edge) in edges.enumerated() where chains[index].count > 1 {
+            let chain = chains[index]
+            for (node, port) in [(edge.from, edge.fromPort), (edge.to, edge.toPort)] {
+                guard let port, sizes[node].width > 0 else { continue }
+                let next = chain.first == node ? chain[1] : chain[chain.count - 2]
+                links.held[node * graph.count + next] = Double(port / sizes[node].width)
+            }
+        }
         order(&layers, links: links, graph: graph)
         let x = coordinates(layers: layers, links: links, graph: graph, spacing: spacing)
         return route(
@@ -159,11 +174,16 @@ enum LayeredLayout {
         /// The edges as the layout sees them: pointing down, with the edges
         /// that close a cycle turned round, and split in two around their words
         /// when they have any.
-        mutating func arcs(for edges: [Edge], spacing: Spacing) -> [Arc] {
+        mutating func arcs(for edges: [Edge], inTextOrder: Bool, spacing: Spacing) -> [Arc] {
             let cycle = LayeredLayout.cycles(count: real, edges: edges)
             var arcs: [Arc] = []
             for (index, edge) in edges.enumerated() where edge.from != edge.to {
-                let back = cycle[edge.from] == cycle[edge.to] && edge.from > edge.to
+                // A line to a point on a frame's border runs the way the
+                // point was pinned, whatever the order.
+                let held = pinned.contains(edge.from) || pinned.contains(edge.to)
+                let back =
+                    !held && (inTextOrder || cycle[edge.from] == cycle[edge.to])
+                    && edge.from > edge.to
                 if back { turned.insert(index) }
                 let (top, bottom) = back ? (edge.to, edge.from) : (edge.from, edge.to)
                 let order = Double(top) + 0.5 + Double(index) * 1e-4
@@ -277,8 +297,14 @@ enum LayeredLayout {
     fileprivate struct Links {
         var up: [[Int]]
         var down: [[Int]]
+        /// Where on a box a line is held, as a share of its width, for the
+        /// lines a frame's own layout already ran to its border; keyed by the
+        /// box and the neighbour the line goes to.
+        var held: [Int: Double] = [:]
+        let count: Int
 
         init(count: Int, chains: [[Int]]) {
+            self.count = count
             up = Array(repeating: [], count: count)
             down = Array(repeating: [], count: count)
             for chain in chains where chain.count > 1 {
@@ -287,6 +313,13 @@ enum LayeredLayout {
                     up[chain[step]].append(chain[step - 1])
                 }
             }
+        }
+
+        /// Where the line to `other` meets `node`, counted in places along the
+        /// layer: the box's own place, nudged towards the side its port is
+        /// held at, so lines held at two ends of one frame are told apart.
+        func place(_ node: Int, at index: Int, towards other: Int) -> Double {
+            Double(index) + ((held[node * count + other] ?? 0.5) - 0.5) * 0.9
         }
     }
 
@@ -511,13 +544,13 @@ enum LayeredLayout {
                 var centre: [Int: Double] = [:]
                 for (index, node) in current.enumerated() {
                     let others = (downwards ? links.up[node] : links.down[node]).compactMap {
-                        place[$0]
+                        other in place[other].map { links.place(other, at: $0, towards: node) }
                     }
                     centre[node] =
                         others.isEmpty
                         ? Double(index) / Double(max(1, current.count - 1))
                             * Double(max(0, fixed.count - 1))
-                        : Double(others.reduce(0, +)) / Double(others.count)
+                        : others.reduce(0, +) / Double(others.count)
                 }
                 // A tie keeps the order the layer already has: that is what
                 // lets the starts differ, and the author's order is the
@@ -607,9 +640,16 @@ enum LayeredLayout {
     private static func crossings(_ upper: [Int], _ lower: [Int], links: Links) -> Int {
         var place: [Int: Int] = [:]
         for (index, node) in lower.enumerated() { place[node] = index }
-        var ends: [(Int, Int)] = []
+        var ends: [(Double, Double)] = []
         for (index, node) in upper.enumerated() {
-            for next in links.down[node] { if let at = place[next] { ends.append((index, at)) } }
+            for next in links.down[node] {
+                guard let at = place[next] else { continue }
+                ends.append(
+                    (
+                        links.place(node, at: index, towards: next),
+                        links.place(next, at: at, towards: node)
+                    ))
+            }
         }
         var total = 0
         for one in ends.indices {
@@ -805,6 +845,27 @@ enum LayeredLayout {
             if node == edges[edge].to, let port = edges[edge].toPort { return left + port }
             return nil
         }
+        // A port a frame's own layout fixed stays where it is; the others keep
+        // a line's width clear of it, or two lines would leave the frame as
+        // one.
+        func clear(_ node: Int, _ lines: [Int], _ spread: [CGFloat]) -> [CGFloat] {
+            let anchors = lines.map { fixed($0, node) }
+            guard anchors.contains(where: { $0 != nil }) else { return spread }
+            let half = graph.width[node] / 2
+            // The hops come sorted by where they are going, so a free port
+            // stays on the same side of a fixed one as its line's target.
+            return spread.indices.map { index in
+                if let anchor = anchors[index] { return anchor }
+                var value = spread[index]
+                for (other, anchor) in anchors.enumerated() {
+                    guard let anchor else { continue }
+                    value =
+                        other < index
+                        ? max(value, anchor + spacing.edge) : min(value, anchor - spacing.edge)
+                }
+                return min(max(value, x[node] - half), x[node] + half)
+            }
+        }
         func ports(_ node: Int, _ towards: [CGFloat]) -> [CGFloat] {
             guard graph.kind[node] == 0 else { return towards.map { _ in x[node] } }
             let half = graph.width[node] / 2
@@ -836,16 +897,36 @@ enum LayeredLayout {
                 let sorted = hops.sorted {
                     (x[gaps[gap][$0].lower], $0) < (x[gaps[gap][$1].lower], $1)
                 }
-                let at = ports(node, sorted.map { x[gaps[gap][$0].lower] })
-                for (index, hop) in sorted.enumerated() {
-                    gaps[gap][hop].out = fixed(gaps[gap][hop].edge, node) ?? at[index]
-                }
+                let at = clear(
+                    node, sorted.map { gaps[gap][$0].edge },
+                    ports(node, sorted.map { x[gaps[gap][$0].lower] }))
+                for (index, hop) in sorted.enumerated() { gaps[gap][hop].out = at[index] }
             }
             for (node, hops) in arriving {
                 let sorted = hops.sorted { (gaps[gap][$0].out, $0) < (gaps[gap][$1].out, $1) }
-                let at = ports(node, sorted.map { gaps[gap][$0].out })
-                for (index, hop) in sorted.enumerated() {
-                    gaps[gap][hop].into = fixed(gaps[gap][hop].edge, node) ?? at[index]
+                let at = clear(
+                    node, sorted.map { gaps[gap][$0].edge },
+                    ports(node, sorted.map { gaps[gap][$0].out }))
+                for (index, hop) in sorted.enumerated() { gaps[gap][hop].into = at[index] }
+            }
+            // A step of a few points reads as a kink, not a turn: where the
+            // line is the only one on that side of a box and nothing holds it,
+            // it is drawn straight.
+            for index in gaps[gap].indices {
+                let hop = gaps[gap][index]
+                guard abs(hop.out - hop.into) < spacing.edge / 2, hop.out != hop.into else {
+                    continue
+                }
+                if graph.kind[hop.lower] == 0, arriving[hop.lower]?.count == 1,
+                    fixed(hop.edge, hop.lower) == nil,
+                    abs(hop.out - x[hop.lower]) < graph.width[hop.lower] / 2
+                {
+                    gaps[gap][index].into = hop.out
+                } else if graph.kind[hop.upper] == 0, leaving[hop.upper]?.count == 1,
+                    fixed(hop.edge, hop.upper) == nil,
+                    abs(hop.into - x[hop.upper]) < graph.width[hop.upper] / 2
+                {
+                    gaps[gap][index].out = hop.into
                 }
             }
         }
@@ -932,7 +1013,8 @@ enum LayeredLayout {
         // for the lines to keep clear of.
         let bare = layers.map { layer in !layer.isEmpty && layer.allSatisfy(graph.pinned.contains) }
         for gap in gaps.indices {
-            let needed = spacing.edge * 2 + CGFloat(max(0, tracks[gap] - 1)) * spacing.edge
+            let needed =
+                max(spacing.edge, spacing.end) * 2 + CGFloat(max(0, tracks[gap] - 1)) * spacing.edge
             room[gap] = bare[gap] || bare[gap + 1] ? needed : max(spacing.layer, needed)
             top[gap + 1] = top[gap] + depth[gap] + room[gap]
         }

@@ -1,0 +1,18 @@
+classDiagram
+  direction TB
+  class Reader
+  namespace Model {
+    class Document
+    class Block
+    class Leaf
+  }
+  namespace View {
+    class Window
+    class Column
+  }
+  Reader --> Document : opens
+  Document *-- Block : holds
+  Block <|-- Leaf
+  Window o-- Column
+  Column ..> Leaf : draws
+  Reader --> Window

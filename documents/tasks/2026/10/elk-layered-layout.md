@@ -126,7 +126,7 @@ rewritten as the stages land.
   corners; the lane/bow/spread routing is deleted.
   - Test: `Tests/MarkioRenderTests/LayeredLayoutTests.swift`
   - Evidence: `grep -c -E 'func (laneChoice|lanes|bow|spread)\(' Sources/MarkioRender/MermaidLayout.swift` prints 0
-- [ ] VIEW-25: flowcharts (with subgraphs, all four directions), state machines,
+- [x] VIEW-25: flowcharts (with subgraphs, all four directions), state machines,
   class and entity diagrams use the new layout.
   - Evidence: `deno task layoutbench` — total defects over the nine graphs ≤ 5,
     mean detour ≤ 1.20, worst detour ≤ 2.5
@@ -269,3 +269,49 @@ What it took beyond the papers:
 
 Known and left for later: several lines on a small box get ports 5–10 points
 apart, and their rounded corners nearly touch (unix, `6th Edition`).
+
+### Stage 4 — box diagrams (2026-10-02)
+
+Class and entity diagrams build a stand-in flowchart — namespaces as frames,
+relations as edges — and go through the same `placed(...)` as flowcharts;
+`ranked(...)` and `walled(...)` lost their callers. `classes.mmd` (namespaces,
+lines across them) was added as the eleventh fixture.
+
+```
+graph           cross  through  labels  overlap  faults  detour  worst
+classes             0        0       0        0       0    1.01   1.03
+er                  0        0       0        0       0    1.13   1.36
+frames              0        0       0        0       0    1.03   1.17
+fsm                 0        0       0        0       0    1.20   1.66
+operations          0        0       0        0       0    1.08   1.30
+petersen            2        0       0        0       2    1.15   1.34
+publication         0        0       0        0       0    1.24   1.46
+source              0        0       0        0       0    1.29   1.92
+story               0        0       0        0       0    1.23   1.37
+tcp                 0        0       0        0       0    1.22   1.49
+unix                2        0       0        0       2    1.14   1.36
+total                                                 4    1.16   1.92
+```
+
+The gate (≤ 5 faults, mean detour ≤ 1.20, worst ≤ 2.5) holds; unix and
+petersen keep exactly ELK's crossings.
+
+What it took:
+
+- Relations of a box diagram are laid out in text order whatever their
+  direction (`inTextOrder`), as ELK's model-order cycle breaking does: er went
+  from 2 crossings to 0, RUN dropping to the bottom. Flowcharts keep turning
+  only edges inside a cycle, so an arrow points up only where it has to.
+- Crow's feet need room: ports on one side stand 18 points apart (10 for
+  flowcharts), and a line keeps a straight run of its mark plus 12 points at
+  either end (`Spacing.end`) before it turns.
+- The side a line enters a frame by is decided where the line is laid out as
+  a whole, turned or not, rather than by the frame's parent; a free port keeps
+  a line's width clear of a fixed one, on its target's side; and the order of
+  fixed ports on a frame counts in crossing minimisation and barycenters, so a
+  line held at the right end of a frame is fed from the right.
+- A line whose two ends differ by under half a line spacing, alone on that
+  side of a real box, is drawn straight instead of with a two-point kink.
+- Namespace names are written at the left of their frame, as flowchart frame
+  names are; a line still may cross a frame's name when the box it serves
+  stands at the frame's left edge (classes: `draws` over `View`).
