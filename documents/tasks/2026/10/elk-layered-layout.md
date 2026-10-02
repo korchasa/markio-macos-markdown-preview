@@ -121,7 +121,7 @@ rewritten as the stages land.
   the tie-break; edge labels are layout dummies, wrapped at 12 characters.
   - Test: `Tests/MarkioRenderTests/LayeredLayoutTests.swift`
   - Evidence: `deno task test`
-- [ ] VIEW-25: coordinates come from Brandes–Köpf with straight edges preferred;
+- [x] VIEW-25: coordinates come from Brandes–Köpf with straight edges preferred;
   edges are routed orthogonally between layers and drawn with 12-point rounded
   corners; the lane/bow/spread routing is deleted.
   - Test: `Tests/MarkioRenderTests/LayeredLayoutTests.swift`
@@ -315,3 +315,44 @@ What it took:
 - Namespace names are written at the left of their frame, as flowchart frame
   names are; a line still may cross a frame's name when the box it serves
   stands at the frame's left edge (classes: `draws` over `View`).
+
+### Stage 5 — the old routing deleted (2026-10-02)
+
+Every line a layout routes now goes through `placed(...)`, so the routing that
+guessed lanes after the fact had no work left: `ranked`, `walled`,
+`laneChoice`, `lanes`, `spread`, `bow` and `Bypass` are gone, with the
+flowchart setup that fed them (pairs of lines between the same boxes, label
+plates already taken, boxes standing between the ends, lines pulled to one
+side). `edge(...)` lost its lane, side, obstacle and pull parameters and the
+search for a free place for the words; `connection(...)` keeps the loop and
+the plain box-to-box join. The few lines the layout does not route — a loop,
+a line between a frame and a box inside it — carry their words half way
+along. `basis`, `Landing` and `midpoint` were left without callers and went
+too. `MermaidLayout.swift` is 686 lines shorter; `ranks(...)` stays, because
+sankey diagrams order their columns with it.
+
+```
+graph           cross  through  labels  overlap  faults  detour  worst
+classes             0        0       0        0       0    1.01   1.03
+er                  0        0       0        0       0    1.13   1.36
+frames              0        0       0        0       0    1.03   1.17
+fsm                 0        0       0        0       0    1.20   1.66
+operations          0        0       0        0       0    1.08   1.30
+petersen            2        0       0        0       2    1.15   1.34
+publication         0        0       0        0       0    1.24   1.46
+source              0        0       0        0       0    1.29   1.92
+story               0        0       0        0       0    1.23   1.37
+tcp                 0        0       0        0       0    1.22   1.49
+unix                2        0       0        0       2    1.14   1.36
+total                                                 4    1.16   1.92
+```
+
+The table is the same as after stage 4, line for line: nothing the bench
+measures went through the deleted code. `deno task check` passes.
+
+The 27 Mermaid sources in the fixtures, the documents and the README were
+drawn by the build before and after the deletion and compared byte for byte:
+no picture changed. Block diagrams are the one place a line now always goes
+straight from box to box; a line across a crowded grid (`a --> c` with a box
+between them) runs over that box, where the deleted code ran it over a
+different one.
