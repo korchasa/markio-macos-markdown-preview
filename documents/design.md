@@ -411,144 +411,144 @@ would change the picture and that this cannot follow still refuses the whole
 diagram; the words that say nothing about the picture at all — how loudly
 Mermaid logs, when it starts — are named one by one and passed over.
 
-`MermaidLayout` places it. A flowchart is ranked by longest path — the edges
-relaxed `|V|` times, which gives a topological answer and cannot spin on a cycle
-— then each rank is measured, centred against the widest, and laid along the
-rank axis. Relaxing over a cycle terminates but settles on a wrong answer: every
-node in the loop is pushed to the same late rank, and a state machine that
-returns to its start collapses into one row. So a depth-first walk marks the
-edges that close a cycle first, and the ranking is run on the graph without
-them; the edges themselves are still drawn. All four directions are the same
-routine: `TD` and `LR` swap the axes, `BT` and `RL` turn the rank axis over once
-every box is placed.
+`MermaidLayout` places it.
+
+#### Laying out a graph
+
+A flowchart is placed by the layered layout in `LayeredLayout.swift`: the
+pipeline ELK Layered follows, written from the papers it rests on rather than
+ported from ELK's source. It knows nothing of CoreText or themes. It takes the
+size of every box and the lines between them, with the size of each line's
+words, and gives back where every box stands, the points every line runs
+through and the rectangle its words sit in — which is what lets it be tested
+on graphs of three boxes. It always works down the page; `LR`, `BT` and `RL`
+turn its answer once every box is placed. The stages, in order:
+
+- *Cycles.* A graph with a cycle has no top, so one line of each cycle is
+  turned over for the layout and still drawn the right way round. Tarjan's
+  strongly connected components find the cycles, and inside one a line is
+  turned when it runs against the order the boxes were written in. A line
+  between two components is never turned, so an arrow points up the page only
+  where the graph forces it. Class and entity diagrams turn every line that
+  runs against the written order (`inTextOrder`), as ELK's model-order cycle
+  breaking does, so such a diagram reads in the order it was written.
+- *Layers.* Network simplex (Gansner et al.) gives every box its layer and
+  keeps lines as short as the graph allows. A line with words is two layers
+  long: its words, wrapped at 12 characters, are a box of their own in the
+  layer between, so the layout makes room for them instead of a later step
+  hunting for a free place.
+- *Long lines.* A line that skips layers gets a stand-in point in each layer
+  it passes, and the next two stages treat those points like boxes.
+- *Order inside a layer.* Barycenter sweeps down and up the layers, then
+  swapping neighbours wherever that removes a crossing. A sweep only reaches
+  the nearest good order from where it starts, so it runs from 27 starts — the
+  written order, two depth-first walks and 24 fixed shuffles — and keeps the
+  start with the fewest crossings, the earliest on a tie. A tie inside a sweep
+  keeps the current order; breaking it by the written order made every start
+  converge on the same answer. A last pass puts boxes back in the written order
+  wherever that costs no crossing.
+- *Coordinates.* Brandes–Köpf: four alignments, balanced. It keeps a chain of
+  stand-in points in one line, so a long line runs as one straight stretch.
+- *Routing.* Every line is orthogonal: straight out of its box, across the gap
+  between two layers on a track of its own, and straight into the next layer.
+  The tracks in a gap are ordered so that lines cross as little as possible
+  (Sander), and a gap is as wide as its tracks need. Several lines meeting one
+  side of a box get ports of their own along it, in the order their other ends
+  stand. A line whose two ends differ by under half a line spacing, alone on
+  that side of a real box, is drawn straight instead of with a small kink. The
+  corners are rounded with a 12-point radius when the line is drawn.
+
+Spacing is set per diagram. Lines meeting a flowchart box stand 10 points
+apart. On a class or entity box they stand 18 points apart, and every line
+keeps a straight run as long as its end mark plus 12 points before it turns,
+because a crow's foot drawn on a bend cannot be read.
+
+A line from a box to itself is not laid out. The box is given room for a loop
+instead: to its right when the layers run down the page, and below it when
+they run across, so the loop never lies in the gap the other lines run
+through.
+
+`deno task layoutbench` measures the result on the graphs in
+`test-fixtures/layout/`: crossings, lines through boxes, covered words,
+overlapping boxes and detours. The layout was accepted against ELK's own
+numbers on the same graphs; run the bench before and after any change to it.
 
 #### Joining two boxes
 
-Wherever a line joins two rectangles, it is drawn by `connection`, and the rules
-below are the whole of what it does. They hold for a flowchart and for
-everything read into one — a state machine, a C4 model, a block diagram — and
-equally for a class diagram, an entity diagram and a requirement diagram, which
-have their own layout but the same lines. Mermaid works the same way: one
-`insertEdge` serves every one of these, and the diagram decides only the marks
-on the ends. They do not hold where the kind of diagram fixes the geometry
-itself: a sequence message runs between two lifelines, an architecture edge
-leaves by the side its author wrote (`db:R -- L:server`), a git graph runs on
-the rails of its branches. Mermaid keeps those apart too, in renderers of their
-own.
+Wherever a line joins two boxes, the line comes from the layout above, and the
+diagram decides only the marks on its ends. That holds for a flowchart and for
+everything read into one — a state machine, a C4 model — and equally for a
+class diagram, an entity diagram and a requirement diagram, which are laid out
+through a stand-in flowchart. Mermaid works the same way: one `insertEdge`
+serves every one of these. It does not hold where the kind of diagram fixes the
+geometry itself: a sequence message runs between two lifelines, an
+architecture edge leaves by the side its author wrote (`db:R -- L:server`), a
+git graph runs on the rails of its branches. Mermaid keeps those apart too, in
+renderers of their own.
 
-*Where a line leaves.* By the side facing the box at the other end, which the
-direction of the layout settles: down the page, a line leaves the bottom and
-arrives at the top. The point on that side is where the line crosses it. A line
-joining the two boxes directly is held three tenths of a side in from either end
-— left to itself the point slides into a corner, and a line leaving at a corner
-reads as a line that missed the box. A line with a lane is held off the corner
-itself and no further: the lane already stands beside the box, so the nearest
-point on the side is the one the reader would draw, and holding it in only makes
-the line swing back out to reach the lane. Where two boxes overlap by so little
-that no held-in point exists, they are treated as standing corner to corner. A
-line from a box to itself has no facing side at all: it leaves the right-hand
-side and comes back to it lower down.
+*Where a line ends.* At the border, never across it. The mark on the end is
+drawn in the room the line gives up for it and faces along the last stretch of
+line. A box that is not a rectangle — a diamond, a circle, a cylinder — has a
+rectangle standing well clear of it, so a line stopped at the rectangle would
+end in mid-air beside the shape: where a node has an outline of its own, the
+crossing is found by halving the run between the centre and the rectangle a
+dozen times, which needs nothing from the shape but the path it is already
+drawn with. A frame is its border and nothing more: a line that ends on a frame
+stops there. The frame's name is written in the strip over the border, at the
+left, and a line coming in from above crosses that strip, so the name is moved
+along it to the first place no line runs through. Where there is no such place
+— a narrow frame with a line into its middle — a line that ends on the frame
+itself stops over the name instead of running through it, the way Mermaid's
+arrow stops at the frame's titled head. A class diagram's namespace writes its
+name inside the frame, and moves it the same way.
 
-Several lines meeting one side share it. Left alone each would be drawn to the
-middle of it, so three classes inheriting from one would put three heads in the
-same place and read as a single smudge. They are given their own places along
-the side instead, in the order their other ends stand — which is also what keeps
-them from crossing on the way in — and a crowd is allowed nearer the corners
-than one line is, since a line among several is plainly one of several and the
-room matters more than the hold. They are spread no further than tells two heads
-apart: a pair pushed to the ends of a wide side leans both lines for no reason a
-reader could name. A line with a lane keeps out of this, because where it meets
-the box was settled by the lane it runs in.
+*Words.* A line's words are written in the rectangle the layout made for them,
+on the line, over a plate of the page's colour so the line does not run through
+them. They are written last, over everything else.
 
-*How it runs.* Straight, where the two sides face each other and nothing stands
-between — down the middle of what the two boxes share, rather than from centre
-to centre, because aiming at the centres leans the line whenever the boxes are
-not the same width, and one leaning line in a column of upright ones reads as a
-mistake. Corner to corner, it runs straight out of the side it leaves by, turns
-once half way, and comes in straight at the far end. Past a box that stands
-between, it runs out of its side, sweeps into a lane beside that box, runs
-straight down the lane, and sweeps out of it to come in square at the far end.
-A sweep is a cubic with both handles half way along it, so the bend is even from
-end to end, and it is spread over the gap between two ranks at the least however
-little the line has to move sideways — a bend as short as that movement turns
-hard and then runs straight, which reads as a kink rather than a curve — and
-over no more than a share of the run, or it eats the lane it is joining. Which
-lane that is, on which side, is settled for the picture as a whole rather than by
-each line for itself, and by two rules. A line takes the side where fewer of the
-lines already there are ones it would have to cross; only lines whose runs
-interleave count, because two nested runs never cross — the longer stands outside
-the shorter the way brackets do — and where the two sides come out equal the
-nearer wins. Then, on one side, a line that runs past another stands further out
-than the one it passes, so runs that share a stretch nest and runs that share
-nothing sit in the same lane and cost no room at all. The shortest run is settled
-first: a lane goes outside whatever it already runs alongside, so settling the
-longest first would leave it innermost with everything it passes crossing over
-it. The lane itself is then walked outward past one box at a time until nothing
-is left standing in it — clearing only the box that first blocked the straight
-line leaves the lane inside whatever stands beyond. The lanes are handed out for the
-picture as a whole rather than by each line for itself, so two lines passing the
-same box take lanes of their own instead of one. Two boxes joined both ways are
-joined by two lines bowed to opposite sides, and which side is which is read in
-a fixed direction — the across-direction turns over with the line, so a lane
-read in the line's own would put both on the same side. Every curve is flattened
-into a run of points, which is what lets a dashed edge keep an even rhythm round
-a bend and an arrowhead sit square on the line's real direction.
-
-*Where it arrives.* By the same two rules the exit follows. A frame is its
-border and nothing more: its name is written above it and to the left, so
-counting the whole strip as the frame's own would stop every line a whole line's
-height short with nothing under its head. The name stands in the way as a box
-does instead, and only a line that would really cross a name goes round one —
-except for the line that ends on the frame the name belongs to, which is on its
-way to the border under it. Sending that line out to one side and back is what
-crossed the two arrows leaving a state machine's start over each other. The
-line stops at the border and never crosses it; the mark on the end is drawn in the room the
-line gives up for it and faces along the last stretch of line. A box that is not
-a rectangle — a diamond, a circle, a cylinder — has a rectangle standing well
-clear of it, so a line stopped at the rectangle would end in mid-air beside the
-shape: where a node has an outline of its own, the crossing is found by halving
-the run between the centre and the rectangle a dozen times, which needs nothing
-from the shape but the path it is already drawn with. Words go beside the line,
-clear of both boxes and of each other: in the middle of a short line, in the
-first free gap of one that skips a rank, and past the furthest point of a loop.
-They are written last, over the nodes, because a line that skips a rank passes
-over whatever stands between, and the line is broken around each word so the two
-never overlap. The gap between ranks is sized from those words plus an arrowhead
-plus a visible run of line on either side — a gap sized to the words alone
-leaves a labelled edge looking like a chip with a stub beside it.
-
-The three-tenths hold is a stand-in rather than a rule. Mermaid holds nothing
-back from its corners: the exit is simply where the first stretch of the routed
-line crosses the border, and it comes out well placed because the router has
-already put that stretch somewhere sensible. This has a router only for the lane
-case — where, accordingly, the hold is already down to almost nothing — and
-everywhere else it joins the two boxes directly, where without the hold the point
-slides into a corner. When there is a routed line under every edge, the hold has
-nothing left to do and should go rather than sit beside the rule it stands in
-for.
+*What the layout leaves unrouted* is joined box to box by `connection`. A loop
+stands out beside its box and comes back to it, with its words past its
+furthest point, because inside a curve barely wider than they are they would
+read as words on the box. A line between a frame and a box inside it leaves by
+the side facing the other box: straight where the two share a stretch, with one
+turn half way where they stand corner to corner, and with its words half way
+along. Such a line is held three tenths of a side away from either corner,
+because a line that leaves through a corner reads as a line that missed the
+box. A block diagram's lines are drawn the same way: its boxes stand on the
+grid the author counted out, there are no layers to route between, and a line
+across the grid passes over whatever stands between its two ends.
 
 A subgraph is laid out as a picture of its own and then placed as if it were a
-single box. `placed(chart:…)` calls itself once per frame: the boxes and frames
-written directly inside a container are its units, a frame unit is measured by
-what it came back holding plus its inset and the strip its name is written in,
-and the units are ranked and placed by the same routine the whole chart uses.
-That is what makes a frame enclose its own members and nothing else — nothing
-outside it was ever laid out in its rectangle — and it is why a frame inside a
-frame needs no separate case. A node belongs to the frame it is *written*
-inside, which is not always the frame that named it first: a node mentioned by
-an edge in one subgraph and then declared inside another belongs to the second,
-because that is where its author drew it. A `direction` line inside a frame
-turns that frame's own contents and nothing else, so each recursion reads its
-container's direction and falls back to the header's.
+single box, which is how ELK lays out a compound graph too. `placed(chart:…)`
+calls itself once per frame: the boxes and frames written directly inside a
+container are its units, and a frame unit is measured by what it came back
+holding plus its inset and the strip its name is written in. That is what makes
+a frame enclose its own members and nothing else — nothing outside it was ever
+laid out in its rectangle — and it is why a frame inside a frame needs no
+separate case. A node belongs to the frame it is *written* inside, which is not
+always the frame that named it first: a node mentioned by an edge in one
+subgraph and then declared inside another belongs to the second, because that
+is where its author drew it. A `direction` line inside a frame turns that
+frame's own contents and nothing else, so each recursion reads its container's
+direction and falls back to the header's.
 
-Ranking works on units rather than boxes, so an edge between two boxes deep in
-different frames ranks the frames that hold them, and an edge that names a frame
-— `outside --> one` — ranks the frame itself. A frame is an endpoint in its own
-right for that reason: `Flowchart.End` is either a box or a frame, an edge that
-names one starts or stops on its border, and the boxes it holds are left out of
-the obstacles the line is bowed around, because the line stops before it reaches
-them. A word that names a frame makes no box: a stand-in node parsed before the
-frame was known is folded into the frame it names once the whole source has been
+An edge between two boxes deep in different frames is laid out once, in the
+innermost container that holds both ends, between the units that hold them;
+an edge that names a frame — `outside --> one` — lays out the frame itself.
+A frame is an endpoint in its own right for that reason: `Flowchart.End` is
+either a box or a frame, and an edge that names one starts or stops on its
+border. The rest of such a line is laid out inside each frame it crosses. There
+the crossing is a point of its own, pinned to the frame's first or last layer
+— the side the outer layout reaches the frame from, which for a line turned
+over to break a cycle is the far side — and the inner layout routes the line
+from its box to that point. The parent then joins the line to the frame at
+exactly that point (a fixed port), and the pieces are put together into one
+line. The order of fixed ports along a frame counts when the parent orders its
+layers, so a line held at the right end of a frame is fed from the right. A
+frame whose own layers run across its parent's has no such point on the side a
+line crosses: that line is joined to its box once every box has its place. A
+word that names a frame makes no box: a stand-in node parsed before the frame
+was known is folded into the frame it names once the whole source has been
 read.
 
 A gantt chart is read twice. A task may point at one written below it —
@@ -599,7 +599,8 @@ copies behind a stacked process are the exception, since they stand under the
 front one and are drawn before it.
 
 A class diagram and an entity–relationship diagram are one layout: titled boxes
-with rows in them, ranked the same way a flowchart is, joined by lines whose
+with rows in them, laid out as a flowchart whose frames are the namespaces,
+joined by lines whose
 ends carry the meaning — a hollow triangle for inheritance, an open V for a
 line that only points, a diamond for composition, a crow's foot for how many.
 The two arrowheads are not the same mark: a triangle is closed and filled or
@@ -1103,7 +1104,7 @@ really wants. The picture is soft for that one redraw and on screen at once.
 
 That only works if a drawing knows how wide it really is, and for a while none
 of them did. Each kind reported the width of the boxes it had laid out, which is
-not the same thing: a line bowed around a box reaches past them, and so does a
+not the same thing: a loop beside a box reaches past them, and so does a
 word that outgrew the card it was written in. Both used to be cut off by the
 edge of the bitmap. So every drawing is now measured by what is in it — the
 union of every decoration's own rectangle, glyph runs read back from the lines

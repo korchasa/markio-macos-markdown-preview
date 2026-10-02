@@ -1,3 +1,4 @@
+import CoreText
 import XCTest
 
 @testable import MarkioRender
@@ -239,6 +240,80 @@ extension LayeredLayoutTests {
                         height: abs(a.y - b.y))
                     XCTAssertFalse(
                         run.intersects(inner), "\(direction): the line crosses box \(index)")
+                }
+            }
+        }
+    }
+
+    /// A frame's name is written where no line runs through it: moved along
+    /// the strip over the frame, or with the line ending on the frame stopped
+    /// above it.
+    func testNoLineRunsThroughAFramesName() throws {
+        let sources = [
+            """
+            stateDiagram-v2
+                [*] --> First
+                state First {
+                    [*] --> second
+                    second --> [*]
+                }
+                [*] --> NamedComposite
+                NamedComposite: Another Composite
+                state NamedComposite {
+                    [*] --> namedSimple
+                    namedSimple --> [*]
+                    namedSimple: Another simple
+                }
+            """,
+            """
+            flowchart TB
+                c1-->a2
+                subgraph one
+                a1-->a2
+                end
+                subgraph two
+                b1-->b2
+                end
+                subgraph three
+                c1-->c2
+                end
+                one --> two
+                three --> two
+                two --> c2
+            """,
+            try String(contentsOfFile: "test-fixtures/layout/classes.mmd", encoding: .utf8),
+        ]
+        for source in sources {
+            let diagram = try XCTUnwrap(MermaidDiagram.parse(source), "did not parse")
+            let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 2000)
+            let drawn = try XCTUnwrap(drawing.geometry)
+            XCTAssertFalse(drawn.frames.isEmpty)
+            for frame in drawn.frames {
+                var names: [CGRect] = []
+                for case .glyphs(let line, let origin) in drawing.decorations
+                where origin.x >= frame.minX && origin.x < frame.maxX
+                    && abs(origin.y - frame.minY) < 30
+                {
+                    var ascent: CGFloat = 0
+                    var descent: CGFloat = 0
+                    let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+                    names.append(
+                        CGRect(
+                            x: origin.x, y: origin.y - ascent, width: width,
+                            height: ascent + descent))
+                }
+                XCTAssertFalse(names.isEmpty, "no name over \(frame)")
+                for name in names {
+                    for line in drawn.lines {
+                        for (a, b) in zip(line.points, line.points.dropFirst()) {
+                            let run = CGRect(
+                                x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x),
+                                height: abs(a.y - b.y))
+                            XCTAssertFalse(
+                                run.intersects(name.insetBy(dx: 1, dy: 1)),
+                                "a line runs through the name at \(name)")
+                        }
+                    }
                 }
             }
         }

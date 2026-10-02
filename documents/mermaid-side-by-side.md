@@ -46,13 +46,14 @@ an `alt` written without a condition was drawn with no word on it at all.
 **Two things drawn in one place.** A subgraph's name was clipped by its own frame,
 a quadrant's point name could land on another point, a packet's bit numbers printed
 over each other, and two edges between the same pair of boxes were drawn as one
-line. Edges take a lane now and bow around whatever they would otherwise cross. An
+line. Edges are routed by a layered layout now, each on a track of its own,
+around whatever they would otherwise cross. An
 edge label as wide as the gap left no line either side of it, and a message label
 hung off both lifelines and crossed its own arrow; the room between ranks and
 between lifelines is measured from the words that have to fit in it.
 
 **A picture cut off at its own edge.** Each kind reported the width of the boxes it
-laid out, which is not the width of the picture: a line bowed around a box and a
+laid out, which is not the width of the picture: a loop beside a box and a
 card title longer than its card both reached past them and were clipped by the
 bitmap. What is drawn is measured now, and slid back into view if any of it landed
 outside.

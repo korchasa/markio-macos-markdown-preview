@@ -244,9 +244,12 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   ink on a tag of the branch's colour, so a lane is told apart by the tag rather
   than by lettering nobody can read. A picture too
   wide for the column is drawn smaller rather than cut off, and nothing in a
-  picture is ever cut off by its own edge: a line that bows around a box and a
+  picture is ever cut off by its own edge: a loop beside a box and a
   word longer than the shape holding it both count towards how much room the
-  drawing takes. The block keeps the
+  drawing takes. The lines of a graph run at right angles between its layers,
+  with rounded corners and their words on them, and on the graphs in
+  `test-fixtures/layout/` they cross each other no more often than ELK's do
+  (`deno task layoutbench`). The block keeps the
   fence's own text, so find and copy still work on the diagram's source.
 - **VIEW-27** A click on a drawn diagram enlarges it, and the pointer becomes a
   hand over a picture so a reader can see there is something to click. A

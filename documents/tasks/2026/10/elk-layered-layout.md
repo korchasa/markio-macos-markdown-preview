@@ -1,6 +1,6 @@
 ---
 date: 2026-10-02
-status: in progress
+status: done
 implements: [VIEW-25]
 tags: [mermaid, layout, flowchart, class-diagram, er-diagram]
 related_tasks: []
@@ -130,11 +130,11 @@ rewritten as the stages land.
   class and entity diagrams use the new layout.
   - Evidence: `deno task layoutbench` — total defects over the nine graphs ≤ 5,
     mean detour ≤ 1.20, worst detour ≤ 2.5
-- [ ] VIEW-25: every diagram fixture still draws, in light and dark, and the
+- [x] VIEW-25: every diagram fixture still draws, in light and dark, and the
   side-by-side page is regenerated.
   - Evidence: `.build/release/markio-bench diagram <each fixture> <png> 760 dark`
     exits 0; screenshots reviewed
-- [ ] `documents/design.md` § Diagrams describes the new pipeline;
+- [x] `documents/design.md` § Diagrams describes the new pipeline;
   `documents/requirements.md` VIEW-25 is true; `deno task check` passes.
   - Evidence: `deno task check`
 
@@ -356,3 +356,29 @@ no picture changed. Block diagrams are the one place a line now always goes
 straight from box to box; a line across a crowded grid (`a --> c` with a box
 between them) runs over that box, where the deleted code ran it over a
 different one.
+
+### Stage 6 — documents, pictures, and frame names (2026-10-02)
+
+`documents/design.md` § Diagrams now describes the layered pipeline stage by
+stage, how a line crosses a frame (a pinned point inside, a fixed port
+outside), and what is still joined box to box. VIEW-25 says the lines run at
+right angles with rounded corners and cross no more often than ELK's on the
+bench graphs; it no longer speaks of a line bowed around a box.
+
+Reviewing the regenerated pictures found a defect the bench does not count: a
+line coming into a frame from above ran through the frame's name — "Another
+Composite" in the composite state example, `two` in the edge-to-a-subgraph
+example, `View` in `classes.mmd`. The August pictures show the same crossing,
+so it predates this task. The name now moves along its strip to the first place
+no line crosses; where there is none, a line that ends on the frame itself stops
+above the name. Namespaces in class diagrams move their names the same way.
+`testNoLineRunsThroughAFramesName` covers the three cases; with the name pinned
+to the left again it fails three times, once per diagram, each time with "a
+line runs through the name".
+
+`deno task layoutbench` is unchanged (total 4, mean detour 1.16, worst 1.92).
+All 74 Mermaid sources — the 47 examples on the side-by-side page and the 27 in
+the fixtures, documents and README — draw in light and dark. The 47
+side-by-side pictures were recomposed: Mermaid's half is kept as it was, and
+Markio's half is drawn afresh at 410 points, at its own size rather than
+stretched to the panel. Contact sheets of every graph diagram were reviewed.

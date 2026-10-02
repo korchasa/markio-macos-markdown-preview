@@ -296,7 +296,7 @@ enum MermaidLayout {
     /// and slid back into view if any of it landed outside.
     ///
     /// Each kind reports the width of the boxes it laid out, which is not the
-    /// same as the width of the picture: a line bowed around a box reaches past
+    /// same as the width of the picture: a loop beside a box reaches past
     /// them, and so does a word that outgrew the card it was written in. Both
     /// used to be cut off by the edge of the bitmap — a picture the reader could
     /// see was incomplete. Measuring the decorations catches every such case at
@@ -308,7 +308,7 @@ enum MermaidLayout {
         drawing.contentWidth = max(drawing.contentWidth, box.width)
         // The shift is signed. A kind centres its picture inside the width it
         // was given using its own measurement, so a part that reaches further
-        // right than that measurement knew about — a bowed line, an overlong
+        // right than that measurement knew about — a loop, an overlong
         // word — lands past the right-hand edge with room still free on the
         // left. Sliding only rightwards left that case cropped.
         let wanted = max(padding, (width - box.width) / 2)
@@ -485,10 +485,18 @@ enum MermaidLayout {
             diagram.notes, beside: placed, theme: theme, font: rowFont,
             metrics: metrics)
 
+        let drawnRoutes = placement.routes.compactMap { index, route -> [CGPoint]? in
+            let link = diagram.links[index]
+            guard link.from < placed.count, link.to < placed.count else { return nil }
+            return carried(
+                route.map { CGPoint(x: $0.x + left, y: $0.y) }, from: placed[link.from],
+                to: placed[link.to])
+        }
         var decorations: [BlockBox.Decoration] = []
         for wall in walls {
             decorations += namespace(
-                wall.rect, named: wall.name, theme: theme, font: rowFont, metrics: metrics)
+                wall.rect, named: wall.name, theme: theme, font: rowFont, metrics: metrics,
+                titleRoom: titleRoom, routes: drawnRoutes)
         }
         var geometry = Geometry(nodes: placed, frames: walls.map(\.rect))
         for (index, link) in diagram.links.enumerated() {
@@ -524,8 +532,43 @@ enum MermaidLayout {
     }
 
     /// The titled frame a `namespace` draws around the classes inside it.
+    /// The x of every upright stretch of line that crosses a horizontal strip
+    /// inside the given span — what a frame's name has to keep clear of.
+    private static func crossings(
+        of routes: [[CGPoint]], strip top: CGFloat, _ bottom: CGFloat, from left: CGFloat,
+        to right: CGFloat
+    ) -> [CGFloat] {
+        var found: [CGFloat] = []
+        for route in routes {
+            for (a, b) in zip(route, route.dropFirst())
+            where abs(a.x - b.x) < 0.5 && a.x > left && a.x < right
+                && min(a.y, b.y) < bottom - 0.5 && max(a.y, b.y) > top + 0.5
+            {
+                found.append(a.x)
+            }
+        }
+        return found
+    }
+
+    /// The first place from the left, between two edges, where words of a
+    /// given width stand clear of every crossing line; nil when there is none.
+    private static func spot(
+        _ width: CGFloat, from left: CGFloat, to right: CGFloat, clear of: [CGFloat],
+        by clearance: CGFloat
+    ) -> CGFloat? {
+        var x = left
+        while x + width <= right {
+            guard
+                let hit = of.filter({ $0 > x - clearance && $0 < x + width + clearance }).max()
+            else { return x }
+            x = hit + clearance
+        }
+        return nil
+    }
+
     private static func namespace(
-        _ rect: CGRect, named name: String, theme: Theme, font: CTFont, metrics: Metrics
+        _ rect: CGRect, named name: String, theme: Theme, font: CTFont, metrics: Metrics,
+        titleRoom: CGFloat, routes: [[CGPoint]]
     ) -> [BlockBox.Decoration] {
         let path = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
         let line = text(name, font: font, color: theme.palette.secondaryText)
@@ -533,12 +576,19 @@ enum MermaidLayout {
         return [
             .path(path, color: theme.palette.codeBackground, lineWidth: 0, filled: true),
             .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false),
-            // Written at the left, as a flowchart frame's name is: a line
-            // entering the frame comes in near the middle and would cross it.
+            // Written at the left, as a flowchart frame's name is, unless a
+            // line crosses it there; then wherever along the strip none does.
             .glyphs(
                 line,
                 origin: CGPoint(
-                    x: rect.minX + 8 * metrics.scale, y: rect.minY + 6 * metrics.scale + size.height
+                    x: spot(
+                        size.width, from: rect.minX + 8 * metrics.scale,
+                        to: rect.maxX - 8 * metrics.scale,
+                        clear: crossings(
+                            of: routes, strip: rect.minY, rect.minY + titleRoom, from: rect.minX,
+                            to: rect.maxX),
+                        by: 4 * metrics.scale) ?? rect.minX + 8 * metrics.scale,
+                    y: rect.minY + 6 * metrics.scale + size.height
                 )),
         ]
     }
@@ -3581,6 +3631,63 @@ enum MermaidLayout {
         // still write to is a closure sharing something that may change.
         let placed = boxes.map(\.frame)
 
+        // Where an edge starts and stops: a box's own frame, or the border of
+        // the frame it names.
+        func rect(_ end: Flowchart.End) -> CGRect? {
+            switch end {
+            case .node(let index): return boxes.indices.contains(index) ? boxes[index].frame : nil
+            case .frame(let group): return frames[group]
+            }
+        }
+        // A frame's name is written in the strip over its border, and a line
+        // coming in from above crosses that strip. The name moves along it to
+        // where no line runs; where there is no such place, a line that ends on
+        // the frame itself stops over the name instead of running through it.
+        var nameAt: [Int: CGFloat] = [:]
+        var shortOf = Set<Int>()
+        for group in chart.groups.indices where !chart.groups[group].title.isEmpty {
+            guard let border = frames[group] else { continue }
+            let width =
+                labelLines(
+                    chart.groups[group].title, font: scaled(theme.controlLabel, by: metrics.scale),
+                    color: theme.palette.text
+                ).size.width
+            let top = border.minY - titleRoom
+            var passing: [[CGPoint]] = []
+            var ending: [(edge: Int, x: CGFloat)] = []
+            for (index, route) in routes {
+                guard let last = route.last, let first = route.first else { continue }
+                let edge = chart.edges[index]
+                if edge.to == .frame(group), abs(last.y - top) < 1 {
+                    ending.append((index, last.x))
+                    continue
+                }
+                if edge.from == .frame(group), abs(first.y - top) < 1 {
+                    ending.append((index, first.x))
+                    continue
+                }
+                if let from = rect(edge.from), let to = rect(edge.to) {
+                    passing.append(carried(route, from: from, to: to))
+                }
+            }
+            let through = crossings(
+                of: passing, strip: top, border.minY, from: border.minX, to: border.maxX)
+            let clearance = 4 * metrics.scale
+            func spot(clear of: [CGFloat]) -> CGFloat? {
+                Self.spot(
+                    width, from: border.minX + 4, to: border.maxX - 4, clear: of, by: clearance)
+            }
+            if let x = spot(clear: through + ending.map(\.x)) {
+                nameAt[group] = x
+            } else {
+                let x = spot(clear: through) ?? border.minX + 4
+                nameAt[group] = x
+                for line in ending where line.x > x - clearance && line.x < x + width + clearance {
+                    shortOf.insert(line.edge)
+                }
+            }
+        }
+
         var decorations: [BlockBox.Decoration] = []
         // Frames first: everything else in the diagram stands on top of them,
         // and an inner frame after the one that holds it.
@@ -3590,17 +3697,9 @@ enum MermaidLayout {
             guard let rect = frames[group] else { continue }
             decorations += frame(
                 chart.groups[group], rect: rect, theme: theme, metrics: metrics,
-                titleRoom: titleRoom)
+                titleRoom: titleRoom, nameAt: nameAt[group])
         }
         var labels: [BlockBox.Decoration] = []
-        // Where an edge starts and stops: a box's own frame, or the border of
-        // the frame it names.
-        func rect(_ end: Flowchart.End) -> CGRect? {
-            switch end {
-            case .node(let index): return boxes.indices.contains(index) ? boxes[index].frame : nil
-            case .frame(let group): return frames[group]
-            }
-        }
         var geometry = Geometry(
             nodes: placed, frames: chart.groups.indices.compactMap { frames[$0] })
         for (index, edge) in chart.edges.enumerated() {
@@ -3619,7 +3718,9 @@ enum MermaidLayout {
             let drawn = self.edge(
                 edge, from: from, to: to, theme: theme, metrics: metrics,
                 fromOutline: outline(of: edge.from), toOutline: outline(of: edge.to),
-                route: routes[index].map { carried($0, from: from, to: to) },
+                route: routes[index].map {
+                    shortOf.contains(index) ? $0 : carried($0, from: from, to: to)
+                },
                 wordsAt: wordPlaces[index],
                 loopBelow: edge.from == edge.to
                     && {
@@ -4147,7 +4248,7 @@ enum MermaidLayout {
     /// The titled frame a `subgraph` draws around its own nodes.
     private static func frame(
         _ group: Flowchart.Group, rect bounds: CGRect, theme: Theme, metrics: Metrics,
-        titleRoom: CGFloat
+        titleRoom: CGFloat, nameAt: CGFloat? = nil
     ) -> [BlockBox.Decoration] {
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
         var decorations: [BlockBox.Decoration] = [
@@ -4176,7 +4277,9 @@ enum MermaidLayout {
             let one = measure(line)
             decorations.append(
                 .glyphs(
-                    line, origin: CGPoint(x: bounds.minX + 4, y: top + one.height - descent(line))))
+                    line,
+                    origin: CGPoint(
+                        x: nameAt ?? bounds.minX + 4, y: top + one.height - descent(line))))
             top += one.height
         }
         return decorations
@@ -4932,26 +5035,6 @@ enum MermaidLayout {
         return path
     }
 
-    /// Whether a straight line from one point to another passes over a box.
-    private static func crosses(_ rect: CGRect, from start: CGPoint, to end: CGPoint) -> Bool {
-        let box = rect.insetBy(dx: -1, dy: -1)
-        guard
-            box.intersects(
-                CGRect(
-                    x: min(start.x, end.x), y: min(start.y, end.y),
-                    width: abs(end.x - start.x), height: abs(end.y - start.y)
-                ).insetBy(dx: -1, dy: -1))
-        else { return false }
-        let steps = 48
-        for step in 0...steps {
-            let t = CGFloat(step) / CGFloat(steps)
-            let point = CGPoint(
-                x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t)
-            if box.contains(point) { return true }
-        }
-        return false
-    }
-
     /// The unit vector at a right angle to the line from one point to another.
     private static func normal(from start: CGPoint, to end: CGPoint) -> CGPoint {
         let direction = normalized(CGPoint(x: end.x - start.x, y: end.y - start.y))
@@ -5057,31 +5140,6 @@ enum MermaidLayout {
     /// How far out beside a box a line that returns to it stands.
     private static func loopReach(_ metrics: Metrics) -> CGFloat { 26 * metrics.scale }
 
-    /// Where a line bound for a lane leaves its box: by the side facing the box
-    /// at the other end, at the point on that side nearest the lane.
-    ///
-    /// A line joining two boxes directly is held well in from the corners,
-    /// because without that the point slides into one. A line with a lane needs
-    /// no such holding: the lane is beside the box already, so the nearest point
-    /// on the side is the one the reader would draw, and holding it in only
-    /// makes the line swing back out to reach the lane. It is kept off the
-    /// corner itself and no further.
-    private static func leaves(
-        _ box: CGRect, along lane: (vertical: Bool, at: CGFloat), towards other: CGRect
-    ) -> CGPoint {
-        let clear = corner / 4
-        if lane.vertical {
-            let below = other.midY > box.midY
-            return CGPoint(
-                x: min(max(lane.at, box.minX + box.width * clear), box.maxX - box.width * clear),
-                y: below ? box.maxY : box.minY)
-        }
-        let right = other.midX > box.midX
-        return CGPoint(
-            x: right ? box.maxX : box.minX,
-            y: min(max(lane.at, box.minY + box.height * clear), box.maxY - box.height * clear))
-    }
-
     /// The run of a line from one box to another: where it leaves, how it goes,
     /// where it arrives. Every diagram that joins two rectangles asks this same
     /// question, so a class relation and a flowchart edge are answered alike.
@@ -5119,10 +5177,12 @@ enum MermaidLayout {
             to: end)
     }
 
-    /// A line between two centres, cut off at each box's edge.
+    /// One line of a flowchart: its shaft, the marks on its ends and its words.
     ///
-    /// Clipping to the boxes rather than joining named sides is what lets the
-    /// same routine draw an edge down a rank, across one, or back up the graph.
+    /// The layered layout routes almost every line and leaves a place for its
+    /// words; this draws what it was given. What the layout leaves unrouted —
+    /// a loop, a line between a frame and a box inside it — is joined box to
+    /// box by `connection`.
     private static func edge(
         _ edge: Flowchart.Edge, from: CGRect, to: CGRect, theme: Theme, metrics: Metrics,
         fromOutline: CGPath? = nil, toOutline: CGPath? = nil,
@@ -6155,37 +6215,9 @@ enum MermaidLayout {
         return .path(path, color: color, lineWidth: 0, filled: true)
     }
 
-    /// Where a line towards `target` leaves a box. Rectangles only — a diamond
-    /// or a circle is close enough at this size that the difference is a pixel.
     /// How far in from either end of a side a line may land, as a share of that
     /// side. Nearer than this and the line reads as one that missed the box.
     private static let corner: CGFloat = 0.3
-
-    private static func exit(of frame: CGRect, towards target: CGPoint) -> CGPoint {
-        let centre = frame.center
-        let delta = CGPoint(x: target.x - centre.x, y: target.y - centre.y)
-        guard delta.x != 0 || delta.y != 0 else { return centre }
-        let scaleX = delta.x == 0 ? CGFloat.infinity : frame.width / 2 / abs(delta.x)
-        let scaleY = delta.y == 0 ? CGFloat.infinity : frame.height / 2 / abs(delta.y)
-        let scale = min(scaleX, scaleY)
-        let point = CGPoint(x: centre.x + delta.x * scale, y: centre.y + delta.y * scale)
-        // A line leaving through a corner reads as a line that missed the box,
-        // so the point is slid along the side it leaves by until it is clear of
-        // both corners. Which side that is has already been decided above: the
-        // smaller of the two scales is the one the point ran out of room in.
-        if scaleX <= scaleY {
-            return CGPoint(
-                x: point.x,
-                y: min(
-                    max(point.y, frame.minY + frame.height * corner),
-                    frame.maxY - frame.height * corner))
-        }
-        return CGPoint(
-            x: min(
-                max(point.x, frame.minX + frame.width * corner),
-                frame.maxX - frame.width * corner),
-            y: point.y)
-    }
 
     /// The same point pulled back onto the box's own outline.
     ///
@@ -6210,18 +6242,6 @@ enum MermaidLayout {
         return CGPoint(
             x: centre.x + (point.x - centre.x) * inside,
             y: centre.y + (point.y - centre.y) * inside)
-    }
-
-    /// Where a straight line between two boxes starts and ends.
-    ///
-    /// Aiming each end at the other box's centre slants the line whenever the
-    /// two boxes are not the same size, so a column of pairs comes out with one
-    /// line leaning and the rest upright — which reads as a mistake, because it
-    /// is one. Boxes that stand over each other are joined down the middle of
-    /// what they share; anything else is aimed at the centre as before.
-    private static func joined(_ from: CGRect, _ to: CGRect) -> (CGPoint, CGPoint) {
-        let route = route(from, to)
-        return (route.start, route.end)
     }
 
     /// Which sides two boxes are joined by, and whether the line between them
