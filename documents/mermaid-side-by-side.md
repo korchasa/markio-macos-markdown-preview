@@ -28,7 +28,7 @@ restyling, so one without it was written to show the plain case.
 
 Putting the two pictures side by side found faults that looking at ours alone
 never did: a reader who has only one drawing cannot see what is missing from it.
-Six rounds of comparison went through every example here, and every defect they
+Seven rounds of comparison went through every example here, and every defect they
 found is closed. They fell into five kinds.
 
 **A picture that said something its source did not.** `--->` lost its arrowhead.
@@ -41,7 +41,9 @@ returns to its start collapsed into a single row. A node declared inside a frame
 stayed in whichever frame had named it first. A commit marked `REVERSE` and a merge
 commit were both drawn as ordinary commits. A treemap showed neither its root nor
 any value, a Sankey bar showed no amount, a Gantt axis showed no year, and an arm of
-an `alt` written without a condition was drawn with no word on it at all.
+an `alt` written without a condition was drawn with no word on it at all. A kanban
+card's priority was read and never shown, and a one-bit packet field lost its bit
+number.
 
 **Two things drawn in one place.** A subgraph's name was clipped by its own frame,
 a quadrant's point name could land on another point, a packet's bit numbers printed
@@ -52,7 +54,12 @@ edge label as wide as the gap left no line either side of it, and a message labe
 hung off both lifelines and crossed its own arrow; the room between ranks and
 between lifelines is measured from the words that have to fit in it. An actor's
 lifeline ran down through the name written under the figure, and starts under it
-now.
+now. The condition of an `alt`'s second arm was written across both lifelines, a
+`timeline TD` ran its rule through every section's name, and a fat arrow pointing
+up or down drew two notches through its own words. A frame's name stood against
+the head of a line ending on the frame, and a name with no gap wide enough between
+the lines crossing it was written across them; it now stands on a plate the lines
+pass under.
 
 **A picture cut off at its own edge.** Each kind reported the width of the boxes it
 laid out, which is not the width of the picture: a loop beside a box and a
@@ -72,7 +79,9 @@ it pointed at, and one to an actor stopped at an invisible box wider than the
 figure. A quadrant point's name sat beside its dot and changed sides near the right
 edge, where Mermaid writes it centred underneath. A journey held its cards, its
 bands and the two apart by three different gaps, and a state machine's end stood
-off the column of its start.
+off the column of its start. A treemap's tiles touched, so a tile with a border of
+its own lost the gap around it, and an entity's marks floated past the end of a line
+that stopped short of them.
 
 **A construct not drawn at all.** Nineteen examples here used to be shown as
 source. For the first eight the reason was almost always the same one: something
