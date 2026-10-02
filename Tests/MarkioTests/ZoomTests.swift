@@ -148,6 +148,50 @@ final class ZoomTests: XCTestCase {
         window.close()
     }
 
+    /// At the very top the window shows the page's margin above the first
+    /// block. Counting the place from the first block alone put the window back
+    /// at that block's top, so opening the outline or touching the width
+    /// scrolled a document nobody had scrolled, and its margin went with it.
+    @MainActor
+    func testAWindowAtTheTopStaysAtTheTopAcrossAZoomAndAWidthChange() throws {
+        let text = (1...200).map { "Paragraph number \($0), long enough to wrap." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(
+            from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 900, height: 700), display: true)
+        window.layoutIfNeeded()
+        func documentScroll(in view: NSView) -> NSScrollView? {
+            if let scroll = view as? NSScrollView,
+                let inner = scroll.documentView as? DocumentView, inner.layout.blockCount > 0
+            {
+                return scroll
+            }
+            for subview in view.subviews {
+                if let found = documentScroll(in: subview) { return found }
+            }
+            return nil
+        }
+        let scroll = try XCTUnwrap(documentScroll(in: try XCTUnwrap(window.contentView)))
+        let view = try XCTUnwrap(scroll.documentView as? DocumentView)
+        view.viewWillDraw()
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0)
+
+        controller.widenColumn(nil)
+        view.viewWillDraw()
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 0.5)
+
+        controller.zoomIn(nil)
+        view.viewWillDraw()
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 0.5)
+
+        controller.actualSize(nil)
+        controller.narrowColumn(nil)
+        window.close()
+    }
+
     @MainActor
     func testADiagramGrowsWithThePageItSitsOn() throws {
         let source = """

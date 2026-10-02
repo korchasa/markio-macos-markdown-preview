@@ -453,15 +453,24 @@ final class DocumentWindowController: NSWindowController {
         var ordinal: Int
         /// How far down that block the top of the window sits, 0 to 1.
         var fraction: CGFloat
+        /// Points of the page's top margin showing above the first block —
+        /// negative, and zero once the window is past it. Counted from the
+        /// first block alone, a window at the very top came back scrolled down
+        /// by the whole margin.
+        var margin: CGFloat = 0
     }
 
     private func readingPosition() -> ReadingPosition {
-        let y = max(0, scrollView.contentView.bounds.minY - documentView.verticalPadding)
+        let raw = scrollView.contentView.bounds.minY - documentView.verticalPadding
+        let y = max(0, raw)
         let ordinal = layout.index(atOffset: y)
         let height = layout.height(of: ordinal)
-        guard height > 0 else { return ReadingPosition(ordinal: ordinal, fraction: 0) }
+        guard height > 0 else {
+            return ReadingPosition(ordinal: ordinal, fraction: 0, margin: min(raw, 0))
+        }
         let into = (y - layout.offset(of: ordinal)) / height
-        return ReadingPosition(ordinal: ordinal, fraction: min(max(into, 0), 1))
+        return ReadingPosition(
+            ordinal: ordinal, fraction: min(max(into, 0), 1), margin: min(raw, 0))
     }
 
     private func restore(_ position: ReadingPosition) {
@@ -472,7 +481,8 @@ final class DocumentWindowController: NSWindowController {
         _ = layout.prepare(
             range: position.ordinal..<(position.ordinal + 1), anchor: position.ordinal)
         let top = layout.offset(of: position.ordinal) + documentView.verticalPadding
-        let target = top + position.fraction * layout.height(of: position.ordinal)
+        let target =
+            top + position.fraction * layout.height(of: position.ordinal) + position.margin
         documentView.scroll(NSPoint(x: 0, y: max(0, target)))
         documentView.needsDisplay = true
     }

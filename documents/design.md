@@ -1402,6 +1402,11 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   `NSFont.systemFontSize` — a system that says nothing yields exactly 1. A
   window's zoom is kept in the same record as its scroll position, because it is
   the same kind of fact about how a document was left, and ⌘0 deletes it.
+- A zoom, a width change or the outline opening re-measures the page, so the
+  reader's place is held as the block at the top of the window and how far into
+  it the window sits (VIEW-29) — plus how much of the page's top margin is
+  showing. Without that last part a window at the very top came back scrolled
+  down by the whole margin.
 - Live reload watches the file with a `DispatchSource` vnode source and
   re-arms after each event, because an atomic save replaces the vnode.
 - The menu bar is built in code before launch completes, so it exists before
