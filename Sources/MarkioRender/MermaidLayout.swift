@@ -6524,14 +6524,17 @@ enum MermaidLayout {
             metrics.minimumNodeWidth,
             (labels.map(\.size.width).max() ?? 0) + metrics.nodePaddingX * 2)
         let cellHeight = (labels.map(\.size.height).max() ?? 0) + metrics.nodePaddingY * 2
-        let gap = 10 * metrics.scale
+        var gap = 10 * metrics.scale
+        // A frame stands this far out from what it holds however wide the gaps
+        // grow: the room a walked line needs is the line's, not the frame's.
+        let framing = gap / 2
         // A framed block holds a row of its own, so the grid is measured in the
         // narrowest column any of them needs and a plain cell takes several of
         // them. The author's own column count still says where a row wraps.
         let unit = max(1, diagram.cells.map { columnsWide(of: $0, in: diagram) }.max() ?? 1)
         let columns = diagram.columns * unit
-        let content = cellWidth * CGFloat(columns) + gap * CGFloat(columns - 1)
-        let left = max(metrics.padding, (width - content) / 2)
+        var content: CGFloat = 0
+        var left: CGFloat = 0
 
         // Cells fill the row until the next one would not fit, and then wrap. A
         // framed block is laid out the same way inside its own share of the
@@ -6586,7 +6589,7 @@ enum MermaidLayout {
                     frames[block] = rect(
                         column: atColumn + column, row: atRow + row, wide: wide, tall: tall
                     )
-                    .insetBy(dx: -gap / 2, dy: -gap / 2)
+                    .insetBy(dx: -framing, dy: -framing)
                     _ = place(
                         inner.cells, columns: inner.columns ?? wide, atColumn: atColumn + column,
                         atRow: atRow + row, unit: 1)
@@ -6599,7 +6602,102 @@ enum MermaidLayout {
             }
             return column == 0 ? row : row + 1
         }
-        let rows = place(diagram.cells, columns: columns, atColumn: 0, atRow: 0, unit: unit)
+        func arrange() -> Int {
+            boxes = [:]
+            frames = [:]
+            content = cellWidth * CGFloat(columns) + gap * CGFloat(columns - 1)
+            left = max(metrics.padding, (width - content) / 2)
+            return place(diagram.cells, columns: columns, atColumn: 0, atRow: 0, unit: unit)
+        }
+        var rows = arrange()
+
+        func end(_ end: Flowchart.End) -> CGRect? {
+            switch end {
+            case .node(let node): return boxes[node]?.frame
+            case .frame(let block): return frames[block]
+            }
+        }
+        // Boxes stand where the author counted them out, so a line between two
+        // that are not neighbours may have one in its way. Then every line is
+        // walked through the gaps of the grid — all of them, so lines meeting
+        // one side of a box share it out between them — and the gaps are
+        // widened to hold the end marks and the words. A diagram where nothing
+        // is in any line's way joins its boxes directly, as before.
+        let wordFont = scaled(theme.controlLabel, by: metrics.scale)
+        let stub = metrics.arrowLength + 4 * metrics.scale
+        let spacing = 8 * metrics.scale
+        func obstacles() -> [CGRect] {
+            diagram.chart.nodes.indices.compactMap { boxes[$0]?.frame }
+                + diagram.blocks.indices.compactMap { frames[$0] }
+        }
+        func exempt(_ from: CGRect, _ to: CGRect, in all: [CGRect]) -> Set<Int> {
+            let firstFrame = all.count - diagram.blocks.indices.compactMap { frames[$0] }.count
+            return Set(
+                all.indices.filter { index in
+                    index >= firstFrame && all[index] != from && all[index] != to
+                        && (all[index].contains(from) || all[index].contains(to))
+                })
+        }
+        let walkable = diagram.chart.edges.indices.filter { index in
+            let edge = diagram.chart.edges[index]
+            return edge.stroke != .invisible && edge.from != edge.to && end(edge.from) != nil
+                && end(edge.to) != nil
+        }
+        let blocked = walkable.contains { index in
+            let edge = diagram.chart.edges[index]
+            guard let from = end(edge.from), let to = end(edge.to) else { return false }
+            let all = obstacles()
+            let free = exempt(from, to, in: all)
+            let path = connection(from: from, to: to, metrics: metrics)
+            return all.indices.contains { index in
+                guard !free.contains(index), all[index] != from, all[index] != to,
+                    !all[index].contains(from), !all[index].contains(to)
+                else { return false }
+                let inner = all[index].insetBy(dx: 2, dy: 2)
+                return zip(path, path.dropFirst()).contains { a, b in
+                    CGRect(
+                        x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x),
+                        height: abs(a.y - b.y)
+                    ).intersects(inner)
+                }
+            }
+        }
+        let detoured = blocked ? walkable : []
+        let wordsHigh =
+            detoured.map {
+                edgeWords(diagram.chart.edges[$0].label, font: wordFont, color: theme.palette.text)
+                    .size.height
+            }.max() ?? 0
+        var routes: [Int: [CGPoint]] = [:]
+        func detour() -> Int {
+            let all = obstacles()
+            let lines = detoured.compactMap { index -> GridRouter.Line? in
+                let edge = diagram.chart.edges[index]
+                guard let from = end(edge.from), let to = end(edge.to) else { return nil }
+                return GridRouter.Line(from: from, to: to, exempt: exempt(from, to, in: all))
+            }
+            let found = GridRouter.route(
+                lines, obstacles: all, margin: gap / 2 + spacing, spacing: spacing, stub: stub,
+                bend: cellHeight)
+            routes = [:]
+            for (index, route) in zip(detoured, found.routes) { routes[index] = route }
+            return found.tracks
+        }
+        if !detoured.isEmpty {
+            func needed(_ tracks: Int) -> CGFloat {
+                max(
+                    gap, 2 * stub + CGFloat(tracks - 1) * spacing,
+                    wordsHigh + 8 * metrics.scale)
+            }
+            gap = needed(1)
+            rows = arrange()
+            let wider = needed(detour())
+            if wider > gap + 0.5 {
+                gap = wider
+                rows = arrange()
+                _ = detour()
+            }
+        }
         let height =
             metrics.padding * 2 + CGFloat(rows) * cellHeight + CGFloat(max(0, rows - 1)) * gap
 
@@ -6616,18 +6714,75 @@ enum MermaidLayout {
             decorations.append(
                 .path(path, color: theme.palette.tableBorder, lineWidth: 1, filled: false))
         }
-        func end(_ end: Flowchart.End) -> CGRect? {
+        var geometry = Geometry(
+            nodes: diagram.chart.nodes.indices.map { boxes[$0]?.frame ?? .zero },
+            frames: diagram.blocks.indices.compactMap { frames[$0] })
+        // The boxes a line may touch: its own ends, and whatever stands inside
+        // a frame it ends on.
+        func owned(_ end: Flowchart.End) -> [Int] {
             switch end {
-            case .node(let node): return boxes[node]?.frame
-            case .frame(let block): return frames[block]
+            case .node(let node): return [node]
+            case .frame(let block):
+                guard let frame = frames[block] else { return [] }
+                return boxes.filter { frame.contains($0.value.frame) }.map(\.key)
             }
         }
-        for edge in diagram.chart.edges {
+        for (index, edge) in diagram.chart.edges.enumerated() {
             guard let from = end(edge.from), let to = end(edge.to) else { continue }
+            // A walked line carries its words where they cover the fewest
+            // boxes and other lines — slid along any of its runs, level runs
+            // first, since those lie along a gap rather than across one.
+            let route = routes[index]
+            var wordsAt: CGRect?
+            if let route, !edge.label.isEmpty {
+                let size = edgeWords(edge.label, font: wordFont, color: theme.palette.text).size
+                let others = routes.filter { $0.key != index }.values.flatMap {
+                    zip($0, $0.dropFirst()).map { a, b in
+                        CGRect(
+                            x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x),
+                            height: abs(a.y - b.y))
+                    }
+                }
+                let cells = boxes.values.map(\.frame)
+                let borders = frames.values
+                var best: (score: (Int, Int, CGFloat), place: CGRect)?
+                for (a, b) in zip(route, route.dropFirst()) {
+                    let level = abs(a.y - b.y) < 0.01
+                    let length = hypot(b.x - a.x, b.y - a.y)
+                    let extent = (level ? size.width : size.height) + 8 * metrics.scale
+                    let room = max(0, length - extent)
+                    let steps = Int(room / (8 * metrics.scale))
+                    for step in 0...steps {
+                        let t =
+                            steps == 0
+                            ? 0.5 : (extent / 2 + room * CGFloat(step) / CGFloat(steps)) / length
+                        let place = plate(
+                            size,
+                            centred: CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t))
+                        let inner = place.insetBy(dx: 1, dy: 1)
+                        // Inside a frame is fine; across its border is not.
+                        let covered =
+                            cells.filter { $0.intersects(inner) }.count
+                            + borders.filter { $0.intersects(inner) && !$0.contains(inner) }.count
+                            + others.filter { $0.intersects(inner) }.count
+                        let score = (covered, level ? 0 : 1, -length)
+                        if best.map({ score < $0.score }) ?? true { best = (score, place) }
+                    }
+                }
+                wordsAt = best?.place
+            }
             let drawn = self.edge(
-                edge, from: from, to: to, theme: theme, metrics: metrics)
+                edge, from: from, to: to, theme: theme, metrics: metrics, route: route,
+                wordsAt: wordsAt)
             decorations += drawn.shaft
             labelDecorations += drawn.label
+            if !drawn.path.isEmpty {
+                geometry.lines.append(
+                    Geometry.Line(
+                        points: drawn.path, label: drawn.plate,
+                        ends: Set(owned(edge.from) + owned(edge.to)).sorted(),
+                        loop: edge.from == edge.to))
+            }
         }
         for index in diagram.chart.nodes.indices {
             guard let box = boxes[index] else { continue }
@@ -6636,7 +6791,8 @@ enum MermaidLayout {
         return Drawing(
             decorations: decorations + labelDecorations,
             size: CGSize(width: width, height: height),
-            contentWidth: content
+            contentWidth: content,
+            geometry: geometry
         )
     }
 

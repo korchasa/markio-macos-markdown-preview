@@ -1,0 +1,17 @@
+block-beta
+  columns 4
+  source["Source"] parse["Parse"] space store[("Store")]
+  space cache["Cache"] index["Index"] space
+  view["View"]
+  block:out:2
+    pdf["PDF"] png["PNG"]
+  end
+  space
+  source --> parse
+  parse -->|blocks| index
+  source -->|bytes| store
+  index --> store
+  cache --> view
+  parse --> png
+  view --> pdf
+  store --> view

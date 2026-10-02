@@ -318,6 +318,63 @@ extension LayeredLayoutTests {
             }
         }
     }
+
+    /// A block diagram's boxes stand where the author counted them out, so a
+    /// line between two that are not neighbours has something in its way; it
+    /// goes round, through the gaps of the grid, rather than over it.
+    func testABlockDiagramLineGoesRoundTheBlocksInItsWay() throws {
+        let sources = [
+            """
+            block-beta
+              columns 3
+              a["Start"] b["Middle"] c["End"]
+              d["Down"] space e["Side"]
+              a --> c
+              d --> e
+              a --> e
+            """,
+            """
+            block-beta
+              columns 4
+              a b c d
+              e f g h
+              a -->|far| d
+              b --> d
+              e --> h
+              a --> h
+              h --> a
+            """,
+            """
+            block-beta
+              columns 3
+              a space b
+              block:group:3
+                x y z
+              end
+              c d e
+              a --> e
+              c --> b
+              x --> z
+            """,
+        ]
+        for source in sources {
+            let drawn = try XCTUnwrap(geometry(source))
+            XCTAssertFalse(drawn.lines.isEmpty)
+            for (number, line) in drawn.lines.enumerated() {
+                for (index, box) in drawn.nodes.enumerated()
+                where !line.ends.contains(index) && box != .zero {
+                    let inner = box.insetBy(dx: 2, dy: 2)
+                    for (a, b) in zip(line.points, line.points.dropFirst()) {
+                        let run = CGRect(
+                            x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x),
+                            height: abs(a.y - b.y))
+                        XCTAssertFalse(
+                            run.intersects(inner), "line \(number) runs over box \(index)")
+                    }
+                }
+            }
+        }
+    }
 }
 
 extension LayeredCoreTests {

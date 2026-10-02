@@ -228,7 +228,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   fields per word, a column of cards per board list, ribbons as thick as what
   they carry, nested rectangles each as big a share as its value, tiles on
   the grid their edges put them on, a closed shape per curve over a spoke per
-  axis, or cells filling a grid of the width the author counted out — centred in
+  axis, or cells filling a grid of the width the author counted out, joined by
+  lines that go round the cells in their way — centred in
   the reading column, on a white page whatever the page around it is and in ink
   chosen against white, except where the diagram names a Mermaid theme and gets
   that theme's colours, and with a colour per branch

@@ -514,9 +514,23 @@ the side facing the other box: straight where the two share a stretch, with one
 turn half way where they stand corner to corner, and with its words half way
 along. Such a line is held three tenths of a side away from either corner,
 because a line that leaves through a corner reads as a line that missed the
-box. A block diagram's lines are drawn the same way: its boxes stand on the
-grid the author counted out, there are no layers to route between, and a line
-across the grid passes over whatever stands between its two ends.
+box.
+
+A block diagram's boxes stand on the grid the author counted out, so there are
+no layers to route between, and the layout may not move a box out of a line's
+way. Where no line has a box or a frame in its way, the lines are joined box to
+box as above. Once one has, every line in the diagram is walked through the
+gaps of the grid by `GridRouter`, all of them so that lines meeting one side of
+a box share it out. A walk is the cheapest path over a grid of candidate
+coordinates — the middles of the gaps, the centres of the boxes, one lane
+outside everything — where a turn, and a step across a line walked earlier,
+each cost as much as a box is tall. Lines that come to share a stretch of a gap
+are then moved onto tracks of their own, nesting the way brackets do, and the
+points where lines meet a side are ordered by the tracks they turn onto, so
+they do not cross at the door. The gaps grow to hold a straight run for every
+end mark, the tracks and the words; a frame keeps its own narrow margin, so
+the room is the lines'. A line's words go where they cover the fewest boxes and
+other lines, slid along its runs, level runs first.
 
 A subgraph is laid out as a picture of its own and then placed as if it were a
 single box, which is how ELK lays out a compound graph too. `placed(chart:…)`

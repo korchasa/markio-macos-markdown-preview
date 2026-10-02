@@ -382,3 +382,37 @@ the fixtures, documents and README — draw in light and dark. The 47
 side-by-side pictures were recomposed: Mermaid's half is kept as it was, and
 Markio's half is drawn afresh at 410 points, at its own size rather than
 stretched to the panel. Contact sheets of every graph diagram were reviewed.
+
+### Follow-up — block diagram lines go round the blocks (2026-10-02)
+
+Stage 5 left block diagrams joining every pair of boxes directly, so a line
+between two blocks that are not neighbours ran over whatever stood between
+them. Block diagrams now hand out their geometry, and
+`test-fixtures/layout/blocks.mmd` puts one in the bench. Once any line has a
+box or a frame in its way, every line of the diagram is walked through the gaps
+of the grid by the new `GridRouter` (`Sources/MarkioRender/GridRouter.swift`):
+cheapest path over gap middles and box centres, turns and crossings of
+earlier lines priced like a box's height, shared stretches spread onto tracks
+that nest, door points ordered by those tracks, gaps widened to fit. A frame
+keeps its 5-point margin instead of half of the widened gap, which had split
+every gap beside it and sent a line between neighbours round a loop. A diagram
+where nothing is in any line's way draws exactly as before: the three block
+examples on the side-by-side page are unchanged pixel for pixel.
+
+`blocks.mmd` measured by the old drawing (with geometry patched in) and the
+new one:
+
+```
+              cross  through  labels  overlap  faults  detour  worst
+old               0        6       5        0      11    1.01   1.02
+new               3        0       1        0       4    1.16   1.27
+```
+
+The three crossings left are one line (Store to View) cutting across the
+lines that leave Parse and Cache; the covered words are a label in a gap three
+lines share. `testABlockDiagramLineGoesRoundTheBlocksInItsWay` fails without
+the walk: before it, lines in all three of its diagrams ran over boxes.
+
+Found on the way, not fixed: the block reader takes `a -- "far" --> d` as a
+block named `a -- "far"`, and refuses a `block:` opened on the same line as
+another cell.
