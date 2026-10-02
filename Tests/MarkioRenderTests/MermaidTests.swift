@@ -989,6 +989,30 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(diagram.links.map(\.dashed), [false, true])
     }
 
+    /// A relation's line runs on under its marks to just short of each
+    /// entity, so the bars of "exactly one" cross it rather than hang between
+    /// the line and the box.
+    func testAnEntityLineRunsUnderItsMarks() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                erDiagram
+                    CUSTOMER ||--|| ORDER : places
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        let drawn = try XCTUnwrap(drawing.geometry)
+        let boxes = drawn.nodes.sorted { $0.minY < $1.minY }
+        XCTAssertEqual(boxes.count, 2)
+        var shafts: [CGRect] = []
+        for case .path(let path, _, _, false) in drawing.decorations {
+            let box = path.boundingBox
+            if box.width < 2, box.height > 20 { shafts.append(box) }
+        }
+        let shaft = try XCTUnwrap(shafts.first)
+        XCTAssertEqual(shaft.minY, boxes[0].maxY, accuracy: 4)
+        XCTAssertEqual(shaft.maxY, boxes[1].minY, accuracy: 4)
+    }
+
     func testAnEntityCanBeCalledOneThingAndShowAnother() throws {
         let diagram = try XCTUnwrap(
             boxes(

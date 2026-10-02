@@ -639,7 +639,9 @@ marks, the words on the line, and a run of shaft left over. A crow's foot alone
 eats most of an ordinary gap, and an entity diagram whose relations have one at
 each end came out as two symbols floating with no line between them. Room for
 the marks is left at the box as well: a crow's foot stands a little off the
-entity rather than on its border, where it would read as part of the frame.
+entity rather than on its border, where it would read as part of the frame. The
+line runs on under the marks to that point: stopped where the marks end, it
+left the bars of "exactly one" hanging between the line and the box.
 An entity's attribute is
 written type first and name second, the order it is declared in: `string email`
 and not `email string`, which would say the attribute is called `string`.
@@ -1016,7 +1018,9 @@ block's frame cannot be drawn until its contents have been placed, which is why
 the whole body is laid out before anything below the participant boxes appears.
 An arm of a block carries the word that opened it and its condition; an arm
 written without a condition still gets the word — `else` in an `alt`, `and` in a
-`par` — because a divider with nothing beside it reads as an accident. A frame
+`par` — because a divider with nothing beside it reads as an accident. An arm's
+condition hangs from its divider on a plate like the block's own tag, since
+written straight on the page it stood across the first lifeline. A frame
 is drawn as a dashed rectangle and the walk leaves a gap under it before the
 next thing, which is how a reader tells one block from the next: two solid
 frames whose edges met read as a single box with a line through it, and the

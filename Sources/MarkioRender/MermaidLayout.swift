@@ -401,7 +401,7 @@ enum MermaidLayout {
         let headRoom = 11 * metrics.scale
         let markRoom =
             diagram.links.flatMap { [$0.fromEnd, $0.toEnd] }
-            .map { inset($0, room: headRoom) + 3 * metrics.scale }.max() ?? 0
+            .map { reach(of: $0, room: headRoom) + 3 * metrics.scale }.max() ?? 0
         let colour = theme.palette.secondaryText
         var labelSizes: [Int: CGSize] = [:]
         for (index, link) in diagram.links.enumerated()
@@ -756,9 +756,12 @@ enum MermaidLayout {
             CGPoint(
                 x: points[points.count - 2].x - end.x, y: points[points.count - 2].y - end.y))
         let headRoom = 11 * metrics.scale
-        var shaftPath = shortened(points, by: inset(link.toEnd, room: headRoom))
+        // A crow's foot stands a little off the entity rather than on its
+        // border; the marks a class diagram draws touch the box, as they should.
+        let clear = 3 * metrics.scale
+        var shaftPath = shortened(points, by: inset(link.toEnd, room: headRoom, clear: clear))
         shaftPath = shortened(
-            shaftPath.reversed(), by: inset(link.fromEnd, room: headRoom)
+            shaftPath.reversed(), by: inset(link.fromEnd, room: headRoom, clear: clear)
         ).reversed()
         var decorations: [BlockBox.Decoration] = []
         if link.dashed {
@@ -772,9 +775,6 @@ enum MermaidLayout {
             for point in shaftPath.dropFirst() { shaft.addLine(to: point) }
             decorations.append(.path(shaft, color: colour, lineWidth: 1.3, filled: false))
         }
-        // A crow's foot stands a little off the entity rather than on its
-        // border; the marks a class diagram draws touch the box, as they should.
-        let clear = 3 * metrics.scale
         func off(_ end: BoxDiagram.End, _ point: CGPoint, _ away: CGPoint) -> CGPoint {
             switch end {
             case .one, .zeroOrOne, .oneOrMore, .zeroOrMore:
@@ -844,15 +844,26 @@ enum MermaidLayout {
         return (decorations, points, plate)
     }
 
+    /// How far an end's marks reach out from the box: a crow's foot with a
+    /// circle beyond it is the longest, and needs a little clear space too.
+    private static func reach(of end: BoxDiagram.End, room: CGFloat) -> CGFloat {
+        switch end {
+        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return room * 1.9
+        default: return inset(end, room: room, clear: 0)
+        }
+    }
+
     /// How far the shaft stops short of the box, to leave the end its room.
-    private static func inset(_ end: BoxDiagram.End, room: CGFloat) -> CGFloat {
+    private static func inset(_ end: BoxDiagram.End, room: CGFloat, clear: CGFloat) -> CGFloat {
         switch end {
         case .none: return 0
         case .arrow, .triangle: return room
         case .diamond, .hollowDiamond: return room * 1.3
-        // A crow's foot needs its own room and a little clear space besides,
-        // so that nothing it draws sits on the entity's own border.
-        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return room * 1.9
+        // An entity's marks are drawn across the line, so the line runs on
+        // under them to where they start, just clear of the entity's border.
+        // Stopped short of them, it left the bars of "exactly one" hanging in
+        // the air between the line and the box.
+        case .one, .zeroOrOne, .oneOrMore, .zeroOrMore: return clear
         }
     }
 
@@ -6208,7 +6219,10 @@ enum MermaidLayout {
                                 section.title.isEmpty
                                 ? (block.kind == "par" ? "and" : "else") : section.title
                             dividers.append((y - metrics.messageGap * 0.4, words))
-                            y += 14 * metrics.scale
+                            // The arm's plate hangs from its divider, and the
+                            // first message under it keeps the distance the
+                            // block's own tag keeps from the message under it.
+                            y += 18 * metrics.scale + metrics.messageGap * 0.15
                         }
                         walk(section.items, depth: depth + 1)
                     }
@@ -6246,9 +6260,13 @@ enum MermaidLayout {
                                     to: CGPoint(x: rect.maxX, y: lineY), dash: 4, gap: 3),
                                 color: theme.palette.tableBorder, lineWidth: 1, filled: false))
                         guard !title.isEmpty else { continue }
-                        let line = text("[\(title)]", font: font, color: colour)
-                        frames.append(
-                            .glyphs(line, origin: CGPoint(x: rect.minX + 8, y: lineY + 12)))
+                        // An arm's condition sits on a plate like the block's
+                        // own tag above it. Written straight on the page it
+                        // stood across the first lifeline, which ran through
+                        // its words.
+                        body += tag(
+                            "[\(title)]", title: "", at: CGPoint(x: rect.minX, y: lineY),
+                            theme: theme, font: font, metrics: metrics)
                     }
                     // One block must not stand on the next: without room
                     // between them two frames read as one.

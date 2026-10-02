@@ -212,4 +212,48 @@ final class SequenceLayoutTests: XCTestCase {
             strokes.first { $0.width < 1 && abs($0.midX - figure.midX) < 1 })
         XCTAssertGreaterThanOrEqual(lifeline.minY, name.maxY)
     }
+
+    /// A word over a lifeline sits on a plate that hides the line; the
+    /// condition of an `alt`'s second arm was written straight across it.
+    func testNoWordIsCrossedByALifeline() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                sequenceDiagram
+                    Alice->>Bob: Hello Bob, how are you?
+                    alt is sick
+                        Bob->>Alice: Not so good :(
+                    else is well
+                        Bob->>Alice: Feeling fresh like a daisy
+                    end
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 760)
+        var lifelines: [CGRect] = []
+        var plates: [CGRect] = []
+        var words: [CGRect] = []
+        for decoration in drawing.decorations {
+            switch decoration {
+            case .path(let path, _, _, false)
+            where path.boundingBox.width < 1 && path.boundingBox.height > 100:
+                lifelines.append(path.boundingBox)
+            case .fill(let rect, _, _):
+                plates.append(rect)
+            case .glyphs(let line, let origin):
+                var ascent: CGFloat = 0
+                var descent: CGFloat = 0
+                let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+                words.append(
+                    CGRect(
+                        x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+            default: continue
+            }
+        }
+        XCTAssertEqual(lifelines.count, 2)
+        for word in words {
+            for lifeline in lifelines where word.intersects(lifeline.insetBy(dx: -0.5, dy: 0)) {
+                XCTAssertTrue(
+                    plates.contains { $0.contains(word) }, "a lifeline runs through \(word)")
+            }
+        }
+    }
 }
