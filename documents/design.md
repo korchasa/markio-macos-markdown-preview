@@ -799,13 +799,19 @@ than the bits alone would need. The bit numbers over the boxes are placed after
 the boxes are: the number that ends a row is written first, then each remaining
 one only where it does not touch a number already there — a 32-bit word cannot
 show all thirty-two of its numbers at a readable size, and a row of numbers
-printed over each other measures nothing.
+printed over each other measures nothing. A one-bit field gets a single number,
+centred over it, as Mermaid writes it; two numbers for the same bit said it
+twice and the left copy ran into the number before it, so the flag lost its
+number altogether. Two fields that meet both number the edge between them, one
+number each side of it, since the end of one field and the start of the next are
+both worth reading.
 
 A kanban board is a column per list and a card per item, and the indentation is
 what separates the two — the first line's indent is the column level, and
 anything deeper is a card. A line shallower than the first would leave it unclear
 what is a column and what is a card, so it is refused. A card's priority tints
-its left edge. A card's words wrap at a readable measure and break only between
+its left edge in Mermaid's hues — red, orange, blue and light blue from very high
+to very low — and a medium one is left plain, as Mermaid leaves it. A card's words wrap at a readable measure and break only between
 words, so one long title makes a tall card rather than a board six times too
 wide to look at; every column takes the same width, because a board whose
 columns differ in width reads as a board with a column that matters more. A
@@ -851,7 +857,9 @@ roots are given a parent that is never itself drawn, and that parent, having no
 name, gets no head row. A `classDef` paints the rectangle that asked for it and
 everything that rectangle holds, handed down in one forward pass over the same
 flat array, because a section's colour is what tells a reader the parts under it
-belong together.
+belong together. Tiles stand apart by a gap of their own, and a border a class
+asks for is drawn inside its tile: a page-coloured line over the seam would turn
+dark with the border, and the tile would sit flush against its neighbours.
 
 A C4 diagram has no layout of its own — it is read into a `Flowchart` whose
 shapes come from what each element is, and an element followed by a brace is a

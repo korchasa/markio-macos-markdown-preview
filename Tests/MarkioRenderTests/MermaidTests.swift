@@ -2066,6 +2066,31 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(board.columns[1].cards.map(\.label), ["Ship"])
     }
 
+    /// Each of Mermaid's priorities but the middle one is a stripe of its own
+    /// colour; high and very high are not the same stripe.
+    func testEveryKanbanPriorityHasItsOwnStripe() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                kanban
+                  Todo
+                    a[One]@{ priority: 'Very High' }
+                    b[Two]@{ priority: 'High' }
+                    c[Three]@{ priority: 'Medium' }
+                    d[Four]@{ priority: 'Low' }
+                    e[Five]@{ priority: 'Very Low' }
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        var stripes: [CGColor] = []
+        for case .fill(let rect, let color, _) in drawing.decorations where rect.width < 6 {
+            stripes.append(color)
+        }
+        XCTAssertEqual(stripes.count, 4)
+        for (index, one) in stripes.enumerated() {
+            for other in stripes[(index + 1)...] { XCTAssertNotEqual(one, other) }
+        }
+    }
+
     func testARequirementDiagramReadsIntoTheSameBoxes() throws {
         guard
             case .boxes(let diagram)? = MermaidDiagram.parse(
@@ -2177,6 +2202,50 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(packet.fields.map(\.label), ["A", "", "B"])
         XCTAssertEqual(packet.fields.map(\.first), [0, 16, 20])
         XCTAssertEqual(packet.fields.map(\.last), [15, 19, 31])
+    }
+
+    /// Every field's bits are numbered: a one-bit flag once, centred over it,
+    /// and two fields that meet both at the edge between them.
+    func testEveryPacketFieldKeepsItsBitNumbers() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                packet-beta
+                0-31: "Word"
+                32-35: "Offset"
+                36-41: "Reserved"
+                42: "URG"
+                43: "ACK"
+                44-63: "Window"
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        var fields: [CGRect] = []
+        for case .path(let path, _, _, false) in drawing.decorations {
+            fields.append(path.boundingBox)
+        }
+        let row = fields.filter { $0.minY > fields[0].maxY }.sorted { $0.minX < $1.minX }
+        XCTAssertEqual(row.count, 5)
+        let top = try XCTUnwrap(row.first?.minY)
+        var numbers: [CGRect] = []
+        for case .glyphs(let line, let origin) in drawing.decorations
+        where origin.y < top && origin.y > fields[0].maxY {
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+            numbers.append(
+                CGRect(x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        // 32, 35 | 36, 41 | 42 | 43 | 44, 63.
+        XCTAssertEqual(numbers.count, 8)
+        for flag in row[2...3] {
+            XCTAssertTrue(
+                numbers.contains { abs($0.midX - flag.midX) < 0.5 }, "no number over \(flag)")
+        }
+        for (index, one) in numbers.enumerated() {
+            for other in numbers[(index + 1)...] {
+                XCTAssertFalse(one.intersects(other), "\(one) runs into \(other)")
+            }
+        }
     }
 
     func testTheBoardsAreDrawnWhole() throws {
@@ -3047,6 +3116,50 @@ final class MermaidTests: XCTestCase {
         XCTAssertEqual(map.nodes[2].style.strokeWidth, 2)
         XCTAssertNotNil(map.nodes[2].style.fill)
         XCTAssertTrue(map.nodes[4].style.isEmpty)
+    }
+
+    /// Every pair of tiles side by side keeps the same gap, a tile with a
+    /// thick border from a class included, and the border stays in its tile.
+    func testATreemapTileWithABorderKeepsItsGap() throws {
+        let diagram = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                treemap-beta
+                "Main"
+                    "A": 20
+                    "B":::important
+                        "B1": 10
+                        "B2": 15
+                    "C": 5
+
+                classDef important fill:#f96,stroke:#333,stroke-width:2px;
+                """))
+        let drawing = MermaidLayout.draw(diagram, theme: Theme(isDark: false), width: 760)
+        var tiles: [CGRect] = []
+        var borders: [CGRect] = []
+        for decoration in drawing.decorations {
+            switch decoration {
+            case .fill(let rect, _, _): tiles.append(rect)
+            case .path(let path, _, let width, false):
+                borders.append(path.boundingBox.insetBy(dx: -width / 2, dy: -width / 2))
+            default: continue
+            }
+        }
+        XCTAssertEqual(tiles.count, 6)
+        for (index, one) in tiles.enumerated() {
+            for other in tiles[(index + 1)...] where !one.contains(other) && !other.contains(one) {
+                let apart = max(
+                    other.minX - one.maxX, one.minX - other.maxX, other.minY - one.maxY,
+                    one.minY - other.maxY)
+                XCTAssertGreaterThanOrEqual(apart, 1.9, "\(one) and \(other) touch")
+            }
+        }
+        XCTAssertFalse(borders.isEmpty)
+        for border in borders {
+            XCTAssertTrue(
+                tiles.contains { $0.insetBy(dx: -0.01, dy: -0.01).contains(border) },
+                "\(border) leaves its tile")
+        }
     }
 
     func testRadarBlocksAndZenUmlAreDrawnWhole() throws {

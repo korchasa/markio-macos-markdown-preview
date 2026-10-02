@@ -2271,6 +2271,7 @@ enum MermaidLayout {
         squarify(map.nodes[0].children, in: inside)
 
         var decorations: [BlockBox.Decoration] = []
+        let tileGap = 2 * metrics.scale
         // A tile is drawn over its parent, not over the page, and a class
         // paints a section and everything in it — so the colour a leaf's name
         // is read against is its own tint over its parent's. Each tile records
@@ -2313,16 +2314,30 @@ enum MermaidLayout {
                         under: node.style.text.map(cgColor) ?? theme.palette.text, shownAt: strength
                     )
                 } ?? wheel
+            // Tiles stand apart by a gap of their own rather than by a line in
+            // the page colour drawn over the seam: a class that gives a tile a
+            // dark border turned that line dark, and the tile then sat flush
+            // against its neighbours while every other tile kept a gap. A
+            // border a class asks for is drawn inside the tile, so it never
+            // eats into the gap.
+            let tile = frame.insetBy(dx: tileGap / 2, dy: tileGap / 2)
+            let corner = 3 * metrics.scale
             decorations.append(
                 .fill(
-                    rect: frame.insetBy(dx: 1, dy: 1),
-                    color: colour.copy(alpha: strength) ?? colour,
-                    cornerRadius: 3 * metrics.scale))
-            decorations.append(
-                .path(
-                    CGPath(rect: frame, transform: nil),
-                    color: node.style.stroke.map(cgColor) ?? theme.palette.background,
-                    lineWidth: CGFloat(node.style.strokeWidth ?? 1.5), filled: false))
+                    rect: tile, color: colour.copy(alpha: strength) ?? colour, cornerRadius: corner)
+            )
+            if let stroke = node.style.stroke {
+                let pen = CGFloat(node.style.strokeWidth ?? 1.5)
+                let edge = tile.insetBy(dx: pen / 2, dy: pen / 2)
+                if edge.width > 0, edge.height > 0 {
+                    decorations.append(
+                        .path(
+                            CGPath(
+                                roundedRect: edge, cornerWidth: min(corner, edge.width / 2),
+                                cornerHeight: min(corner, edge.height / 2), transform: nil),
+                            color: cgColor(stroke), lineWidth: pen, filled: false))
+                }
+            }
             // A branch is named along its own top edge, above what it holds; a
             // leaf gets its name in the middle. Both carry their number: a
             // branch's is the sum of what it holds, and that is what the map is
@@ -2429,7 +2444,10 @@ enum MermaidLayout {
                 )
             )
         }
-        var wantedNumbers: [(row: Int, value: Int, x: CGFloat, opening: Bool, top: CGFloat)] = []
+        /// Where a bit number stands against the `x` it belongs to: just after
+        /// it, just before it, or centred on it.
+        enum Side { case after, before, over }
+        var wantedNumbers: [(row: Int, value: Int, x: CGFloat, side: Side, top: CGFloat)] = []
         for piece in pieces {
             let top = metrics.padding + titleRoom + CGFloat(piece.row) * (rowHeight + numberRoom)
             let frame = CGRect(
@@ -2463,26 +2481,44 @@ enum MermaidLayout {
                                 y: frame.midY + size.height / 2 - descent(line))))
                 }
             }
-            // The bit each end of the field stands on, above its own edge.
-            for (number, x) in [
-                (piece.row * packet.bitsPerRow + piece.first, frame.minX),
-                (piece.row * packet.bitsPerRow + piece.last, frame.maxX),
-            ] {
+            // The bit each end of the field stands on, above its own edge. A
+            // field of one bit has one number, centred over it, as Mermaid
+            // writes it: the same number at both edges says it twice, and the
+            // copy at the left edge runs into the number of the field before.
+            let base = piece.row * packet.bitsPerRow
+            if piece.first == piece.last {
                 wantedNumbers.append(
-                    (row: piece.row, value: number, x: x, opening: x == frame.minX, top: top))
+                    (
+                        row: piece.row, value: base + piece.first, x: frame.midX, side: .over,
+                        top: top
+                    ))
+            } else {
+                wantedNumbers.append(
+                    (
+                        row: piece.row, value: base + piece.first, x: frame.minX, side: .after,
+                        top: top
+                    ))
+                wantedNumbers.append(
+                    (
+                        row: piece.row, value: base + piece.last, x: frame.maxX, side: .before,
+                        top: top
+                    ))
             }
         }
         // A row of one-bit fields wants more numbers over it than the row is
         // wide, and printed as asked they run into each other and become a
         // smear. The two ends of the row are placed first — they are what says
         // how long the row is — and after them each number is placed only where
-        // it is still clear of the ones already there.
+        // it is still clear of the ones already there. Two fields that meet both
+        // number the edge between them, one each side of it, as Mermaid does:
+        // the end of one field and the start of the next are both worth
+        // reading, and there is room for both.
         for row in 0..<rows {
             var placed: [CGRect] = []
             let candidates = wantedNumbers.filter { $0.row == row }
             let ends = row * packet.bitsPerRow
             let ordered = candidates.sorted { a, b in
-                func rank(_ item: (row: Int, value: Int, x: CGFloat, opening: Bool, top: CGFloat))
+                func rank(_ item: (row: Int, value: Int, x: CGFloat, side: Side, top: CGFloat))
                     -> Int
                 {
                     item.value == ends || item.value == ends + packet.bitsPerRow - 1 ? 0 : 1
@@ -2493,12 +2529,16 @@ enum MermaidLayout {
                 let line = text(
                     "\(candidate.value)", font: font, color: theme.palette.secondaryText)
                 let size = measure(line)
-                let anchor =
-                    candidate.opening ? candidate.x + 1 : candidate.x - 1 - size.width
+                let room = 2 * metrics.scale
+                let anchor: CGFloat
+                switch candidate.side {
+                case .after: anchor = candidate.x + room
+                case .before: anchor = candidate.x - room - size.width
+                case .over: anchor = candidate.x - size.width / 2
+                }
                 let originX = min(left + content - size.width, max(left, anchor))
                 let box = CGRect(
-                    x: originX - 2 * metrics.scale, y: 0, width: size.width + 4 * metrics.scale,
-                    height: 1)
+                    x: originX - room / 2, y: 0, width: size.width + room, height: 1)
                 guard !placed.contains(where: { $0.intersects(box) }) else { continue }
                 placed.append(box)
                 decorations.append(
@@ -2650,14 +2690,13 @@ enum MermaidLayout {
                         color: theme.palette.tableBorder, lineWidth: 1, filled: false))
                 // A priority is a stripe down the card's own edge, so a glance
                 // over the board finds the urgent ones without reading them.
-                if !card.priority.isEmpty {
+                if let colour = priorityColour(card.priority) {
                     decorations.append(
                         .fill(
                             rect: CGRect(
                                 x: frame.minX, y: frame.minY, width: 4 * metrics.scale,
                                 height: frame.height),
-                            color: priorityColour(card.priority, theme: theme),
-                            cornerRadius: 2 * metrics.scale))
+                            color: colour, cornerRadius: 2 * metrics.scale))
                 }
                 var wordsY = frame.minY + pad
                 for line in card.label {
@@ -2740,11 +2779,17 @@ enum MermaidLayout {
         )
     }
 
-    private static func priorityColour(_ priority: String, theme: Theme) -> CGColor {
+    /// Mermaid's five priorities, in Mermaid's hues: red, orange, none, blue
+    /// and light blue. Folding two levels into one colour drops the very
+    /// difference the author wrote down, and the middle level is the one a
+    /// board has most of, so it is the one left plain.
+    private static func priorityColour(_ priority: String) -> CGColor? {
         switch priority.lowercased() {
-        case "very high", "high": return CGColor(red: 0.85, green: 0.33, blue: 0.33, alpha: 1)
-        case "low", "very low": return CGColor(red: 0.45, green: 0.70, blue: 0.50, alpha: 1)
-        default: return theme.palette.secondaryText
+        case "very high": return CGColor(red: 0.85, green: 0.30, blue: 0.30, alpha: 1)
+        case "high": return CGColor(red: 0.95, green: 0.60, blue: 0.22, alpha: 1)
+        case "low": return CGColor(red: 0.29, green: 0.53, blue: 0.89, alpha: 1)
+        case "very low": return CGColor(red: 0.62, green: 0.80, blue: 0.96, alpha: 1)
+        default: return nil
         }
     }
 
