@@ -550,4 +550,92 @@ extension LayeredLayoutTests {
             XCTAssertGreaterThan(next - one, 6, "\(arrivals)")
         }
     }
+
+    /// A frame's name stands clear of the heads of the lines that end on the
+    /// frame. It was kept clear of the lines alone, so the head of the one
+    /// coming in from `one` stood against the first letter of `two`.
+    func testAFrameNameStandsClearOfTheArrowheadsOnIt() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                flowchart TB
+                    c1-->a2
+                    subgraph one
+                    a1-->a2
+                    end
+                    subgraph two
+                    b1-->b2
+                    end
+                    subgraph three
+                    c1-->c2
+                    end
+                    one --> two
+                    three --> two
+                    two --> c2
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 760)
+        var heads: [CGRect] = []
+        for case .path(let path, _, _, true) in drawing.decorations
+        where path.boundingBox.width < 15 && path.boundingBox.height < 15 {
+            heads.append(path.boundingBox)
+        }
+        var words: [CGRect] = []
+        for case .glyphs(let line, let origin) in drawing.decorations {
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+            words.append(
+                CGRect(x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent))
+        }
+        XCTAssertEqual(heads.count, 7)
+        for head in heads {
+            for word in words {
+                XCTAssertFalse(
+                    head.insetBy(dx: -2, dy: -2).intersects(word),
+                    "an arrowhead at \(head) stands against the words at \(word)")
+            }
+        }
+    }
+
+    /// A frame's name with no gap wide enough between the lines crossing its
+    /// strip was written straight across them. It now stands on a plate drawn
+    /// after the lines, so they pass under the words.
+    func testALineCrossingAFramesNamePassesUnderIt() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                flowchart TB
+                  top[Top]
+                  subgraph outer["a name far too long to stand beside a line"]
+                    inner[Inner box]
+                  end
+                  top --> inner
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 760)
+        var crossed = 0
+        for (index, decoration) in drawing.decorations.enumerated() {
+            guard case .glyphs(let line, let origin) = decoration else { continue }
+            var ascent: CGFloat = 0
+            var descent: CGFloat = 0
+            let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+            let word = CGRect(
+                x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent
+            ).insetBy(dx: 0.5, dy: 0.5)
+            for (at, drawn) in drawing.decorations.enumerated() {
+                guard case .path(let path, _, let lineWidth, false) = drawn, lineWidth > 0,
+                    path.boundingBox.width < 1, path.boundingBox.intersects(word)
+                else { continue }
+                crossed += 1
+                // The plate has to come after the line and before the words.
+                let plated =
+                    at < index
+                    && drawing.decorations[at..<index].contains {
+                        if case .fill(let plate, _, _) = $0 { return plate.contains(word) }
+                        return false
+                    }
+                XCTAssertTrue(plated, "a line runs through the words at \(word)")
+            }
+        }
+        XCTAssertEqual(crossed, 1, "the line should cross the frame's name once")
+    }
 }

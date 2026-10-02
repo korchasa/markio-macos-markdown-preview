@@ -3784,6 +3784,10 @@ enum MermaidLayout {
         // the frame itself stops over the name instead of running through it.
         var nameAt: [Int: CGFloat] = [:]
         var shortOf = Set<Int>()
+        // A name wider than any gap the passing lines leave is written over
+        // them on a plate of what stands behind it, so a line goes under the
+        // words rather than through them.
+        var plated = Set<Int>()
         for group in chart.groups.indices where !chart.groups[group].title.isEmpty {
             guard let border = frames[group] else { continue }
             let width =
@@ -3809,19 +3813,29 @@ enum MermaidLayout {
                     passing.append(carried(route, from: from, to: to, boxes: placed))
                 }
             }
+            // A line running on past the name is given a little more room than
+            // the clearance: at that alone the name stood against it.
+            let past = 2 * metrics.scale
             let through = crossings(
-                of: passing, strip: top, border.minY, from: border.minX, to: border.maxX)
+                of: passing, strip: top, border.minY, from: border.minX, to: border.maxX
+            ).flatMap { [$0 - past, $0 + past] }
             let clearance = 4 * metrics.scale
             func spot(clear of: [CGFloat]) -> CGFloat? {
                 Self.spot(
                     width, from: border.minX + 4, to: border.maxX - 4, clear: of, by: clearance)
             }
-            if let x = spot(clear: through + ending.map(\.x)) {
+            // A line ending on the frame carries its head into the strip, and
+            // the head is wider than the line: kept clear of the line alone,
+            // the name stood against the head's edge.
+            let head = metrics.arrowWidth / 2
+            if let x = spot(clear: through + ending.flatMap { [$0.x - head, $0.x + head] }) {
                 nameAt[group] = x
             } else {
+                if spot(clear: through) == nil { plated.insert(group) }
                 let x = spot(clear: through) ?? border.minX + 4
                 nameAt[group] = x
-                for line in ending where line.x > x - clearance && line.x < x + width + clearance {
+                for line in ending
+                where line.x + head > x - clearance && line.x - head < x + width + clearance {
                     shortOf.insert(line.edge)
                 }
             }
@@ -3836,7 +3850,7 @@ enum MermaidLayout {
             guard let rect = frames[group] else { continue }
             decorations += frame(
                 chart.groups[group], rect: rect, theme: theme, metrics: metrics,
-                titleRoom: titleRoom, nameAt: nameAt[group])
+                titleRoom: titleRoom, nameAt: nameAt[group], named: !plated.contains(group))
         }
         var labels: [BlockBox.Decoration] = []
         var geometry = Geometry(
@@ -3882,6 +3896,25 @@ enum MermaidLayout {
             }
         }
         for box in boxes { decorations += node(box, theme: theme, metrics: metrics) }
+        for group in plated.sorted() {
+            guard let rect = frames[group] else { continue }
+            let words = frameName(
+                chart.groups[group], rect: rect, theme: theme, metrics: metrics,
+                titleRoom: titleRoom, nameAt: nameAt[group])
+            let behind = chart.groups[group].parent.map { parent in
+                faded(
+                    authorFill(
+                        chart.groups[parent].style, or: theme.palette.codeBackground,
+                        ink: theme.palette.secondaryText, theme: theme),
+                    by: chart.groups[parent].style)
+            }
+            guard let covered = bounds(of: words) else { continue }
+            decorations.append(
+                .fill(
+                    rect: covered.insetBy(dx: -2 * metrics.scale, dy: -1 * metrics.scale),
+                    color: behind ?? theme.palette.background, cornerRadius: 2))
+            decorations += words
+        }
         // An edge that skips a rank passes over whatever stands between, so its
         // words are written last and keep their own plate under them.
         decorations += labels
@@ -4403,7 +4436,7 @@ enum MermaidLayout {
     /// The titled frame a `subgraph` draws around its own nodes.
     private static func frame(
         _ group: Flowchart.Group, rect bounds: CGRect, theme: Theme, metrics: Metrics,
-        titleRoom: CGFloat, nameAt: CGFloat? = nil
+        titleRoom: CGFloat, nameAt: CGFloat? = nil, named: Bool = true
     ) -> [BlockBox.Decoration] {
         let path = CGPath(roundedRect: bounds, cornerWidth: 6, cornerHeight: 6, transform: nil)
         var decorations: [BlockBox.Decoration] = [
@@ -4420,13 +4453,26 @@ enum MermaidLayout {
                     group.style.stroke.map(cgColor) ?? theme.palette.tableBorder, by: group.style),
                 lineWidth: group.style.strokeWidth ?? 1, filled: false),
         ]
-        guard !group.title.isEmpty else { return decorations }
+        guard named else { return decorations }
+        return decorations
+            + frameName(
+                group, rect: bounds, theme: theme, metrics: metrics, titleRoom: titleRoom,
+                nameAt: nameAt)
+    }
+
+    /// A frame's name, in the strip over its border.
+    private static func frameName(
+        _ group: Flowchart.Group, rect bounds: CGRect, theme: Theme, metrics: Metrics,
+        titleRoom: CGFloat, nameAt: CGFloat?
+    ) -> [BlockBox.Decoration] {
+        guard !group.title.isEmpty else { return [] }
         let (lines, size) = labelLines(
             group.title,
             font: scaled(theme.controlLabel, by: metrics.scale),
             color: faded(
                 group.style.text.map(cgColor) ?? theme.palette.secondaryText, by: group.style)
         )
+        var decorations: [BlockBox.Decoration] = []
         var top = bounds.minY - max(3, titleRoom - size.height) - size.height
         for line in lines {
             let one = measure(line)

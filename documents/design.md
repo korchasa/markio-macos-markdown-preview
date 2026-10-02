@@ -496,10 +496,16 @@ dozen times, which needs nothing from the shape but the path it is already
 drawn with. A frame is its border and nothing more: a line that ends on a frame
 stops there. The frame's name is written in the strip over the border, at the
 left, and a line coming in from above crosses that strip, so the name is moved
-along it to the first place no line runs through. Where there is no such place
+along it to the first place no line runs through. A line that ends on the
+frame counts as wide as its arrowhead there, since the head kept clear of the
+line alone stood against the name's first letter, and a line passing on is kept
+a little further off than the clearance for the same reason. Where there is no such place
 — a narrow frame with a line into its middle — a line that ends on the frame
 itself stops over the name instead of running through it, the way Mermaid's
-arrow stops at the frame's titled head. A class diagram's namespace writes its
+arrow stops at the frame's titled head. A line only passing through the strip on
+its way to a box inside cannot stop there, so the name is written after the
+lines, on a plate of whatever stands behind the strip, and the line runs under
+the words rather than through them. A class diagram's namespace writes its
 name inside the frame, and moves it the same way.
 
 *Words.* A line's words are written in the rectangle the layout made for them,
