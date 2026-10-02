@@ -6332,6 +6332,11 @@ enum MermaidLayout {
                     let inset = CGFloat(depth) * 9 * metrics.scale
                     let frameTop = y - metrics.messageGap * 0.55
                     var dividers: [(CGFloat, String)] = []
+                    // What the block's messages drew, so the frame can be
+                    // widened to hold it: a message to itself on the last
+                    // lifeline writes its words past the room kept around the
+                    // lifelines, and the frame's edge ran through them.
+                    var inside: CGRect?
                     y += 6 * metrics.scale
                     for (index, section) in block.sections.enumerated() {
                         if index == 0 {
@@ -6355,12 +6360,25 @@ enum MermaidLayout {
                             // block's own tag keeps from the message under it.
                             y += 18 * metrics.scale + metrics.messageGap * 0.15
                         }
+                        let drawn = (body.count, frames.count)
                         walk(section.items, depth: depth + 1)
+                        if let box = bounds(of: Array(body[drawn.0...]) + Array(frames[drawn.1...]))
+                        {
+                            inside = inside.map { $0.union(box) } ?? box
+                        }
                     }
                     let frameBottom = y - metrics.messageGap * 0.4
-                    let rect = CGRect(
+                    var rect = CGRect(
                         x: left - 10 + inset, y: frameTop,
                         width: right - left + 20 - inset * 2, height: frameBottom - frameTop)
+                    if let inside {
+                        let room = 6 * metrics.scale
+                        let minX = min(rect.minX, inside.minX - room)
+                        let maxX = max(rect.maxX, inside.maxX + room)
+                        rect = CGRect(
+                            x: minX, y: rect.minY, width: maxX - minX, height: rect.height)
+                        reach = max(reach, rect.maxX - right, left - rect.minX)
+                    }
                     if let wash {
                         // A `rect` is a wash of colour behind its messages and
                         // nothing else: no outline, and no word on it.

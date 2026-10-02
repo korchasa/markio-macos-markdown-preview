@@ -213,6 +213,49 @@ final class SequenceLayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(lifeline.minY, name.maxY)
     }
 
+    /// A message to itself turns round beside its lifeline and writes its
+    /// words past the turn. On the last lifeline that is outside the room a
+    /// frame keeps around the lifelines, and the frame's edge ran through them.
+    func testAFrameHoldsTheWordsOfAMessageToItself() throws {
+        let parsed = try XCTUnwrap(
+            MermaidDiagram.parse(
+                """
+                sequenceDiagram
+                    participant V as View
+                    participant L as Layout
+                    V->>L: box(at:)
+                    alt already measured
+                        L-->>V: the block
+                    else first time
+                        L->>L: typeset
+                        L-->>V: the block
+                    end
+                """))
+        let drawing = MermaidLayout.draw(parsed, theme: Theme(isDark: false), width: 760)
+        var words: CGRect?
+        var outlines: [CGRect] = []
+        for decoration in drawing.decorations {
+            switch decoration {
+            case .glyphs(let line, let origin):
+                // The words furthest right are the ones past the turn.
+                var ascent: CGFloat = 0
+                var descent: CGFloat = 0
+                let width = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, nil))
+                let rect = CGRect(
+                    x: origin.x, y: origin.y - ascent, width: width, height: ascent + descent)
+                if rect.maxX > words?.maxX ?? 0 { words = rect }
+            case .path(let path, _, _, false):
+                let box = path.boundingBox
+                if box.width > 60, box.height > 60 { outlines.append(box) }
+            default: continue
+            }
+        }
+        let typeset = try XCTUnwrap(words)
+        let frame = try XCTUnwrap(outlines.max { $0.height < $1.height })
+        XCTAssertGreaterThan(frame.maxX, typeset.maxX, "the frame's edge runs through \(typeset)")
+        XCTAssertLessThanOrEqual(frame.maxX, drawing.contentRect.maxX + 0.5)
+    }
+
     /// A word over a lifeline sits on a plate that hides the line; the
     /// condition of an `alt`'s second arm was written straight across it.
     func testNoWordIsCrossedByALifeline() throws {

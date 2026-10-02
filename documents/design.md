@@ -1039,7 +1039,11 @@ written straight on the page it stood across the first lifeline. A frame
 is drawn as a dashed rectangle and the walk leaves a gap under it before the
 next thing, which is how a reader tells one block from the next: two solid
 frames whose edges met read as a single box with a line through it, and the
-dashes are what the diagrams everyone learned this from use. A `rect`
+dashes are what the diagrams everyone learned this from use. A frame spans the
+lifelines its contents touch, and widens further when something inside reaches
+past them: a message to itself turns round beside its lifeline and writes its
+words past the turn, and on the last lifeline those words stood outside the
+frame's margin with the frame's edge drawn through them. A `rect`
 is a block like any other whose frame is a wash of colour with no outline and no
 word on it, painted before the lifelines so the messages stay on top; a `box` is
 a named column — its colour runs the whole height of the participants declared
