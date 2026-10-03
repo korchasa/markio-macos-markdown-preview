@@ -4000,20 +4000,29 @@ enum MermaidLayout {
         metrics: Metrics, titleRoom: CGFloat, inset: CGFloat, layerGap: CGFloat,
         lineGap: CGFloat, endRoom: CGFloat = 0, inTextOrder: Bool = false
     ) -> Placement {
-        var owner = [Int?](repeating: nil, count: boxSizes.count)
-        for (index, group) in chart.groups.enumerated() {
-            for member in group.members where member < owner.count { owner[member] = index }
-        }
+        // Both tables are filled here and only read after. They are constants
+        // from then on because the nested functions below capture them, and
+        // the Swift 6.3 release build refuses a captured `var` as a data race.
+        let owner = {
+            var owner = [Int?](repeating: nil, count: boxSizes.count)
+            for (index, group) in chart.groups.enumerated() {
+                for member in group.members where member < owner.count { owner[member] = index }
+            }
+            return owner
+        }()
         // Every box a frame holds, however deep — what an edge crossing frames
         // has to be resolved against.
-        var reach = [Set<Int>](repeating: [], count: chart.groups.count)
-        for index in boxSizes.indices {
-            var walk = owner[index]
-            while let group = walk {
-                reach[group].insert(index)
-                walk = chart.groups[group].parent
+        let reach = {
+            var reach = [Set<Int>](repeating: [], count: chart.groups.count)
+            for index in boxSizes.indices {
+                var walk = owner[index]
+                while let group = walk {
+                    reach[group].insert(index)
+                    walk = chart.groups[group].parent
+                }
             }
-        }
+            return reach
+        }()
 
         func direction(of container: Int?) -> Flowchart.Direction {
             container.map { chart.groups[$0].direction ?? chart.direction } ?? chart.direction
