@@ -1366,7 +1366,11 @@ Side by side takes the same edit script and builds two documents instead of one
 — the baseline with what it lost, the current file with what it gained — so the
 window can put a layout in each of two scroll views. The unchanged lines are in
 both, which is what makes the columns run level until a change pushes them
-apart. The offsets are copied rather than scaled for the same reason. Only the
+apart. The offsets are copied rather than scaled for the same reason. Both
+columns are typeset at one width — the narrower of the two fits — because the
+map and the scroller take their room from the right-hand pane only; fitted to
+each pane on its own, the right column broke its lines elsewhere and the
+shared text drifted lower on that side from the first screen. Only the
 right-hand pane is the document: find, the outline and every command still work
 on it alone, so the second column adds a view and no state.
 

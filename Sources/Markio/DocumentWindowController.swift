@@ -433,8 +433,16 @@ final class DocumentWindowController: NSWindowController {
     private func applyColumnWidth() {
         let position = readingPosition()
         let preferred = DocumentWindowController.columnWidth(for: layout.theme)
-        layout.setColumnWidth(fitted(preferred, in: scrollView))
-        baselineLayout.setColumnWidth(fitted(preferred, in: baselineScroll))
+        var width = fitted(preferred, in: scrollView)
+        // Side by side, the two columns are typeset at one width. The map and
+        // the scroller narrow only the right-hand pane, and a column fitted to
+        // each pane on its own broke its lines elsewhere, so the shared text
+        // drifted apart while the scroll offset is copied one to one.
+        if !baselineScroll.isHidden {
+            width = min(width, fitted(preferred, in: baselineScroll))
+        }
+        layout.setColumnWidth(width)
+        baselineLayout.setColumnWidth(width)
         baselineView.needsDisplay = true
         documentView.needsDisplay = true
         restore(position)

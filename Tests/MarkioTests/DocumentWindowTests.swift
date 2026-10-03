@@ -265,6 +265,54 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertEqual(content.frame.height, before, accuracy: 1)
     }
 
+    /// The two columns of a comparison are typeset at one width.
+    ///
+    /// The panes are equally wide, but the map and the scroller take their
+    /// room from the right-hand one only. Each column was fitted to its own
+    /// pane, so in a window too narrow for two full columns the right one was
+    /// narrower, its lines broke elsewhere, and the shared text stood lower
+    /// and lower on that side — while the scroll offset is copied one to one.
+    func testTheTwoColumnsOfAComparisonAreOneWidth() throws {
+        let text = (1...120).map { "Paragraph \($0), long enough to wrap at any width a pane has." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1100, height: 700), display: true)
+        window.layoutIfNeeded()
+
+        let baseline = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).md")
+        try Data((text + "\n\nOne more paragraph in the old version.\n").utf8).write(to: baseline)
+        defer { try? FileManager.default.removeItem(at: baseline) }
+        let map = Preferences.mapVisible
+        Preferences.mapVisible = true
+        defer { Preferences.mapVisible = map }
+
+        controller.compare(with: baseline, sideBySide: true)
+        window.layoutIfNeeded()
+        func views(in view: NSView) -> [DocumentView] {
+            var found: [DocumentView] = []
+            if let scroll = view as? NSScrollView, !scroll.isHidden,
+                let inner = scroll.documentView as? DocumentView
+            {
+                inner.viewWillDraw()
+                found.append(inner)
+            }
+            for child in view.subviews { found += views(in: child) }
+            return found
+        }
+        let columns = views(in: try XCTUnwrap(window.contentView))
+        XCTAssertEqual(columns.count, 2)
+        // The window is narrow enough that a column has to give way, or the
+        // test proves nothing.
+        let preferred = Theme(isDark: false).columnWidth(characters: Preferences.readingWidth)
+        XCTAssertLessThan(columns.map(\.layout.columnWidth).min() ?? 0, preferred)
+        XCTAssertEqual(columns[0].layout.columnWidth, columns[1].layout.columnWidth, accuracy: 0.5)
+        window.close()
+    }
+
     /// A click on a link out of the document, from the click itself to the URL
     /// that would have been handed to the browser.
     ///
