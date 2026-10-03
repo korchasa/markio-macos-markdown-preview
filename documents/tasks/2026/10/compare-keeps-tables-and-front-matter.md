@@ -1,6 +1,6 @@
 ---
 date: 2026-10-02
-status: to do
+status: done
 implements: [VIEW-17, VIEW-26, PARSE-3]
 tags: [compare, tables, front-matter]
 related_tasks: ["[reload-and-compare-keep-the-place](reload-and-compare-keep-the-place.md)"]
@@ -55,24 +55,30 @@ matter.
 
 ## Definition of Done
 
-- [ ] VIEW-17: a table whose rows changed is shown inline as the old table,
+- [x] VIEW-17: a table whose rows changed is shown inline as the old table,
       marked removed, followed by the new table, marked added. Both are parsed as
       tables, and no `|` row is left as a paragraph.
-  - Test: `Tests/MarkioRenderTests/CompareEngineTests.swift::testAChangedTableStaysATableOnEachSide`
-  - Evidence: `swift test --filter CompareEngineTests/testAChangedTableStaysATableOnEachSide`
-- [ ] VIEW-26: side by side, each column holds its version of the table as one
+  - Test: `Tests/MarkioRenderTests/CompareEngineTests.swift::testABlockThatOnlyReadsWholeIsComparedWhole`
+    (the `.table` case, inline half)
+  - Evidence: `swift test --filter CompareEngineTests/testABlockThatOnlyReadsWholeIsComparedWhole`
+- [x] VIEW-26: side by side, each column holds its version of the table as one
       table, marked.
-  - Test: `Tests/MarkioRenderTests/CompareEngineTests.swift::testSplitKeepsAChangedTableWhole`
-  - Evidence: `swift test --filter CompareEngineTests/testSplitKeepsAChangedTableWhole`
-- [ ] PARSE-3, VIEW-17: a changed front-matter field leaves exactly one
+  - Test: the same test, `.table` case, `split` half
+  - Evidence: `swift test --filter CompareEngineTests/testABlockThatOnlyReadsWholeIsComparedWhole`
+- [x] PARSE-3, VIEW-17: a changed front-matter field leaves exactly one
       front-matter block on each side, marked, with no blank line inside it.
-  - Test: `Tests/MarkioRenderTests/CompareEngineTests.swift::testChangedFrontMatterStaysOneBlock`
-  - Evidence: `swift test --filter CompareEngineTests/testChangedFrontMatterStaysOneBlock`
-- [ ] Paragraph behaviour is unchanged: the existing `CompareEngineTests` pass as
+      Side by side, each column opens on its own front matter. Inline, the old
+      copy stays front matter at the top and the new one follows it as a fenced
+      `yaml` block, marked added: front matter exists only on a file's first
+      line, so a second front-matter block cannot be expressed in one source.
+  - Test: the same test, `.frontMatter` case;
+    `CompareEngineTests.swift::testTheSecondFrontMatterIsFencedAsYAML`
+  - Evidence: `swift test --filter CompareEngineTests`
+- [x] Paragraph behaviour is unchanged: the existing `CompareEngineTests` pass as
       they are.
   - Evidence: `swift test --filter CompareEngineTests`
-- [ ] The whole gate passes.
-  - Evidence: `deno task check`
+- [x] The whole gate passes.
+  - Evidence: `deno task check` (2026-10-03, commit `5732b4a`; CI green on `be4c109`)
 
 ## Solution
 
@@ -90,3 +96,11 @@ matter.
    separate task if the whole-table tint turns out to be too coarse.
 5. Add the three tests above using a small report with a results table and front
    matter, asserting on the parsed blocks of `merge` and `split`, not on pixels.
+
+## Outcome
+
+Implemented in `5732b4a` more broadly than planned: every block that only reads
+whole — fenced and indented code, tables, HTML blocks, front matter, and a
+paragraph holding a `$$` formula across lines — is one unit of the diff, taken
+from the parser (`CompareEngine.units(of:lineCount:)`). Prose stays line by
+line. See "Comparing versions" in `documents/design.md`.
