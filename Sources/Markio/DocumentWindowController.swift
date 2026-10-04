@@ -561,15 +561,15 @@ final class DocumentWindowController: NSWindowController {
     /// every swap, and a report rewritten a few times a minute crept upward.
     private func follow(_ position: ReadingPosition) {
         let ordinal = relocated(position)
+        place(position, at: ordinal)
+        DispatchQueue.main.async { [weak self] in self?.place(position, at: ordinal) }
+    }
+
+    private func place(_ position: ReadingPosition, at ordinal: Int) {
         guard ordinal < layout.blockCount else { return }
-        let place = { [weak self] in
-            guard let self, ordinal < self.layout.blockCount else { return }
-            let scale = self.window?.backingScaleFactor ?? 2
-            let y = self.target(of: position, at: ordinal)
-            self.scrollDocument(to: (y * scale).rounded() / scale)
-        }
-        place()
-        DispatchQueue.main.async(execute: place)
+        let scale = window?.backingScaleFactor ?? 2
+        let y = target(of: position, at: ordinal)
+        scrollDocument(to: (y * scale).rounded() / scale)
     }
 
     /// A column never gets wider than the pane holding it. Half a window is
