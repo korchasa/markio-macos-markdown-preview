@@ -21,7 +21,7 @@
  */
 
 import { fail, run, section } from "./lib.ts";
-import { APP_NAME, QL_NAME } from "./identity.ts";
+import { APP_NAME, QL_NAME, VERSION } from "./identity.ts";
 
 /** What the local copy is called and answers to. */
 const DEV_NAME = `${APP_NAME} Dev`;
@@ -112,7 +112,7 @@ export async function installDevCopy(bundle: string): Promise<void> {
   await setValue(plist, "CFBundleName", DEV_NAME);
   await setValue(plist, "CFBundleDisplayName", DEV_NAME);
   await setValue(plist, "CFBundleIdentifier", DEV_ID);
-  await setValue(plist, "CFBundleShortVersionString", `1.0-dev ${await commit()}`);
+  await setValue(plist, "CFBundleShortVersionString", `${VERSION}-dev ${await commit()}`);
   const appex = `${INSTALLED}/Contents/PlugIns/${QL_NAME}.appex/Contents/Info.plist`;
   await setValue(appex, "CFBundleIdentifier", DEV_QL_ID);
   await setValue(appex, "CFBundleName", `${DEV_NAME} Quick Look`);

@@ -26,6 +26,14 @@ export const QL_PRODUCT = "MarkioQuickLook";
 export const APP_NAME = "Markio";
 export const QL_NAME = "MarkioQuickLook";
 
+/**
+ * The version on sale and the build number under it. App Store Connect takes a
+ * build only for a version of the same string, and the extension must carry
+ * the app's numbers, so both plists are held to these.
+ */
+export const VERSION = "1.1";
+export const BUILD = "14";
+
 export const APP_PLIST = "packaging/Info.plist";
 export const QL_PLIST = "packaging/MarkioQuickLook-Info.plist";
 
@@ -38,8 +46,8 @@ const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
       CFBundleExecutable: APP_NAME,
       CFBundleName: APP_NAME,
       CFBundleDisplayName: APP_NAME,
-      CFBundleShortVersionString: "1.0",
-      CFBundleVersion: "13",
+      CFBundleShortVersionString: VERSION,
+      CFBundleVersion: BUILD,
       // One declared locale, or AppKit renders its own standard menu items in
       // the system language beside ours, which ship untranslated English.
       CFBundleDevelopmentRegion: "en",
@@ -57,8 +65,8 @@ const EXPECTED: Array<{ plist: string; keys: Record<string, string> }> = [
       CFBundleDisplayName: "Markio Quick Look",
       // An extension whose version disagrees with its host is rejected at
       // ingest, so these track the app's rather than living their own life.
-      CFBundleShortVersionString: "1.0",
-      CFBundleVersion: "13",
+      CFBundleShortVersionString: VERSION,
+      CFBundleVersion: BUILD,
     },
   },
 ];
