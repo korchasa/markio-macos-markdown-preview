@@ -86,6 +86,140 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(Preferences.scrollPosition(for: url)), 1500, accuracy: 1)
     }
 
+    // MARK: - Holding the place across a swap
+
+    /// A long report whose blocks differ in height and in text, so a block can
+    /// be told apart from its neighbours and a position inside it means something.
+    private func report(_ count: Int = 300) -> String {
+        (0..<count).map { index in
+            index % 10 == 0
+                ? "## Section \(index)"
+                : "Paragraph \(index). "
+                    + String(repeating: "Words that wrap onto another line. ", count: index % 4 + 2)
+        }.joined(separator: "\n\n") + "\n"
+    }
+
+    private struct Opened {
+        let document: MarkdownDocument
+        let controller: DocumentWindowController
+        let window: NSWindow
+        let view: DocumentView
+    }
+
+    /// The report in a window of the size the defect was found in, scrolled
+    /// to the middle and drawn there.
+    private func openScrolled(_ text: String) throws -> Opened {
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1200, height: 760), display: true)
+        window.layoutIfNeeded()
+        let scroller = try XCTUnwrap(documentScroller(in: try XCTUnwrap(window.contentView)))
+        let view = try XCTUnwrap(scroller.documentView as? DocumentView)
+        view.viewWillDraw()
+        scroller.contentView.scroll(to: NSPoint(x: 0, y: 2537))
+        scroller.reflectScrolledClipView(scroller.contentView)
+        view.viewWillDraw()
+        return Opened(document: document, controller: controller, window: window, view: view)
+    }
+
+    /// The block at the top of the view, by its source text, and how far down
+    /// into it the top of the view sits.
+    private func top(of opened: Opened) throws -> (text: String, into: CGFloat) {
+        let view = opened.view
+        let clip = try XCTUnwrap(view.enclosingScrollView).contentView
+        view.viewWillDraw()
+        let y = clip.bounds.minY - view.verticalPadding
+        let ordinal = view.layout.index(atOffset: y)
+        let document = view.layout.document
+        let text = document.text(document.sourceRange(of: document.leaves[ordinal]))
+        return (text, y - view.layout.offset(of: ordinal))
+    }
+
+    /// What the file watcher does when another process writes the file.
+    private func rewrite(_ opened: Opened, to text: String) throws {
+        try opened.document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        opened.controller.documentDidReload()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    }
+
+    /// An agent appends to the report below the reader; the reader's line does
+    /// not move. It used to jump up by a quarter of the window plus however far
+    /// into its block the reader had scrolled.
+    func testAReloadKeepsTheReaderOnTheSameLine() throws {
+        let opened = try openScrolled(report())
+        let before = try top(of: opened)
+        XCTAssertGreaterThan(before.into, 1, "the reader is inside a block, not on its edge")
+
+        try rewrite(opened, to: report() + "\nOne more paragraph at the end.\n")
+
+        let after = try top(of: opened)
+        XCTAssertEqual(after.text, before.text)
+        XCTAssertEqual(after.into, before.into, accuracy: 1)
+        opened.window.close()
+    }
+
+    /// A report rewritten every few seconds walked the reader towards its
+    /// beginning, one jump per rewrite.
+    func testRepeatedReloadsDoNotDrift() throws {
+        let opened = try openScrolled(report())
+        let before = try top(of: opened)
+        var text = report()
+        for round in 1...3 {
+            text += "\nAppended in round \(round).\n"
+            try rewrite(opened, to: text)
+            let after = try top(of: opened)
+            XCTAssertEqual(after.text, before.text, "round \(round)")
+            XCTAssertEqual(after.into, before.into, accuracy: 1, "round \(round)")
+        }
+        opened.window.close()
+    }
+
+    /// Blocks added above the reader push the block they were reading further
+    /// down the file; the view goes with it rather than staying on its old
+    /// number.
+    func testTextAddedAboveDoesNotMoveTheReader() throws {
+        let opened = try openScrolled(report())
+        let before = try top(of: opened)
+        let added = (1...5).map { "Inserted paragraph \($0) at the top." }.joined(separator: "\n\n")
+
+        try rewrite(opened, to: added + "\n\n" + report())
+
+        let after = try top(of: opened)
+        XCTAssertEqual(after.text, before.text)
+        XCTAssertEqual(after.into, before.into, accuracy: 1)
+        opened.window.close()
+    }
+
+    /// Starting a comparison puts the removed text back above the reader,
+    /// switching to side by side narrows the column, and stopping takes the
+    /// removed text away again. Through all three the reader stays on the
+    /// block they were reading.
+    func testComparingKeepsTheReaderInPlace() throws {
+        let opened = try openScrolled(report())
+        let before = try top(of: opened)
+        let baseline = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).md")
+        let removed = (1...5).map { "Removed paragraph \($0) of the old version." }
+            .joined(separator: "\n\n")
+        try Data((removed + "\n\n" + report()).utf8).write(to: baseline)
+        defer { try? FileManager.default.removeItem(at: baseline) }
+
+        opened.controller.compare(with: baseline, sideBySide: false)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(try top(of: opened).text, before.text, "inline")
+
+        opened.controller.toggleSideBySide(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(try top(of: opened).text, before.text, "side by side")
+
+        opened.controller.stopComparing(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(try top(of: opened).text, before.text, "stopped")
+        opened.window.close()
+    }
+
     /// The map has a lane of its own: the scroller to the right of it, the text
     /// to the left, and neither underneath it.
     ///

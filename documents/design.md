@@ -1438,6 +1438,17 @@ hit immediately and then in batches, and indexes nothing (PERF-6).
   down by the whole margin.
 - Live reload watches the file with a `DispatchSource` vnode source and
   re-arms after each event, because an atomic save replaces the vnode.
+- Swapping the document under the reader — a rewrite on disk, a comparison
+  starting, changing mode or stopping — keeps the same place (VIEW-10,
+  VIEW-17, VIEW-26). The block at the top is remembered by the length and hash
+  of its source too, and found again as the nearest block with the same source
+  within 2000 blocks of its old number, so text added or put back above the
+  reader does not move them onto a different block. The scroll goes through
+  the clip view, again on the next turn once the blocks are measured, and lands
+  on a whole device pixel: the clip view rounds an origin down, and half a
+  point lost per rewrite crept a live report upward. `reveal(ordinal:)` is not
+  used for this — it leaves its target a quarter of the window down, which is
+  right for find and the outline and was the whole of the old jump.
 - The menu bar is built in code before launch completes, so it exists before
   the first window.
 - `CodeEditor` is one choice for two commands: a clicked code path, at its

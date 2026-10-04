@@ -1,6 +1,6 @@
 ---
 date: 2026-10-02
-status: to do
+status: done
 implements: [VIEW-10, VIEW-17, VIEW-26]
 tags: [live-reload, compare, scroll]
 related_tasks: []
@@ -60,28 +60,33 @@ Nothing covers the position across a reload or a comparison.
 
 ## Definition of Done
 
-- [ ] VIEW-10: after an external rewrite that leaves the text above the reader
+- [x] VIEW-10: after an external rewrite that leaves the text above the reader
       unchanged, the top of the view shows the same line at the same height,
       within 1 point.
   - Test: `Tests/MarkioTests/DocumentWindowTests.swift::testAReloadKeepsTheReaderOnTheSameLine`
   - Evidence: `swift test --filter DocumentWindowTests/testAReloadKeepsTheReaderOnTheSameLine`
-- [ ] VIEW-10: three rewrites in a row leave no accumulated drift.
+- [x] VIEW-10: three rewrites in a row leave no accumulated drift.
   - Test: `Tests/MarkioTests/DocumentWindowTests.swift::testRepeatedReloadsDoNotDrift`
   - Evidence: `swift test --filter DocumentWindowTests/testRepeatedReloadsDoNotDrift`
-- [ ] VIEW-10: when blocks are added above the reader, the block that was at the
+- [x] VIEW-10: when blocks are added above the reader, the block that was at the
       top is still at the top.
   - Test: `Tests/MarkioTests/DocumentWindowTests.swift::testTextAddedAboveDoesNotMoveTheReader`
   - Evidence: `swift test --filter DocumentWindowTests/testTextAddedAboveDoesNotMoveTheReader`
-- [ ] VIEW-17, VIEW-26: starting an inline comparison, switching to side by side
+- [x] VIEW-17, VIEW-26: starting an inline comparison, switching to side by side
       and stopping keep the same unchanged block at the top of the view.
   - Test: `Tests/MarkioTests/DocumentWindowTests.swift::testComparingKeepsTheReaderInPlace`
   - Evidence: `swift test --filter DocumentWindowTests/testComparingKeepsTheReaderInPlace`
-- [ ] The whole gate passes.
+- [x] The whole gate passes.
   - Evidence: `deno task check`
-- [ ] The built app follows a live rewrite without moving: open a long document
+- [x] The built app follows a live rewrite without moving: open a long document
       scrolled to the middle, rewrite the file during the delay, and the capture
       shows the same heading at the same height as before the rewrite.
   - Evidence: manual — `.build/Markio.app/Contents/MacOS/Markio doc.md --capture-after=5 --capture=/tmp/after.png`
+  - Done 2026-10-04 on an unsandboxed copy of the built app: a 300-block
+    report opened at a remembered 2537 points, rewritten twice during the
+    delay (paragraph 45 in view changed, a line appended). The shot shows the
+    new paragraph 45, and against a shot of the same start without the rewrite
+    it matches best at a shift of 0 pixels.
 
 ## Solution
 
@@ -98,3 +103,21 @@ Nothing covers the position across a reload or a comparison.
 4. Leave `reveal(ordinal:)` as it is for its other callers.
 5. Add the four tests above. Each one asserts on the clip view's `bounds.minY`
    relative to the anchor block's offset, not on pixels.
+
+## Outcome
+
+- `DocumentWindowController.show(document:comparison:)` takes the reader's
+  position before the swap and puts it back with `follow(_:)`; the position
+  now carries a `BlockIdentity` (source length and hash) and `relocated(_:)`
+  finds that block again. Restore after zoom and width changes shares the
+  target computation but is otherwise unchanged.
+- Deviation from Solution step 1: the place inside the block is kept as the
+  existing fraction of its height, not as points. The block has the same
+  source and is measured before use, so the two are the same number at the
+  same width, and the fraction also survives the column narrowing when side by
+  side starts.
+- Found while making it pass: the clip view rounds an origin down to a device
+  pixel, so each swap lost up to half a point; three rewrites drifted 1.25
+  points. The target is now rounded to the nearest device pixel.
+- Not covered: with the find bar open, a reload re-runs the search, which
+  jumps to the first match.

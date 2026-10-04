@@ -466,33 +466,110 @@ final class DocumentWindowController: NSWindowController {
         /// first block alone, a window at the very top came back scrolled down
         /// by the whole margin.
         var margin: CGFloat = 0
+        /// The block's source, for finding it again in a document that was
+        /// swapped underneath it. An ordinal alone points at another block as
+        /// soon as anything is added or removed above the reader.
+        var identity: BlockIdentity?
     }
+
+    /// A block's source by length and hash: enough to find it again after a
+    /// swap without keeping a second copy of the text.
+    private struct BlockIdentity: Equatable {
+        var length: Int
+        var digest: Int
+    }
+
+    /// How many blocks either side of the old ordinal a swapped document is
+    /// searched for the reader's block. It bounds the work to a few thousand
+    /// byte ranges, and nothing is typeset to look.
+    private static let relocationReach = 2000
 
     private func readingPosition() -> ReadingPosition {
         let raw = scrollView.contentView.bounds.minY - documentView.verticalPadding
         let y = max(0, raw)
         let ordinal = layout.index(atOffset: y)
+        let identity = ordinal < layout.blockCount ? identity(of: ordinal) : nil
         let height = layout.height(of: ordinal)
         guard height > 0 else {
-            return ReadingPosition(ordinal: ordinal, fraction: 0, margin: min(raw, 0))
+            return ReadingPosition(
+                ordinal: ordinal, fraction: 0, margin: min(raw, 0), identity: identity)
         }
         let into = (y - layout.offset(of: ordinal)) / height
         return ReadingPosition(
-            ordinal: ordinal, fraction: min(max(into, 0), 1), margin: min(raw, 0))
+            ordinal: ordinal, fraction: min(max(into, 0), 1), margin: min(raw, 0),
+            identity: identity)
+    }
+
+    private func identity(of ordinal: Int) -> BlockIdentity {
+        let document = layout.document
+        let range = document.sourceRange(of: document.leaves[ordinal])
+        var hasher = Hasher()
+        document.bytes.withUnsafeBytes { bytes in
+            hasher.combine(
+                bytes: UnsafeRawBufferPointer(rebasing: bytes[Int(range.start)..<Int(range.end)]))
+        }
+        return BlockIdentity(length: Int(range.end - range.start), digest: hasher.finalize())
+    }
+
+    /// The reader's block in the document now showing: the nearest block with
+    /// the same source, or the old ordinal when the block itself was rewritten.
+    private func relocated(_ position: ReadingPosition) -> Int {
+        let last = layout.blockCount - 1
+        let guess = min(position.ordinal, max(last, 0))
+        guard let wanted = position.identity, last >= 0 else { return guess }
+        let leaves = layout.document.leaves
+        for distance in 0...Self.relocationReach {
+            let candidates = distance == 0 ? [guess] : [guess - distance, guess + distance]
+            for ordinal in candidates where ordinal >= 0 && ordinal <= last {
+                // Length first: it costs no hashing, and rules out almost
+                // every block that is not the one.
+                let range = layout.document.sourceRange(of: leaves[ordinal])
+                guard Int(range.end - range.start) == wanted.length else { continue }
+                if identity(of: ordinal) == wanted { return ordinal }
+            }
+        }
+        return guess
     }
 
     private func restore(_ position: ReadingPosition) {
         guard position.ordinal >= 0, position.ordinal < layout.blockCount else { return }
+        documentView.scroll(NSPoint(x: 0, y: target(of: position, at: position.ordinal)))
+        documentView.needsDisplay = true
+    }
+
+    /// Where the view's top goes to put `position` back on `ordinal`.
+    private func target(of position: ReadingPosition, at ordinal: Int) -> CGFloat {
         // Measured before it is asked about: after a re-measure the block's
         // height is an estimate until something types it, and an estimate is
         // exactly what the fraction must not be multiplied by.
-        _ = layout.prepare(
-            range: position.ordinal..<(position.ordinal + 1), anchor: position.ordinal)
-        let top = layout.offset(of: position.ordinal) + documentView.verticalPadding
-        let target =
-            top + position.fraction * layout.height(of: position.ordinal) + position.margin
-        documentView.scroll(NSPoint(x: 0, y: max(0, target)))
-        documentView.needsDisplay = true
+        _ = layout.prepare(range: ordinal..<(ordinal + 1), anchor: ordinal)
+        let top = layout.offset(of: ordinal) + documentView.verticalPadding
+        return max(0, top + position.fraction * layout.height(of: ordinal) + position.margin)
+    }
+
+    /// Put the reader back on their block after the document under them was
+    /// swapped for another — a rewrite on disk, or a comparison starting,
+    /// changing mode or stopping.
+    ///
+    /// Twice, as the reopen restore does: the first scroll goes through the
+    /// clip view, since the document view still has the old document's
+    /// height, and the blocks above the target are estimates until they are
+    /// drawn, so the second scroll on the next turn corrects for them.
+    ///
+    /// The target is put on a whole device pixel first. The clip view rounds
+    /// an origin down to one, so a target between pixels lost half a point on
+    /// every swap, and a report rewritten a few times a minute crept upward.
+    private func follow(_ position: ReadingPosition) {
+        let ordinal = relocated(position)
+        guard ordinal < layout.blockCount else { return }
+        let place = { [weak self] in
+            guard let self, ordinal < self.layout.blockCount else { return }
+            let scale = self.window?.backingScaleFactor ?? 2
+            let y = self.target(of: position, at: ordinal)
+            self.scrollDocument(to: (y * scale).rounded() / scale)
+        }
+        place()
+        DispatchQueue.main.async(execute: place)
     }
 
     /// A column never gets wider than the pane holding it. Half a window is
@@ -738,15 +815,18 @@ final class DocumentWindowController: NSWindowController {
         show(document: markdownDocument.parsed, comparison: nil)
     }
 
-    /// Swap what the window shows, keeping the reader roughly where they were.
+    /// Swap what the window shows, keeping the reader on the line they were
+    /// reading. `reveal(ordinal:)` is for find and the outline: it leaves its
+    /// target a quarter of the window down, and a report rewritten every few
+    /// seconds walked the reader towards its beginning one quarter at a time.
     private func show(document: MarkdownKit.Document, comparison: CompareEngine.Result?) {
-        let anchor = layout.index(atOffset: scrollView.contentView.bounds.minY)
+        let position = readingPosition()
         displayed = document
         layout.comparison = comparison
         layout.replace(document: document)
         documentView.needsDisplay = true
         refreshOutline()
-        documentView.reveal(ordinal: min(anchor, max(0, layout.blockCount - 1)))
+        follow(position)
         rerunSearchIfActive()
         updateTitle()
     }
