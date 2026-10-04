@@ -229,7 +229,12 @@ Both kinds go through one layout. Markdown's syntax cannot merge cells, so the
 grid it describes is the special case of one that can — every cell one row and
 one column wide — and `HTMLTable` is the shape both are expressed in. Column
 widths come from the natural width of each column's widest cell, with a spanning
-cell sharing its width between the columns it covers; row heights come from the
+cell sharing its width between the columns it covers. A table narrower than
+that takes the room each column holds above its widest single word, measured
+with CoreText in the cell's own font, before it shrinks any column below it, so
+a one-word column does not break its word while a column of sentences could
+wrap at a space; only when the words alone do not fit is every column shrunk in
+proportion. Row heights come from the
 tallest cell in each row, and a cell spanning rows only has to fit inside all of
 them together. Borders are one stroke per cell rather than a grid of lines,
 which is what gives a merged cell exactly the border it should have.
@@ -1390,6 +1395,14 @@ other.
 
 The search runs on a background queue with a generation token, flushes its first
 hit immediately and then in batches, and indexes nothing (PERF-6).
+
+The current match is a strong orange in both appearances, so the text on it is
+drawn again in a dark ink: `DocumentRenderer.Highlight` carries an optional
+ink, and the renderer sets the lines under such a highlight again from a copy
+of their text in that colour, over the same ranges, clipped to the highlight.
+Drawing the glyphs in clip mode and filling through them painted the whole
+highlight instead. The find bar's trailing edge is pinned to the map strip,
+which matches always put on screen, rather than to the window's edge.
 
 ## Markio
 

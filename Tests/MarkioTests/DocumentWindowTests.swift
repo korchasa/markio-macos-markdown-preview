@@ -323,6 +323,45 @@ final class DocumentWindowTests: XCTestCase {
         XCTAssertLessThanOrEqual(page.contentX + page.layout.columnWidth, page.frame.width + 1)
     }
 
+    /// The find bar ends where the map begins.
+    ///
+    /// Both were pinned to the scroll view's trailing edge and nothing kept
+    /// them apart, so with matches on the map — which is exactly when the bar
+    /// is open — the count and the arrows sat over the strip, its marks running
+    /// through the digits.
+    func testTheFindBarStaysLeftOfTheMap() throws {
+        let text = (0..<300)
+            .map { "Paragraph \($0) mentions the ledger, long enough to take a line." }
+            .joined(separator: "\n\n")
+        let document = MarkdownDocument()
+        try document.read(from: Data(text.utf8), ofType: "net.daringfireball.markdown")
+        let controller = DocumentWindowController(document: document)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1440, height: 900), display: true)
+        controller.showFind(nil)
+        controller.find("ledger")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let root = try XCTUnwrap(window.contentView)
+        root.layoutSubtreeIfNeeded()
+
+        let map = try XCTUnwrap(mapStrip(in: root))
+        let bar = try XCTUnwrap(findBar(in: root))
+        XCTAssertFalse(map.isHidden, "matches put the map on screen")
+        XCTAssertFalse(bar.isHidden)
+        let mapFrame = map.convert(map.bounds, to: root)
+        let barFrame = bar.convert(bar.bounds, to: root)
+        XCTAssertLessThanOrEqual(barFrame.maxX, mapFrame.minX)
+        window.close()
+    }
+
+    private func findBar(in view: NSView) -> FindBar? {
+        if let bar = view as? FindBar { return bar }
+        for child in view.subviews {
+            if let found = findBar(in: child) { return found }
+        }
+        return nil
+    }
+
     private func mapStrip(in view: NSView) -> DocumentMapStrip? {
         if let strip = view as? DocumentMapStrip { return strip }
         for child in view.subviews {

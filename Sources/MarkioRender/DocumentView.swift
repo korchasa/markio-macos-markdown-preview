@@ -623,7 +623,8 @@ public final class DocumentView: NSView {
             if !rects.isEmpty {
                 highlights.append(
                     DocumentRenderer.Highlight(
-                        rects: rects, color: layout.theme.palette.findCurrentMatch))
+                        rects: rects, color: layout.theme.palette.findCurrentMatch,
+                        ink: layout.theme.palette.findCurrentMatchInk))
             }
         }
         return highlights
@@ -646,14 +647,16 @@ public final class DocumentView: NSView {
         guard !findMatches.isEmpty else { return [] }
         var result: [DocumentRenderer.Highlight] = []
         for (index, match) in findMatches.enumerated() where match.ordinal == ordinal {
-            let color =
-                index == currentMatch
-                ? layout.theme.palette.findCurrentMatch
-                : layout.theme.palette.findMatch
+            let palette = layout.theme.palette
+            let isCurrent = index == currentMatch
             let rects = rects(in: box, from: match.location, to: match.location + match.length)
                 .map { $0.insetBy(dx: -1, dy: -1) }
             if !rects.isEmpty {
-                result.append(DocumentRenderer.Highlight(rects: rects, color: color))
+                result.append(
+                    DocumentRenderer.Highlight(
+                        rects: rects,
+                        color: isCurrent ? palette.findCurrentMatch : palette.findMatch,
+                        ink: isCurrent ? palette.findCurrentMatchInk : nil))
             }
         }
         return result

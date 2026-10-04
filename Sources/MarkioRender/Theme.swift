@@ -81,6 +81,10 @@ public struct Theme {
         public var keyboardBackground: CGColor
         public var findMatch: CGColor
         public var findCurrentMatch: CGColor
+        /// The text on the current match. Dark in both appearances: the match
+        /// is a bright orange either way, and the dark appearance's light text
+        /// read on it at about 2:1.
+        public var findCurrentMatchInk: CGColor
         public var selection: CGColor
         public var background: CGColor
         /// Bands behind added and removed lines in a `diff` block.
@@ -340,6 +344,7 @@ public struct Theme {
                 keyboardBackground: color(56, 61, 70),
                 findMatch: color(140, 116, 30),
                 findCurrentMatch: color(214, 148, 20),
+                findCurrentMatchInk: color(28, 32, 38),
                 selection: color(38, 92, 158, 0.55),
                 background: color(22, 24, 28),
                 diffAddedText: color(150, 226, 165),
@@ -363,6 +368,7 @@ public struct Theme {
             keyboardBackground: color(240, 242, 245),
             findMatch: color(255, 226, 120),
             findCurrentMatch: color(255, 176, 40),
+            findCurrentMatchInk: color(28, 32, 38),
             selection: color(160, 200, 255, 0.75),
             background: color(255, 255, 255),
             diffAddedText: color(20, 92, 44),

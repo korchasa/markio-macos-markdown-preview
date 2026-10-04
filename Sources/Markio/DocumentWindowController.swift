@@ -227,7 +227,10 @@ final class DocumentWindowController: NSWindowController {
             mapStrip.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             mapStrip.widthAnchor.constraint(equalToConstant: DocumentMapStrip.width),
 
-            findBar.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -18),
+            // Matches always put the map on screen, so a bar pinned to the
+            // window's edge sat over it. The strip keeps its frame while hidden,
+            // so the bar does not move when the map appears.
+            findBar.trailingAnchor.constraint(equalTo: mapStrip.leadingAnchor, constant: -8),
             findBar.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 14),
 
             bottomBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),

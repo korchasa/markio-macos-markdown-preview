@@ -12,10 +12,14 @@ public enum DocumentRenderer {
     public struct Highlight {
         public var rects: [CGRect]
         public var color: CGColor
+        /// The colour the text on the highlight is drawn in, when its own
+        /// colour would not read on it. `nil` keeps the text as it is.
+        public var ink: CGColor?
 
-        public init(rects: [CGRect], color: CGColor) {
+        public init(rects: [CGRect], color: CGColor, ink: CGColor? = nil) {
             self.rects = rects
             self.color = color
+            self.ink = ink
         }
     }
 
@@ -40,6 +44,39 @@ public enum DocumentRenderer {
         for case .glyphs(let line, let origin) in box.decorations {
             context.textPosition = origin
             CTLineDraw(line, context)
+        }
+        for highlight in highlights {
+            if let ink = highlight.ink { redraw(box, inside: highlight.rects, in: ink, context) }
+        }
+    }
+
+    /// Draw the text inside `rects` again, in one colour.
+    ///
+    /// A line's colours are in its attributes, which a context cannot
+    /// override, so the lines that meet the highlight are set again from a
+    /// copy of the text in the ink, over the same ranges, which puts every
+    /// glyph where the first pass put it. Drawing the glyphs in clip mode and
+    /// filling through them looked simpler, and painted the whole highlight
+    /// in the ink — a dark bar with no word on it.
+    private static func redraw(
+        _ box: BlockBox, inside rects: [CGRect], in ink: CGColor, _ context: CGContext
+    ) {
+        let area = rects.reduce(CGRect.null) { $0.union($1) }
+        for segment in box.segments {
+            let lines = segment.lines.filter { $0.frame.intersects(area) }
+            guard !lines.isEmpty else { continue }
+            let inked = NSMutableAttributedString(attributedString: segment.attributed)
+            inked.addAttribute(
+                AttributedBuilder.colorKey, value: ink,
+                range: NSRange(location: 0, length: inked.length))
+            let typesetter = CTTypesetterCreateWithAttributedString(inked)
+            context.saveGState()
+            context.clip(to: rects)
+            for line in lines {
+                context.textPosition = line.origin
+                CTLineDraw(CTTypesetterCreateLine(typesetter, line.range), context)
+            }
+            context.restoreGState()
         }
     }
 

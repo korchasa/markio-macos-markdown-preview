@@ -219,4 +219,45 @@ final class TableLayoutTests: XCTestCase {
         layout.clickTableHeader(at: 0, column: 1)
         XCTAssertEqual(rows(layout, at: 0), before)
     }
+
+    /// Every place a cell's text was broken in the middle of a word.
+    private func brokenWords(_ box: BlockBox) -> [String] {
+        var broken: [String] = []
+        for segment in box.segments {
+            let text = segment.attributed.string as NSString
+            for line in segment.lines.dropLast() {
+                let end = line.range.location + line.range.length
+                guard end > 0, end < text.length else { continue }
+                let before = text.substring(with: NSRange(location: end - 1, length: 1))
+                let after = text.substring(with: NSRange(location: end, length: 1))
+                if before.rangeOfCharacter(from: .alphanumerics) != nil,
+                    after.rangeOfCharacter(from: .alphanumerics) != nil
+                {
+                    broken.append(text as String)
+                }
+            }
+        }
+        return broken
+    }
+
+    /// A table narrower than its natural width is squeezed, and the squeeze
+    /// used to take the same share from every column. A column of one short
+    /// word lost the room that word needed, and "Week" came out as "We" over
+    /// "ek" in an exported PDF, while the column of sentences beside it could
+    /// have wrapped at a space instead.
+    func testASqueezedTableDoesNotBreakAWord() {
+        let text = """
+            | Step | Week | Traffic on the new ledger | Reversible in |
+            |---|---|---|---|
+            | Mirror writes | 1 | 0% | seconds |
+            | Shadow reads | 2 | 0% | seconds |
+            | Read path | 3 | 25% to 100% | one deploy |
+            | Write path | 4 | 5% to 100% | one deploy |
+            """
+        for width in stride(from: CGFloat(300), through: 520, by: 20) {
+            let layout = DocumentLayout(
+                document: Document(text: text), theme: Theme(isDark: false), columnWidth: width)
+            XCTAssertEqual(brokenWords(layout.box(at: 0)!), [], "column width \(width)")
+        }
+    }
 }

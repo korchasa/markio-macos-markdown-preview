@@ -667,27 +667,33 @@ struct BlockLayoutEngine {
             let filterHeight = showsFilter ? theme.lineHeight + padding : 0
             let columns = max(1, table.columnCount)
             let rows = max(1, table.rowCount)
-            let widths = columnWidths(table, total: available, padding: padding)
+            // Build every cell's text once, before the columns are sized: the
+            // widest word of a column is measured from it.
+            var texts: [StyledText] = []
+            var inlines: [InlineContent] = []
+            for cell in table.cells {
+                let inline = parseInline(cell.content)
+                texts.append(
+                    AttributedBuilder.build(
+                        content: cell.content,
+                        inline: inline,
+                        theme: theme,
+                        baseFont: cell.isHeader ? theme.bodyBold : theme.body,
+                        baseColor: theme.palette.text
+                    ))
+                inlines.append(inline)
+            }
+            let widths = columnWidths(table, texts: texts, total: available, padding: padding)
             var edges = [CGFloat](repeating: indent, count: columns + 1)
             for column in 0..<columns { edges[column + 1] = edges[column] + widths[column] }
 
-            // Build every cell's text once, and measure it at the width its
-            // span gives it. Heights have to be known for the whole grid before
-            // any cell can be placed, because a row is as tall as its tallest
-            // cell.
-            var texts: [StyledText] = []
-            var inlines: [InlineContent] = []
+            // Measure every cell at the width its span gives it. Heights have
+            // to be known for the whole grid before any cell can be placed,
+            // because a row is as tall as its tallest cell.
             var heights: [CGFloat] = []
             var rowHeights = [CGFloat](repeating: theme.lineHeight + padding * 2, count: rows)
-            for cell in table.cells {
-                let inline = parseInline(cell.content)
-                let styled = AttributedBuilder.build(
-                    content: cell.content,
-                    inline: inline,
-                    theme: theme,
-                    baseFont: cell.isHeader ? theme.bodyBold : theme.body,
-                    baseColor: theme.palette.text
-                )
+            for (index, cell) in table.cells.enumerated() {
+                let styled = texts[index]
                 let width = cellWidth(cell, edges: edges, columns: columns)
                 let measured =
                     Typesetter.layout(
@@ -697,8 +703,6 @@ struct BlockLayoutEngine {
                         y: 0,
                         lineHeightMultiple: theme.metrics.lineHeightMultiple
                     ).height + padding * 2
-                texts.append(styled)
-                inlines.append(inline)
                 heights.append(measured)
                 if cell.rowspan == 1, cell.row < rows {
                     rowHeights[cell.row] = max(rowHeights[cell.row], measured)
@@ -956,21 +960,34 @@ struct BlockLayoutEngine {
         /// numbers from stretching across the page. A cell that spans several
         /// columns shares its width between them, so one wide merged heading
         /// does not decide the whole grid.
+        ///
+        /// A squeezed table first takes the room its columns hold above their
+        /// widest single word. Taking the same share from every column broke a
+        /// one-word column mid-word — "Week" as "We" over "ek" — while a column
+        /// of sentences beside it could have wrapped at a space.
         private func columnWidths(
             _ table: HTMLTable,
+            texts: [StyledText],
             total: CGFloat,
             padding: CGFloat
         ) -> [CGFloat] {
             let columns = max(1, table.columnCount)
             var natural = [CGFloat](repeating: 0, count: columns)
-            for cell in table.cells.prefix(400) {
+            var words = [CGFloat](repeating: 0, count: columns)
+            for (index, cell) in table.cells.prefix(400).enumerated() {
                 let width =
                     CGFloat(cell.content.count) * theme.metrics.bodySize * 0.55 + padding * 2
                 let share = width / CGFloat(cell.columnspan)
                 for column in cell.column..<min(columns, cell.column + cell.columnspan) {
                     natural[column] = max(natural[column], share)
                 }
+                if cell.columnspan == 1, cell.column < columns {
+                    words[cell.column] = max(
+                        words[cell.column],
+                        widestWord(texts[index].attributed) + padding * 2)
+                }
             }
+            natural = zip(natural, words).map { max($0, $1) }
             let sum = natural.reduce(0, +)
             guard sum > 0 else {
                 return [CGFloat](repeating: total / CGFloat(columns), count: columns)
@@ -980,6 +997,13 @@ struct BlockLayoutEngine {
                 let extra = (total - sum) / CGFloat(columns)
                 return natural.map { $0 + extra }
             }
+            let floors = zip(natural, words).map { min($0, max($1, minimum)) }
+            let slack = sum - floors.reduce(0, +)
+            if sum - total <= slack {
+                let overflow = sum - total
+                return zip(natural, floors).map { $0 - overflow * ($0 - $1) / slack }
+            }
+            // The words alone do not fit: some will break whatever is done.
             // Shrink proportionally, but never below a readable minimum.
             var widths = natural.map { max(minimum, $0 * total / sum) }
             let overflow = widths.reduce(0, +) - total
@@ -994,6 +1018,31 @@ struct BlockLayoutEngine {
                 }
             }
             return widths
+        }
+
+        /// The width of the longest unbreakable run of a cell's text, in the
+        /// fonts it is drawn in. The extra point keeps a word that fits
+        /// exactly from being pushed apart by rounding in the line breaker.
+        private func widestWord(_ attributed: NSAttributedString) -> CGFloat {
+            let text = attributed.string as NSString
+            var widest: CGFloat = 0
+            var start = 0
+            for index in 0...text.length {
+                let ends =
+                    index == text.length
+                    || CharacterSet.whitespacesAndNewlines.contains(
+                        UnicodeScalar(text.character(at: index)) ?? " ")
+                guard ends else { continue }
+                if index > start {
+                    let word = attributed.attributedSubstring(
+                        from: NSRange(location: start, length: index - start))
+                    let line = CTLineCreateWithAttributedString(word)
+                    widest = max(
+                        widest, CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
+                }
+                start = index + 1
+            }
+            return widest + 1
         }
 
         // MARK: Decorations
