@@ -15,6 +15,33 @@ the product, not an implementation detail.
 In: viewing local Markdown files, one window per document.
 Out: editing, exporting, converting, syncing, and anything that needs a network.
 
+## Priorities
+
+What the reader gets from Markio, most important first — the order a listing,
+a page or a film should follow. It is taken from where each benefit stands on
+the product site and in the store description, with the store's promotional
+text breaking ties; the Purpose above confirms the first place. Fixed by the
+owner on 2026-10-14.
+
+1. **Opens at once, already drawn.** A document is a typeset page the moment
+   its window appears, because there is no web engine to start (PROD-1,
+   PERF-1 – PERF-3).
+2. **Stays live.** When another program rewrites the file, the window follows
+   and the reader keeps their place (VIEW-10).
+3. **Tables that behave like tables.** Sort by a column, filter the rows
+   (VIEW-34).
+4. **Compare with another document.** What it has and what it lacks, marked in
+   one window or in two columns that scroll together (VIEW-17, VIEW-26).
+5. **Diagrams and formulas, drawn.** Mermaid becomes a picture and maths gets
+   real glyphs, instead of staying code (VIEW-24, VIEW-25).
+6. **A way through a long document.** The outline and Find (VIEW-3, VIEW-4).
+7. **Present from the file.** Sections become slides, with no export and no
+   second file (VIEW-31).
+8. **Zen.** The document and nothing else on screen (VIEW-30).
+9. **Space in Finder.** Quick Look shows the same page (QL-1).
+10. **Read-only and private.** The app never writes a file it opens, makes no
+    network request, and its source is public (PROD-2, PROD-3).
+
 ---
 
 ## PROD — Product
@@ -183,9 +210,10 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   for that folder, once, in a panel over that document — never on open, and
   never again for a folder already granted, which is remembered across
   relaunches. Refusing leaves the empty frame rather than an error.
-- **VIEW-17** A document can be compared against an older version of itself
-  (File ▸ Compare…): blocks added since the baseline and blocks removed from it
-  are marked in place, in one window with one scroll. The outline and find
+- **VIEW-17** A document can be compared against any other document the
+  reader picks (File ▸ Compare…), an older version of it or a different file:
+  blocks it has that the baseline lacks and blocks the baseline has that it
+  lacks are marked in place, in one window with one scroll. The outline and find
   cover the removed text as well. Stop Comparing returns the plain document; an
   edit while comparing re-reads the baseline and compares again. The baseline
   choice lasts for the session only.
@@ -343,8 +371,8 @@ Out: editing, exporting, converting, syncing, and anything that needs a network.
   be edited, and Compare… on ⇧⌘C. Window tabbing is refused outright, because
   one window per document is what the app is.
 - **VIEW-26** File ▸ Side by Side gives the baseline a column of its own: the
-  older version on the left with what it lost, the current file on the right
-  with what it gained. The two scroll together. Find, the outline and every
+  baseline on the left with what the open file lacks, the open file on the
+  right with what it adds. The two scroll together. Find, the outline and every
   command keep working on the document the window belongs to.
 
 ## QL — Quick Look
