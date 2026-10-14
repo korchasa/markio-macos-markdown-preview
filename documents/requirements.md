@@ -12,8 +12,10 @@ the product, not an implementation detail.
 
 ## Scope
 
-In: viewing local Markdown files, one window per document.
-Out: editing, exporting, converting, syncing, and anything that needs a network.
+In: viewing local Markdown files, one window per document, and printing or
+exporting the document as a PDF (VIEW-32).
+Out: editing, converting to other formats, syncing, and anything that needs a
+network.
 
 ## Priorities
 
