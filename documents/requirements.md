@@ -23,9 +23,11 @@ the product site and in the store description, with the store's promotional
 text breaking ties; the Purpose above confirms the first place. Fixed by the
 owner on 2026-10-14.
 
-1. **Opens at once, already drawn.** A document is a typeset page the moment
-   its window appears, because there is no web engine to start (PROD-1,
-   PERF-1 – PERF-3).
+1. **Blazing fast, minimal memory footprint.** Opening a document costs a
+   fraction of the processor time and memory that viewers built on a web
+   engine spend on the same file, because there is no engine to start
+   (PROD-1, PERF-1 – PERF-4). Owner, 2026-10-14: this replaces "opens at once,
+   already drawn" as the first item.
 2. **Stays live.** When another program rewrites the file, the window follows
    and the reader keeps their place (VIEW-10).
 3. **Tables that behave like tables.** Sort by a column, filter the rows
