@@ -561,6 +561,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// The earliest point the app knows it is quitting, and before any window
+    /// is closed for it, so no close on the way out asks for a rating (UI-4).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        documentController.isTerminating = true
+        return .terminateNow
+    }
 }
 
 /// A document controller that never offers to create a new document: Markio
@@ -583,8 +590,8 @@ final class MarkdownDocumentController: NSDocumentController {
 
     /// Nil when a script drives the app: every flag `--capture`, `--snapshot`
     /// and their kin take starts with two dashes, and a store picture or a
-    /// check is not a reader opening a document. Built on the first opening
-    /// rather than at launch, so a launch that opens nothing reads nothing.
+    /// check is not a reader opening a document. Built on the first opening or
+    /// close rather than at launch, so a launch that does neither reads nothing.
     private lazy var reviewRequest: ReviewRequest? = {
         guard !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") }),
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
@@ -613,12 +620,29 @@ final class MarkdownDocumentController: NSDocumentController {
     }
 
     private func documentOpened() {
-        guard let reviewRequest, reviewRequest.recordOpening() else { return }
-        // Long enough for the new window to have drawn: a sheet that arrives
-        // before the document does covers the very thing the reader opened.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        reviewRequest?.recordOpening()
+    }
+
+    /// Set once the app has agreed to quit. AppKit may close the windows on
+    /// the way out, and those closes are the app leaving, not a reader
+    /// finishing a document.
+    var isTerminating = false
+
+    /// A document window has closed after being open for `openFor` seconds
+    /// (UI-4): the end of a read, and the one moment the app asks for a rating.
+    func documentWindowClosed(openFor: TimeInterval) {
+        guard let reviewRequest else { return }
+        let asks = reviewRequest.asksOnClose(openFor: openFor, terminating: isTerminating)
+        Self.log.info(
+            "window closed after \(Int(openFor)) s, terminating: \(self.isTerminating), asks: \(asks)"
+        )
+        guard asks else { return }
+        // On the next turn, once the window is gone, so the sheet does not
+        // land on a document that is on its way out.
+        DispatchQueue.main.async {
             Self.log.info("asking macOS for a rating")
             SKStoreReviewController.requestReview()
+            reviewRequest.markAsked()
         }
     }
 

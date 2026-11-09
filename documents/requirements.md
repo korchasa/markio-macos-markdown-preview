@@ -416,18 +416,23 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
 - **UI-3** A file named on the command line opens without the open panel
   appearing; a path that does not exist is reported and skipped, never turned
   into a modal alert.
-- **UI-4** On the third document a reader opens, the app asks macOS for a
-  rating with the system's own request, and adds no rating screen of its own.
-  What counts is a document opened by the reader — from Finder, the Open panel,
-  Open Recent or the command line — and shown in a window. A window brought back
-  when the app relaunches, a document that was already open, a file that failed
-  to open, a Quick Look preview and a scripted run (`--capture`, `--snapshot`,
-  `--export-pdf` and the other `--` flags) do not count. The request comes after
-  the window has drawn, never on the app's first launch, and at most once per
-  version (`CFBundleShortVersionString`): a later version asks again only after
-  three new openings. macOS decides whether to show the sheet and limits it to
-  three a year. The opening path pays for it with one `UserDefaults` write and
-  nothing else, and the app still makes no network request of its own (PROD-3).
+- **UI-4** After a reader has opened three documents, the app asks macOS for a
+  rating with the system's own request when they close a document window they
+  have read, and adds no rating screen of its own. What counts as an opening is
+  a document opened by the reader — from Finder, the Open panel, Open Recent or
+  the command line — and shown in a window. A window brought back when the app
+  relaunches, a document that was already open, a file that failed to open, a
+  Quick Look preview and a scripted run (`--capture`, `--snapshot`,
+  `--export-pdf` and the other `--` flags) do not count. The request is made
+  only when the closed window was open for at least 30 seconds, never for a
+  window closed because the app is quitting, never on the calendar day of the
+  first counted opening, and at most once per version
+  (`CFBundleShortVersionString`): a later version asks again only after three
+  new openings. The end of a read is the moment that does not interrupt the
+  reader, which is when Apple's guidance says to ask. macOS decides whether to
+  show the sheet and limits it to three a year. The opening path pays for it
+  with one `UserDefaults` write and nothing else, and the app still makes no
+  network request of its own (PROD-3).
 
 ## BUILD — How it is kept honest
 

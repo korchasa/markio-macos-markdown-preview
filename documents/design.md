@@ -1480,14 +1480,25 @@ which matches always put on screen, rather than to the window's edge.
   window brought back at relaunch is never counted, and the Quick Look extension
   has no document controller at all. Only a completion with a document, not one
   that was already open, and a request to display it counts. `ReviewRequest`
-  keeps two keys in `UserDefaults` — the openings since the last request and the
-  version last asked in — and answers yes on the third opening. A launch that
-  began with neither key is the first launch and keeps counting without asking,
-  so the next opening in a later launch asks instead. The request itself,
-  `SKStoreReviewController.requestReview()`, runs two seconds later, once the
-  window has drawn; the opening path pays for one defaults write. A process
-  started with any `--` argument is a script driving the app and gets no
-  `ReviewRequest`.
+  keeps three keys in `UserDefaults` — the openings since the last request, the
+  version last asked in, and the date of the first counted opening, written
+  once by the first opening ever — so an opening still costs two reads and one
+  write. The question is asked on the way out of a read, not on the way in:
+  `DocumentWindowController.windowWillClose` reports how long its window was
+  open (`systemUptime`, which a sleep or a clock change does not move), and the
+  controller asks `ReviewRequest.asksOnClose(openFor:terminating:)`. It answers
+  yes when the window was open for 30 seconds or more, the app is not quitting,
+  there are three openings, this version has not asked, and today is not the
+  calendar day of the first opening; a record without that date takes today as
+  its first day and stores it. A yes calls
+  `SKStoreReviewController.requestReview()` on the next turn of the main queue,
+  once the window is gone, and only then `markAsked()` stores the version and
+  resets the count — the decision alone spends nothing. AppKit closes every
+  window on quit, after `applicationShouldTerminate`, so the app delegate sets
+  `isTerminating` there and those closes never ask. The macOS sheet is drawn by
+  the system's `storeuid` process as a window of its own, so a request made
+  after the last window has closed still shows it. A process started with any
+  `--` argument is a script driving the app and gets no `ReviewRequest`.
 
 ## MarkioQuickLook
 

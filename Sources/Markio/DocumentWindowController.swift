@@ -88,6 +88,10 @@ final class DocumentWindowController: NSWindowController {
     private var zenTookFullScreen = false
     /// The deck, while one is on screen.
     private var presentation: PresentationWindow?
+    /// When the window came up, on a clock that sleep and a changed system
+    /// time do not move: how long a document was read decides whether its
+    /// close asks for a rating (UI-4).
+    private let createdAt = ProcessInfo.processInfo.systemUptime
 
     init(document: MarkdownDocument) {
         self.markdownDocument = document
@@ -1591,6 +1595,8 @@ final class DocumentWindowController: NSWindowController {
 
 extension DocumentWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        (NSDocumentController.shared as? MarkdownDocumentController)?.documentWindowClosed(
+            openFor: ProcessInfo.processInfo.systemUptime - createdAt)
         saveWorkItem?.cancel()
         if let url = markdownDocument.fileURL, restoredScroll {
             Preferences.setScrollPosition(scrollView.contentView.bounds.minY, for: url)
