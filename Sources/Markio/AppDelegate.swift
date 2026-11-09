@@ -1,5 +1,7 @@
 import AppKit
 import MarkioRender
+import StoreKit
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -577,7 +579,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 /// state, and AppKit is free to ask for it from whichever queue it happens to
 /// be on.
 final class MarkdownDocumentController: NSDocumentController {
+    private static let log = Logger(subsystem: "dev.markio.app", category: "review")
+
+    /// Nil when a script drives the app: every flag `--capture`, `--snapshot`
+    /// and their kin take starts with two dashes, and a store picture or a
+    /// check is not a reader opening a document. Built on the first opening
+    /// rather than at launch, so a launch that opens nothing reads nothing.
+    private lazy var reviewRequest: ReviewRequest? = {
+        guard !CommandLine.arguments.dropFirst().contains(where: { $0.hasPrefix("--") }),
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+                as? String
+        else { return nil }
+        return ReviewRequest(defaults: .standard, version: version)
+    }()
+
     override func newDocument(_ sender: Any?) {}
+
+    /// The door every opening a reader makes comes through (UI-4). A window
+    /// that state restoration brings back comes through
+    /// `reopenDocument(for:withContentsOf:display:completionHandler:)` instead,
+    /// which is what keeps a relaunch from counting.
+    override func openDocument(
+        withContentsOf url: URL, display displayDocument: Bool,
+        completionHandler: @escaping (NSDocument?, Bool, (any Error)?) -> Void
+    ) {
+        super.openDocument(withContentsOf: url, display: displayDocument) {
+            document, alreadyOpen, error in
+            if document != nil, !alreadyOpen, displayDocument {
+                MainActor.assumeIsolated { self.documentOpened() }
+            }
+            completionHandler(document, alreadyOpen, error)
+        }
+    }
+
+    private func documentOpened() {
+        guard let reviewRequest, reviewRequest.recordOpening() else { return }
+        // Long enough for the new window to have drawn: a sheet that arrives
+        // before the document does covers the very thing the reader opened.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            Self.log.info("asking macOS for a rating")
+            SKStoreReviewController.requestReview()
+        }
+    }
 
     nonisolated override func documentClass(forType typeName: String) -> AnyClass? {
         MarkdownDocument.self

@@ -1472,6 +1472,22 @@ which matches always put on screen, rather than to the window's edge.
 - Command-line files are collected in `applicationWillFinishLaunching`, because
   AppKit asks whether to open an untitled document before
   `applicationDidFinishLaunching` runs (UI-3).
+- The rating request (UI-4) is counted in
+  `MarkdownDocumentController.openDocument(withContentsOf:display:completionHandler:)`,
+  the one door every reader-initiated open goes through — Finder, the Open
+  panel, Open Recent, the command line. State restoration comes in through
+  `reopenDocument(for:withContentsOf:display:completionHandler:)` instead, so a
+  window brought back at relaunch is never counted, and the Quick Look extension
+  has no document controller at all. Only a completion with a document, not one
+  that was already open, and a request to display it counts. `ReviewRequest`
+  keeps two keys in `UserDefaults` — the openings since the last request and the
+  version last asked in — and answers yes on the third opening. A launch that
+  began with neither key is the first launch and keeps counting without asking,
+  so the next opening in a later launch asks instead. The request itself,
+  `SKStoreReviewController.requestReview()`, runs two seconds later, once the
+  window has drawn; the opening path pays for one defaults write. A process
+  started with any `--` argument is a script driving the app and gets no
+  `ReviewRequest`.
 
 ## MarkioQuickLook
 
