@@ -158,6 +158,29 @@ public enum DocumentRenderer {
         return max(1, min(2, limit / longest))
     }
 
+    /// A picture as the bytes of a PNG that says how dense it is.
+    ///
+    /// 144 dots per inch at two pixels per point, so the file's own idea of
+    /// full size is the size the diagram was laid out at. One encoder for the
+    /// app's written-out diagram and for the `markio` command: two would be two
+    /// places to forget the resolution, and a file without it opens at twice
+    /// its size.
+    public static func png(_ image: CGImage, density: CGFloat = 2) -> Data? {
+        let data = NSMutableData()
+        guard
+            let destination = CGImageDestinationCreateWithData(
+                data, "public.png" as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(
+            destination, image,
+            [
+                kCGImagePropertyDPIWidth: 72 * density,
+                kCGImagePropertyDPIHeight: 72 * density,
+            ] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
     /// Where a graph diagram's boxes, lines and words were drawn, as JSON, for
     /// the layout bench. `nil` when the source does not parse or is not a kind
     /// made of boxes joined by lines.

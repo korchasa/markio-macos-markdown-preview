@@ -4,7 +4,7 @@ How the viewer meets `requirements.md`.
 
 ## The shape of it
 
-Five targets, in dependency order:
+Six targets, in dependency order:
 
 - **MarkdownKit** — the parser. Pure Swift, no AppKit, no fonts, no theme.
 - **MarkioRender** — CoreText typesetting, the virtualized layout, the reading
@@ -12,6 +12,9 @@ Five targets, in dependency order:
 - **Markio** — the app: documents, windows, menus, preferences, live reload.
 - **MarkioQuickLook** — the preview extension: the same two renderer modules
   in Finder's panel.
+- **markio-cli** — the `markio` command: one Mermaid source to a PNG, from a
+  terminal. Built by the package, installed on the search path, absent from
+  the bundle.
 - **markio-bench** — headless measurement and offscreen rendering.
 
 The split is what keeps the parser testable and fast: nothing in MarkdownKit
@@ -1511,6 +1514,48 @@ extension. The binary's entry point is `_NSExtensionMain`, set by linker flags;
 completion handler on one turn. There is nothing to await, which is why the
 preview cannot hang — and why the extension needs no network entitlement, the
 one a sandboxed `WKWebView` must have or its helper never launches.
+
+## markio-cli
+
+The `markio` command (CLI-1 – CLI-3). It is a program of its own because of the
+sandbox: a probe signed with the app's entitlements read standard input and
+wrote standard output, and was refused both a path to read and a path to write.
+A mode of the app could therefore only ever work through redirection, and it
+would change the bundle that ships. The program is not sandboxed, takes paths,
+and is never copied into `.build/Markio.app`.
+
+The Swift product is `markio-cli` and only the installed copy is called
+`markio`: `Markio` and `markio` in `.build/release` would be one file on a
+case-insensitive volume. `deno task app` copies it to `~/.local/bin/markio`
+where it installs the dev copy of the app, so `dist` — which skips that install
+— leaves it alone. The old copy is removed before the new one is written: a
+binary overwritten in place keeps its inode, and the kernel kills the next
+launch over the signature it remembered for it.
+
+Three files, and the split is what makes it testable without a process:
+
+- `Arguments.swift` turns the command line into a value or a usage error. No
+  dependency parses it; the grammar is one subcommand and three options. None
+  of them is an appearance: `Theme.forDiagrams` gives every diagram a white
+  page, so a `--dark` would change nothing, and the theme a source names
+  already travels with it.
+- `MermaidCommand.swift` does the work through an `IO` value — where the source
+  comes from when the input is `-`, where the picture and the messages go — so
+  a test stands in for the standard streams.
+- `main.swift` hands the arguments over and exits with the answer.
+
+The picture is deliberately the one `DocumentView.diagramFile` writes for
+"open this diagram on its own", and reaches it the same way: measured first at
+one pixel per point at `DocumentRenderer.naturalWidth`, then drawn at the
+density `DocumentRenderer.density(for:)` picks for that size. The measuring
+pass is also where a refusal shows — `DocumentRenderer.diagram` returns `nil`
+for a source the layout does not draw — so a `nil` there is exit 3 and a `nil`
+from the second pass can only be a bitmap too large to make, which is exit 1.
+`DocumentRenderer.png(_:density:)` encodes for both callers, so the resolution
+recorded in the file is decided in one place.
+
+Messages go to standard error and the confirmation line is printed only when
+the picture went to a file, because standard output may be the picture.
 
 ## The icon
 

@@ -27,6 +27,14 @@ export const APP_NAME = "Markio";
 export const QL_NAME = "MarkioQuickLook";
 
 /**
+ * The command. Its product cannot share the app's name in another case:
+ * `Markio` and `markio` in `.build/release` are one file on a case-insensitive
+ * volume, so it is built under one name and installed under the other.
+ */
+export const CLI_PRODUCT = "markio-cli";
+export const CLI_NAME = "markio";
+
+/**
  * The version on sale and the build number under it. App Store Connect takes a
  * build only for a version of the same string, and the extension must carry
  * the app's numbers, so both plists are held to these.

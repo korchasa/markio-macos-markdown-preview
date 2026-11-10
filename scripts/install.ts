@@ -21,7 +21,7 @@
  */
 
 import { fail, run, section } from "./lib.ts";
-import { APP_NAME, QL_NAME, VERSION } from "./identity.ts";
+import { APP_NAME, CLI_NAME, CLI_PRODUCT, QL_NAME, VERSION } from "./identity.ts";
 
 /** What the local copy is called and answers to. */
 const DEV_NAME = `${APP_NAME} Dev`;
@@ -161,4 +161,30 @@ export async function installDevCopy(bundle: string): Promise<void> {
     await run("open", { args: ["-a", INSTALLED] });
   }
   section(`install: ${INSTALLED} is this build`);
+}
+
+/**
+ * Put the `markio` command on the search path.
+ *
+ * It rides on the same build as the dev copy for the same reason that copy is
+ * installed at all: a command that is not the one last built is a session spent
+ * testing last week's renderer. It goes beside the user's own tools and not
+ * into the bundle — the bundle is what ships, and the store does not carry
+ * this.
+ */
+export async function installCommand(): Promise<void> {
+  const home = Deno.env.get("HOME");
+  if (!home) fail("HOME is not set, so there is nowhere to install the command");
+  const directory = `${home}/.local/bin`;
+  const installed = `${directory}/${CLI_NAME}`;
+  section(`Installing ${installed}`);
+  await Deno.mkdir(directory, { recursive: true });
+  // Removed first, never overwritten: a binary rewritten in place keeps its
+  // inode, the kernel still holds the signature it checked for the old bytes,
+  // and the next launch is killed without a word.
+  await Deno.remove(installed).catch(() => {});
+  await Deno.copyFile(`.build/release/${CLI_PRODUCT}`, installed);
+  if (!(Deno.env.get("PATH") ?? "").split(":").includes(directory)) {
+    console.log(`    ${directory} is not on PATH — add it, or call ${installed} in full`);
+  }
 }

@@ -12,10 +12,11 @@ the product, not an implementation detail.
 
 ## Scope
 
-In: viewing local Markdown files, one window per document, and printing or
-exporting the document as a PDF (VIEW-32).
-Out: editing, converting to other formats, syncing, and anything that needs a
-network.
+In: viewing local Markdown files, one window per document, printing or
+exporting the document as a PDF (VIEW-32), and drawing one Mermaid diagram to a
+PNG from a terminal (CLI-1).
+Out: editing, converting a document to other formats, syncing, and anything
+that needs a network.
 
 ## Priorities
 
@@ -433,6 +434,31 @@ numbers are recorded in `README.md` and reproduced by `deno task bench`.
   show the sheet and limits it to three a year. The opening path pays for it
   with one `UserDefaults` write and nothing else, and the app still makes no
   network request of its own (PROD-3).
+
+## CLI — From a terminal
+
+- **CLI-1** A command, `markio mermaid <input> -o <output>`, draws one Mermaid
+  source to a PNG with the renderer the app draws with (VIEW-25) and no web
+  engine (PROD-1). `-` in place of either name means standard input or standard
+  output. The picture is the one the app writes when a reader opens a diagram on
+  its own: its natural size, cut to what was drawn, at two pixels per point —
+  fewer only for a picture too large for that — with the resolution recorded in
+  the file, so a viewer showing it at full size shows it at the size it was laid
+  out. `--width <points>` sets the width labels wrap at and `--scale <factor>`
+  the pixels per point. There is no option for colours: a diagram is drawn on a
+  white page, and a theme its source names (PARSE-14) is the one it is drawn in.
+- **CLI-2** The command says how it ended, and never leaves half a picture.
+  Exit 0: written. Exit 1: an input it could not read or an output it could not
+  write. Exit 2: a command line it did not understand, answered with the usage.
+  Exit 3: a source the layout does not draw — the same refusal that leaves a
+  fence as a code block in a document. Every message goes to standard error, so
+  standard output carries the picture and nothing else, and a refusal writes no
+  file.
+- **CLI-3** The command is a program of its own, not a mode of the app and not a
+  file in its bundle. A sandboxed app cannot open a path named on its command
+  line, and the bundle that ships must not change for a tool the store does not
+  carry. The package builds it, `deno task app` installs it as `markio`, and
+  `.build/Markio.app` does not contain it.
 
 ## BUILD — How it is kept honest
 

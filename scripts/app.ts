@@ -14,7 +14,7 @@
 
 import { run, section } from "./lib.ts";
 import { APP_NAME, APP_PRODUCT, QL_NAME, QL_PLIST, QL_PRODUCT } from "./identity.ts";
-import { installDevCopy } from "./install.ts";
+import { installCommand, installDevCopy } from "./install.ts";
 
 export const APP_BUNDLE = `.build/${APP_NAME}.app`;
 const RELEASE_BIN = `.build/release/${APP_PRODUCT}`;
@@ -28,7 +28,8 @@ export const QL_APPEX = `${APP_BUNDLE}/Contents/PlugIns/${QL_NAME}.appex`;
  * wants the signature: without it the binary is linker-signed, carries no
  * entitlements, and runs outside the sandbox the shipped app runs in.
  *
- * `installDev: false` skips the copy in /Applications, and `dist` needs that
+ * `installDev: false` skips the copy in /Applications and the `markio`
+ * command beside the user's own tools, and `dist` needs that
  * too: the install quits the running dev copy first, a reader can refuse that
  * quit, and a refusal must not be able to fail the build that ships.
  */
@@ -114,8 +115,13 @@ export async function app(
 
   // A build nobody can launch from Spotlight is half a build: the copy in
   // /Applications is refreshed here rather than by a verb somebody has to
-  // remember, so what is installed is always what was last built.
-  if (installDev) await installDevCopy(APP_BUNDLE);
+  // remember, so what is installed is always what was last built. The
+  // `markio` command goes with it, and stays out of the bundle above: it is
+  // built by the same `swift build` and copied nowhere a signature covers.
+  if (installDev) {
+    await installDevCopy(APP_BUNDLE);
+    await installCommand();
+  }
 
   section(`app: built ${APP_BUNDLE}`);
 }

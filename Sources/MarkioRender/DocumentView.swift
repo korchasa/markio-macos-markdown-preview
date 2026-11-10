@@ -540,17 +540,9 @@ public final class DocumentView: NSView {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(name)
             .appendingPathExtension("png")
-        guard
-            let destination = CGImageDestinationCreateWithURL(
-                url as CFURL, "public.png" as CFString, 1, nil)
+        guard let data = DocumentRenderer.png(image, density: density),
+            (try? data.write(to: url)) != nil
         else { return nil }
-        CGImageDestinationAddImage(
-            destination, image,
-            [
-                kCGImagePropertyDPIWidth: 72 * density,
-                kCGImagePropertyDPIHeight: 72 * density,
-            ] as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { return nil }
         return url
     }
 

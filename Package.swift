@@ -56,6 +56,19 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain"]),
             ]
         ),
+        // The `markio` command: one Mermaid source to a PNG, from a terminal.
+        // A program of its own because a sandboxed app cannot open a path named
+        // on its command line. Named `markio-cli` here and `markio` only where
+        // it is installed: `Markio` and `markio` in one build folder are one
+        // file on a case-insensitive volume. Never copied into the bundle.
+        .executableTarget(
+            name: "markio-cli",
+            dependencies: ["MarkioRender"],
+            path: "Sources/markio-cli",
+            swiftSettings: [
+                .swiftLanguageMode(.v6)
+            ]
+        ),
         // Headless performance harness: parse/layout timings and peak memory on
         // generated documents. Kept out of the app so its cost never ships.
         .executableTarget(
@@ -95,6 +108,13 @@ let package = Package(
             name: "MarkioTests",
             dependencies: ["Markio"],
             path: "Tests/MarkioTests"
+        ),
+        // The command, the same way: against the executable, and once through
+        // the built program with real pipes.
+        .testTarget(
+            name: "MarkioCLITests",
+            dependencies: ["markio-cli", "MarkioRender"],
+            path: "Tests/MarkioCLITests"
         ),
     ]
 )

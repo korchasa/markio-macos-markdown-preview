@@ -103,6 +103,30 @@ Markio reads. It never writes a file it opens.
 - Edit the file in another app and the view reloads where you were reading
 - Press Space on a `.md` file in Finder for the same rendering in Quick Look
 
+## From a terminal
+
+`markio` draws one Mermaid diagram to a PNG with the same renderer, so nothing
+starts a browser to make one picture:
+
+```bash
+markio mermaid diagram.mmd -o diagram.png
+cat diagram.mmd | markio mermaid - -o - > diagram.png
+```
+
+- The picture is the diagram at its own size, cut to what was drawn, at two
+  pixels per point, with the resolution recorded so it opens at the size it was
+  laid out.
+- `--width <points>` sets the width labels wrap at; `--scale <factor>` sets the
+  pixels per point.
+- Colours come from the source: a theme it names, as in
+  `%%{init: {"theme": "dark"}}%%`, is the one it is drawn in.
+- Exit status 0 is a written picture, 1 a file that could not be read or
+  written, 2 a command line it did not understand, and 3 a diagram this
+  renderer does not draw — the one a document would show as a code block.
+
+The command is a program of its own and is not inside the app from the store:
+`deno task app` builds it and installs it as `~/.local/bin/markio`.
+
 ## Building it
 
 Needs Deno 2 and a Swift 6.3 toolchain.
@@ -119,7 +143,8 @@ one accepts, and the release build is what a reader ends up running.
 
 Other verbs:
 
-- `deno task app` — build the `.app` bundle into `.build/Markio.app`
+- `deno task app` — build the `.app` bundle into `.build/Markio.app`, install
+  it as Markio Dev, and install the `markio` command
 - `deno task dev <file.md>` — build and open a document
 - `deno task test` — the test suite alone
 - `deno task bench` — parse cost and memory footprint at 1, 8 and 32 MB
